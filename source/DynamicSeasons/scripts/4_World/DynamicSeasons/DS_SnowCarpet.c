@@ -76,9 +76,8 @@ class DS_SnowCarpet
 	//! behind (very fast travel) are the oldest ones dropped
 	static const float RETIRE_SECONDS = 30.0;
 	static const int RETIRE_MAX = 5000;
-	// time per frame for deleting the cells of earlier layouts, and for building and staging cells on foot (ms)
+	// time per frame for deleting the cells of earlier layouts (ms)
 	static const float DROP_MS = 1.0;
-	static const float BUILD_MS = 2.5;
 	//! blocks of the coarsest level around the camera that are worked on first after every layout change
 	static const int NEAR_BLOCKS = 9;
 	//! height of the ice surface of a frozen pond above the water (the snow cover lies on it)
@@ -2156,30 +2155,20 @@ class DS_SnowCarpet
 		m_Cost = 0;
 		// on foot the normal budget keeps up easily; a fast car gets up to three times as much work per frame
 		float boost = Math.Clamp(1.0 + m_Speed / 15.0, 1.0, 3.0);
-		// creating and deleting objects gets slower with every object in the scene: the work also stops at a time
-		// limit, so a dense town or a fast car never stalls a frame
-		int buildTicks = MsTicks(BUILD_MS * boost);
-		int build0 = tick;
 		int count = m_WLevel.Count();
-		int nearDone = 0;
 		// first the blocks around the camera, which change with every layout
 		while (m_NearScan < m_NearEnd && m_NearScan < count && m_Cost < 3.5 * boost)
 		{
-			if (buildTicks > 0 && nearDone > 0 && TickCount(build0) > buildTicks)
-				break;
 			int itemTick = TickCount(0);
 			ProcessItem(m_NearScan, anySnow);
 			StatCover(4, itemTick);
 			m_NearScan++;
-			nearDone++;
 		}
 		tick = StatCover(1, tick);
 		// then the main cursor, which keeps cycling through the whole layout
 		int visited = 0;
 		while (m_Cost < 6.0 * boost && visited < count)
 		{
-			if (buildTicks > 0 && TickCount(build0) > buildTicks)
-				break;
 			if (m_Scan >= count)
 			{
 				m_Scan = 0;

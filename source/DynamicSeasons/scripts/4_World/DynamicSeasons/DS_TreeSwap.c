@@ -63,7 +63,7 @@ class DS_TreeSwap
 	static const float KEEP_RADIUS = 1700.0;
 	static const float NEAR_BUDGET = 4.0;
 	static const float FAR_BUDGET = 2.5;
-	// and a time limit per frame (ms): every replacement creates an object, which gets slower in a busy scene
+	// time per frame for giving the trees of tiles out of range their original look back (ms)
 	static const float TREE_MS = 2.5;
 	//! first wait before a tile whose trees the game unloaded is scanned again (seconds)
 	static const float RESCAN_SECONDS = 8.0;
@@ -959,8 +959,6 @@ class DS_TreeSwap
 		int visited = 0;
 		while (m_Cost < NEAR_BUDGET && visited < m_NearCount)
 		{
-			if (visited > 0 && OverTime())
-				break;
 			if (m_NearCursor >= m_NearCount)
 				m_NearCursor = 0;
 			VisitTile(m_NearCursor, 1000000.0, false);
@@ -974,8 +972,6 @@ class DS_TreeSwap
 		visited = 0;
 		while (farCount > 0 && m_Cost < farStop && visited < farCount)
 		{
-			if (OverTime())
-				break;
 			if (m_FarCursor >= farCount)
 				m_FarCursor = 0;
 			// a dense far tile is swapped over several frames instead of all at once
@@ -1144,7 +1140,7 @@ class DS_TreeSwap
 				want = SHOW_ORIGINAL;
 			if (want == it.m_Shown)
 				continue;
-			if (m_Cost > limit || OverTime())
+			if (m_Cost > limit)
 			{
 				complete = false;
 				break;
