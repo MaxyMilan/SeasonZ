@@ -637,11 +637,12 @@ class DS_SnowCarpet
 			return v == 1;
 		float x0 = ix * m_Cell;
 		float z0 = iz * m_Cell;
-		float h00 = GY(x0, z0);
-		float h11 = GY(x0 + m_Cell, z0 + m_Cell);
-		float h10 = GY(x0 + m_Cell, z0);
-		float h01 = GY(x0, z0 + m_Cell);
-		float hc = GY(x0 + m_Cell * 0.5, z0 + m_Cell * 0.5);
+		// the terrain's own diagonal, as the cells are built (see CreateCell)
+		float h00 = g_Game.SurfaceY(x0, z0);
+		float h11 = g_Game.SurfaceY(x0 + m_Cell, z0 + m_Cell);
+		float h10 = g_Game.SurfaceY(x0 + m_Cell, z0);
+		float h01 = g_Game.SurfaceY(x0, z0 + m_Cell);
+		float hc = g_Game.SurfaceY(x0 + m_Cell * 0.5, z0 + m_Cell * 0.5);
 		bool diag = Math.AbsFloat(hc - (h00 + h11) * 0.5) <= Math.AbsFloat(hc - (h10 + h01) * 0.5);
 		v = 0;
 		if (diag)
@@ -1700,11 +1701,13 @@ class DS_SnowCarpet
 
 		if (level == 0)
 		{
-			float h00 = GY(x0, z0);
-			float h11 = GY(x0 + size, z0 + size);
-			float h10 = GY(x0 + size, z0);
-			float h01 = GY(x0, z0 + size);
-			float hc = GY(x0 + size * 0.5, z0 + size * 0.5);
+			// the diagonal of the terrain's own triangles, also where the cover lies on pond ice: with the ice height
+			// on some corners and the bank on others, the other diagonal leaves the terrain's crease poking through
+			float h00 = g_Game.SurfaceY(x0, z0);
+			float h11 = g_Game.SurfaceY(x0 + size, z0 + size);
+			float h10 = g_Game.SurfaceY(x0 + size, z0);
+			float h01 = g_Game.SurfaceY(x0, z0 + size);
+			float hc = g_Game.SurfaceY(x0 + size * 0.5, z0 + size * 0.5);
 			bool diag = Math.AbsFloat(hc - (h00 + h11) * 0.5) <= Math.AbsFloat(hc - (h10 + h01) * 0.5);
 			BuildExact(cell, x0, z0, size, diag, 0);
 		}

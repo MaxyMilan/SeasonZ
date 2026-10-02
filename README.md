@@ -29,6 +29,14 @@ Tree swaps and all snow are client side visuals: the real map objects stay where
 persistence. Snow on trees needs the Frostline data (all DayZ 1.29 installs have it), summer foliage the Livonia data.
 The tree swaps are mapped for the Chernarus tree species.
 
+## Known limits
+
+- Grass stays on pond banks and on coastal ground below the sea's water line: the game ignores grass cutters there.
+- Every snow piece is its own object, so the big towns (Chernogorsk, Elektrozavodsk) cost noticeably more frame rate
+  in winter than villages and open country.
+- Walls and fences carry snow out to 160 m (fences with an uneven top to 80 m), small structures out to 90 m.
+- Under bridges the edge of the snow cover is jagged.
+
 ## Server configuration
 
 `$profile/DynamicSeasons/config.json` (created on first start, profile folder = the server's `-profiles` folder):
