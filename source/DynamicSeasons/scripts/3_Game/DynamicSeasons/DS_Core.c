@@ -187,11 +187,16 @@ class DS_State
 	// test harness statistics: the longest update of each client part (ticks): 0 cover, 1 trees, 2 roofs, 3 grass,
 	// 4 ice, 5 footprints and tracks; and the number of frames over 8 ms of all parts together
 	static ref array<int> s_StatPartMax;
+	static ref array<int> s_StatPartSum;
 	static int s_StatPartSlow = 0;
 	static int s_StatPartFrames = 0;
 	// test harness statistics: the longest snow cover step (ticks): 0 new layout, 1 blocks near the camera,
 	// 2 main cursor, 3 retired cells, 4 one single cell
 	static ref array<int> s_StatCoverMax;
+	static string s_StatCoverWorst = "";
+	// test harness statistics: the longest tree step (ticks): 0 reach, 1 new anchor, 2 trim and restore, 3 near
+	// tiles, 4 far tiles, 5 one tile scan
+	static ref array<int> s_StatTreeMax;
 	// local test harness only: highest walkable surface the snow cover rises over (metres, -1 = the default) and
 	// whether such a surface has to be wide like a road (-1 = the default, 0 = no, 1 = yes)
 	static float s_DebugRoadProbe = -1;

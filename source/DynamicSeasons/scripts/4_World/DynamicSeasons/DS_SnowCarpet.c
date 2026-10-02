@@ -126,6 +126,9 @@ class DS_SnowCarpet
 	protected float m_S2;
 	protected vector m_Camera;
 	protected int m_Objects;
+	// test harness statistics: calls of the costly probes (water, road, road width, blocked, wide roof, roof,
+	// enclosed) while building the current cell
+	protected ref array<int> m_Calls;
 	protected int m_SkirtCount;
 	protected float m_Cost;
 	// camera position the level layout was built for
@@ -191,6 +194,9 @@ class DS_SnowCarpet
 		m_SpiralX = new array<int>;
 		m_SpiralZ = new array<int>;
 		m_Retired = new array<ref DS_SnowCell>;
+		m_Calls = new array<int>;
+		for (int cc = 0; cc < 7; cc++)
+			m_Calls.Insert(0);
 		m_Road0 = new map<int, float>;
 		m_Diag0 = new map<int, int>;
 		m_RoadProbe = ROAD_PROBE;
@@ -468,6 +474,7 @@ class DS_SnowCarpet
 
 	protected bool IsWater(float x, float z)
 	{
+		m_Calls[0] = m_Calls[0] + 1;
 		if (g_Game.SurfaceIsSea(x, z))
 			return true;
 		float water;
@@ -543,6 +550,7 @@ class DS_SnowCarpet
 	//! the same with the height of that ground already known
 	protected float RoadAboveGround(float x, float z, float ground)
 	{
+		m_Calls[1] = m_Calls[1] + 1;
 		float road = g_Game.SurfaceRoadY3D(x, ground + m_RoadProbe, z, RoadSurfaceDetection.UNDER);
 		float d = road - ground;
 		if (d < 0.002 || d > m_RoadProbe)
@@ -556,6 +564,7 @@ class DS_SnowCarpet
 	//! four directions, like a road or a square
 	protected bool RoadWide(float x, float z, float d)
 	{
+		m_Calls[2] = m_Calls[2] + 1;
 		int misses = 0;
 		for (int k = 0; k < 4; k++)
 		{
@@ -939,6 +948,7 @@ class DS_SnowCarpet
 	//! so the snow runs up to the walls.
 	protected bool ProbeBlocked(float x, float z)
 	{
+		m_Calls[3] = m_Calls[3] + 1;
 		m_Cost += 0.05;
 		float ground = g_Game.SurfaceY(x, z);
 		vector from = Vector(x, ground + 40.0, z);
@@ -997,6 +1007,7 @@ class DS_SnowCarpet
 	//! the building: snow does not get there (it does under eaves and narrow canopies)
 	protected bool UnderWideRoof(float x, float z, Object building)
 	{
+		m_Calls[4] = m_Calls[4] + 1;
 		vector axes[4];
 		building.GetTransform(axes);
 		vector ax = Vector(axes[0][0], 0, axes[0][2]).Normalized();
@@ -1017,6 +1028,7 @@ class DS_SnowCarpet
 	//! the building's roof lies more than a metre above the ground at a point
 	protected bool RoofOf(float x, float z, Object building)
 	{
+		m_Calls[5] = m_Calls[5] + 1;
 		m_Cost += 0.03;
 		float ground = g_Game.SurfaceY(x, z);
 		vector hitPos;
@@ -1032,6 +1044,7 @@ class DS_SnowCarpet
 	//! looking along the building's own axes, so a point under the eaves of a turned building is not closed in
 	protected bool Enclosed(float x, float z, float ground, Object building)
 	{
+		m_Calls[6] = m_Calls[6] + 1;
 		m_Cost += 0.12;
 		vector axes[4];
 		building.GetTransform(axes);
@@ -2239,7 +2252,15 @@ class DS_SnowCarpet
 			if (!anySnow)
 				return;
 			int createTick = TickCount(0);
+			for (int ci = 0; ci < 7; ci++)
+				m_Calls[ci] = 0;
 			cell = CreateCell(level, x, z);
+			if (TickCount(createTick) > DS_State.s_StatCoverMax[5])
+			{
+				DS_State.s_StatCoverWorst = string.Format("level %1 at %2 %3 tris %4 calls", level, x * size, z * size, cell.m_Tris.Count());
+				for (int cj = 0; cj < 7; cj++)
+					DS_State.s_StatCoverWorst = DS_State.s_StatCoverWorst + " " + m_Calls[cj].ToString();
+			}
 			StatCover(5, createTick);
 			cell.m_Sig = sig;
 			if (sig != 0)

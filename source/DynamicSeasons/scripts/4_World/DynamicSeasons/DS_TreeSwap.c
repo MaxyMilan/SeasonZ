@@ -63,6 +63,8 @@ class DS_TreeSwap
 	static const float KEEP_RADIUS = 1700.0;
 	static const float NEAR_BUDGET = 4.0;
 	static const float FAR_BUDGET = 2.5;
+	// and a time limit per frame (ms): every replacement creates an object, which gets slower in a busy scene
+	static const float TREE_MS = 2.5;
 	//! first wait before a tile whose trees the game unloaded is scanned again (seconds)
 	static const float RESCAN_SECONDS = 8.0;
 	//! The game unloads map objects the fog hides and the object view distance leaves out, and a scan loads them
@@ -74,7 +76,8 @@ class DS_TreeSwap
 	//! a learnt reach is tried a tile further every LIMIT_PROBE_SECONDS, so it follows a longer view distance again
 	static const float LIMIT_PROBE_SECONDS = 300.0;
 	//! tiles restored per frame once the reach shrank (the fog came in)
-	static const int TRIM_TILES = 8;
+	//! tiles checked per frame for leaving the range (a full round over the ~5000 known tiles takes two seconds)
+	static const int SWEEP_TILES = 50;
 	//! snow depth (cm) from which footpaths disappear under the snow: the snow cover is closed from here on
 	static const float PATH_COVER_CM = 5.0;
 	static const int SHOW_ORIGINAL = 0;
@@ -143,6 +146,8 @@ class DS_TreeSwap
 	protected ref map<string, bool> m_Deciduous;
 	protected ref map<string, bool> m_Approx;
 	protected ref map<int, ref DS_TreeTile> m_Tiles;
+	//! tiles out of range whose trees still have to get their original look back (a few per frame)
+	protected ref map<int, ref DS_TreeTile> m_Restore;
 	protected float m_Clock;
 	//! height of each model's origin above its ground contact, in model space (measured once per model)
 	protected ref map<string, vector> m_Centres;
@@ -164,6 +169,8 @@ class DS_TreeSwap
 	protected float m_S1;
 	protected float m_S2;
 	protected float m_Cost;
+	protected int m_Tick0;
+	protected int m_TickLimit;
 	protected vector m_Camera;
 	//! how far trees are seasonal this frame, the reach learnt from unloaded trees and the fog it was learnt in
 	protected float m_Reach;
@@ -174,6 +181,8 @@ class DS_TreeSwap
 	//! every tile further than m_TrimTo + TILE is gone (or waiting in a pending trim)
 	protected float m_TrimTo;
 	protected bool m_TrimPending;
+	protected int m_TrimLeft;
+	protected int m_SweepCursor;
 
 	void DS_TreeSwap()
 	{
@@ -184,6 +193,7 @@ class DS_TreeSwap
 		m_Deciduous = new map<string, bool>;
 		m_Approx = new map<string, bool>;
 		m_Tiles = new map<int, ref DS_TreeTile>;
+		m_Restore = new map<int, ref DS_TreeTile>;
 		m_Centres = new map<string, vector>;
 		m_Bottoms = new map<string, float>;
 		m_SpiralX = new array<int>;
@@ -377,13 +387,20 @@ class DS_TreeSwap
 	static string ShapeKey(Object o)
 	{
 		string shape = o.GetShapeName();
+		shape.ToLower();
+		return KeyOfShape(shape);
+	}
+
+	//! the species key (file name without folder and extension) of a lower case model path
+	static string KeyOfShape(string lower)
+	{
+		string shape = lower;
 		int slash = shape.LastIndexOf("\\");
 		if (slash >= 0)
 			shape = shape.Substring(slash + 1, shape.Length() - slash - 1);
 		int dot = shape.LastIndexOf(".");
 		if (dot > 0)
 			shape = shape.Substring(0, dot);
-		shape.ToLower();
 		return shape;
 	}
 
@@ -517,21 +534,6 @@ class DS_TreeSwap
 	protected void OnNewAnchor()
 	{
 		m_NearCursor = 0;
-		float keep = Math.Min(KEEP_RADIUS, m_Reach + 2.0 * TILE);
-		array<int> drop = new array<int>;
-		for (int i = 0; i < m_Tiles.Count(); i++)
-		{
-			int key = m_Tiles.GetKey(i);
-			int kx = Math.Floor(key / 65536.0);
-			int kz = key - kx * 65536;
-			if (TileDist(kx, kz) > keep)
-				drop.Insert(key);
-		}
-		foreach (int k : drop)
-		{
-			RestoreTile(m_Tiles.Get(k));
-			m_Tiles.Remove(k);
-		}
 	}
 
 	//! finds the tile's seasonal trees and footpaths; a rescan only adds the objects the tile does not know yet
@@ -570,7 +572,12 @@ class DS_TreeSwap
 			if (Math.Floor(p[0] / TILE) != tx || Math.Floor(p[2] / TILE) != tz)
 				continue;
 
-			if (IsPath(o))
+			// the mod's own snow, ice and grass pieces are most of the objects in a town tile: they go first
+			string full = o.GetShapeName();
+			full.ToLower();
+			if (full.IndexOf("dynamicseasons\\") >= 0)
+				continue;
+			if (IsPathShape(full))
 			{
 				tile.m_Paths.Insert(o);
 				tile.m_PathScale.Insert(o.GetScale());
@@ -578,7 +585,7 @@ class DS_TreeSwap
 				continue;
 			}
 
-			string shape = ShapeKey(o);
+			string shape = KeyOfShape(full);
 
 			string winter = "";
 			string bare = "";
@@ -839,6 +846,12 @@ class DS_TreeSwap
 	{
 		string shape = o.GetShapeName();
 		shape.ToLower();
+		return IsPathShape(shape);
+	}
+
+	//! IsPath for a lower case model path
+	static bool IsPathShape(string shape)
+	{
 		if (shape.IndexOf("\\roads\\parts\\path_") >= 0)
 			return true;
 		if (shape.IndexOf("\\roads\\panels\\proxy\\grass_") >= 0)
@@ -896,13 +909,26 @@ class DS_TreeSwap
 		if (DS_State.s_DebugTreesFreeze)
 			return;
 
+		m_Tick0 = TickCount(0);
+		m_TickLimit = 0;
+		float tps = DS_RoofSnow.DebugTicksPerSec();
+		if (tps > 0)
+			m_TickLimit = TREE_MS * tps / 1000.0;
 		m_Clock += timeslice;
 		m_Camera = camera;
 		m_Doy = doy;
 		m_S0 = s0;
 		m_S1 = s1;
 		m_S2 = s2;
+		if (!DS_State.s_StatTreeMax)
+		{
+			DS_State.s_StatTreeMax = new array<int>;
+			for (int st = 0; st < 6; st++)
+				DS_State.s_StatTreeMax.Insert(0);
+		}
+		int tick = TickCount(0);
 		UpdateReach();
+		tick = StatTree(0, tick);
 
 		int ax = Math.Floor(camera[0] / TILE);
 		int az = Math.Floor(camera[2] / TILE);
@@ -912,8 +938,10 @@ class DS_TreeSwap
 			m_AnchorZ = az;
 			OnNewAnchor();
 		}
-		if (m_TrimPending)
-			TrimTiles();
+		tick = StatTree(1, tick);
+		SweepTiles();
+		RestoreQueued();
+		tick = StatTree(2, tick);
 
 		m_Cost = 0;
 		int count = m_SpiralX.Count();
@@ -931,18 +959,23 @@ class DS_TreeSwap
 		int visited = 0;
 		while (m_Cost < NEAR_BUDGET && visited < m_NearCount)
 		{
+			if (visited > 0 && OverTime())
+				break;
 			if (m_NearCursor >= m_NearCount)
 				m_NearCursor = 0;
 			VisitTile(m_NearCursor, 1000000.0, false);
 			m_NearCursor++;
 			visited++;
 		}
+		tick = StatTree(3, tick);
 
 		int farCount = count - m_NearCount;
 		float farStop = m_Cost + FAR_BUDGET;
 		visited = 0;
 		while (farCount > 0 && m_Cost < farStop && visited < farCount)
 		{
+			if (OverTime())
+				break;
 			if (m_FarCursor >= farCount)
 				m_FarCursor = 0;
 			// a dense far tile is swapped over several frames instead of all at once
@@ -951,6 +984,17 @@ class DS_TreeSwap
 			m_FarCursor++;
 			visited++;
 		}
+		StatTree(4, tick);
+	}
+
+	//! test harness statistics: the ticks since tick0 for one step (keeps the longest); returns the tick now
+	protected int StatTree(int part, int tick0)
+	{
+		int now = TickCount(0);
+		int d = now - tick0;
+		if (d > DS_State.s_StatTreeMax[part])
+			DS_State.s_StatTreeMax[part] = d;
+		return now;
 	}
 
 	//! the reach of the seasonal trees: the fog's (FOG_REACH / fog) and the one learnt from unloaded trees. A reach
@@ -984,28 +1028,62 @@ class DS_TreeSwap
 		}
 	}
 
-	//! the fog came in: tiles now outside the reach get the map's own trees back, a few tiles per frame
-	protected void TrimTiles()
+	//! tiles that left the range (the camera moved on, or the fog came in and the reach shrank) go to the restore
+	//! queue: a share of the known tiles is checked every frame, so no frame walks through all of them
+	protected void SweepTiles()
 	{
-		float keep = m_Reach + TILE;
-		array<int> drop = new array<int>;
-		for (int i = 0; i < m_Tiles.Count(); i++)
+		float keep = Math.Min(KEEP_RADIUS, m_Reach + 2.0 * TILE);
+		if (m_TrimPending)
 		{
-			int key = m_Tiles.GetKey(i);
+			keep = m_Reach + TILE;
+			// the fog came in: one full round with the shorter range
+			if (m_TrimLeft <= 0)
+				m_TrimLeft = m_Tiles.Count() + 1;
+		}
+		for (int checks = 0; checks < SWEEP_TILES && m_Tiles.Count() > 0; checks++)
+		{
+			if (m_SweepCursor >= m_Tiles.Count())
+				m_SweepCursor = 0;
+			int key = m_Tiles.GetKey(m_SweepCursor);
 			int kx = Math.Floor(key / 65536.0);
 			int kz = key - kx * 65536;
-			if (TileDist(kx, kz) <= keep)
-				continue;
-			drop.Insert(key);
-			if (drop.Count() >= TRIM_TILES)
-				break;
+			if (TileDist(kx, kz) > keep)
+			{
+				// the map fills the gap: the same place is checked again with the next tile in it
+				m_Restore.Set(key, m_Tiles.Get(key));
+				m_Tiles.Remove(key);
+			}
+			else
+				m_SweepCursor++;
+			if (m_TrimPending)
+			{
+				m_TrimLeft--;
+				if (m_TrimLeft <= 0)
+					m_TrimPending = false;
+			}
 		}
-		if (drop.Count() < TRIM_TILES)
-			m_TrimPending = false;
-		foreach (int k : drop)
+		if (m_Tiles.Count() == 0)
 		{
-			RestoreTile(m_Tiles.Get(k));
-			m_Tiles.Remove(k);
+			m_TrimPending = false;
+			m_TrimLeft = 0;
+		}
+	}
+
+	//! gives the trees of tiles that left the range their original look back, as many tiles as the frame's time allows
+	//! (a whole row of tiles leaves at once when the camera crosses a tile border)
+	protected void RestoreQueued()
+	{
+		int done = 0;
+		while (m_Restore.Count() > 0)
+		{
+			if (done > 0 && OverTime())
+				break;
+			int rk = m_Restore.GetKey(0);
+			DS_TreeTile rt = m_Restore.Get(rk);
+			m_Restore.Remove(rk);
+			if (rt)
+				RestoreTile(rt);
+			done++;
 		}
 	}
 
@@ -1013,6 +1091,12 @@ class DS_TreeSwap
 	float GetReach()
 	{
 		return m_Reach;
+	}
+
+	//! the frame's time for swapping trees is used up
+	protected bool OverTime()
+	{
+		return m_TickLimit > 0 && TickCount(m_Tick0) > m_TickLimit;
 	}
 
 	//! scans a tile of the spiral once and brings its trees to the season (seasons and snow change slowly: checking
@@ -1027,11 +1111,20 @@ class DS_TreeSwap
 		DS_TreeTile tile = m_Tiles.Get(key);
 		if (!tile)
 		{
-			tile = new DS_TreeTile();
+			// back in range before its trees were restored: it keeps its state
+			tile = m_Restore.Get(key);
+			if (tile)
+				m_Restore.Remove(key);
+			else
+				tile = new DS_TreeTile();
 			m_Tiles.Set(key, tile);
 		}
 		if (!tile.m_Scanned)
+		{
+			int scanTick = TickCount(0);
 			ScanTile(tile, tx, tz, false);
+			StatTree(5, scanTick);
+		}
 		else if (tile.m_Partial && m_Clock >= tile.m_RescanAt)
 			ScanTile(tile, tx, tz, true);
 
@@ -1051,7 +1144,7 @@ class DS_TreeSwap
 				want = SHOW_ORIGINAL;
 			if (want == it.m_Shown)
 				continue;
-			if (m_Cost > limit)
+			if (m_Cost > limit || OverTime())
 			{
 				complete = false;
 				break;
@@ -1118,6 +1211,9 @@ class DS_TreeSwap
 		for (int i = 0; i < m_Tiles.Count(); i++)
 			RestoreTile(m_Tiles.GetElement(i));
 		m_Tiles.Clear();
+		for (int r = 0; r < m_Restore.Count(); r++)
+			RestoreTile(m_Restore.GetElement(r));
+		m_Restore.Clear();
 		m_NearCursor = 0;
 		m_FarCursor = 0;
 		m_Swapped = 0;

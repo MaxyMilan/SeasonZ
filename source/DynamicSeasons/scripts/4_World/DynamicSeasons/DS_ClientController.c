@@ -45,6 +45,7 @@ class DS_ClientController
 		int d = now - part0;
 		if (d > DS_State.s_StatPartMax[part])
 			DS_State.s_StatPartMax[part] = d;
+		DS_State.s_StatPartSum[part] = DS_State.s_StatPartSum[part] + d;
 		return now;
 	}
 
@@ -72,8 +73,12 @@ class DS_ClientController
 		if (!DS_State.s_StatPartMax)
 		{
 			DS_State.s_StatPartMax = new array<int>;
+			DS_State.s_StatPartSum = new array<int>;
 			for (int sp = 0; sp < 6; sp++)
+			{
 				DS_State.s_StatPartMax.Insert(0);
+				DS_State.s_StatPartSum.Insert(0);
+			}
 		}
 		int frame0 = TickCount(0);
 		int part0 = frame0;
