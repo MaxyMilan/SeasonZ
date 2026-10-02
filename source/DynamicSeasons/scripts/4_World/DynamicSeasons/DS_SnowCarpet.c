@@ -68,8 +68,9 @@ class DS_SnowCarpet
 	static const float ROAD_PROBE = 0.35;
 	//! a walkable surface more than this above the ground lifts the cover only where it is as wide as a road: it
 	//! continues at about the same height this far away in at least three of the four directions (a step, a bench
-	//! or a low block does not)
-	static const float ROAD_NARROW = 0.1;
+	//! or a low block does not). Sidewalks lie up to about 17 cm above the ground and are often narrower than that:
+	//! they lift the cover without the test
+	static const float ROAD_NARROW = 0.2;
 	static const float ROAD_SPREAD = 1.5;
 	//! cells of an earlier layout stay until the new layout has built their area; only when the builder falls far
 	//! behind (very fast travel) are the oldest ones dropped
