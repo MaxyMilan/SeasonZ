@@ -4,6 +4,8 @@ The API token comes from the environment: DZ_NITRADO_TOKEN; the service id from 
 
   nitrado.py status            server status, players online, mods
   nitrado.py restart <message> restart the game server (only call with 0 players online)
+  nitrado.py stop <message>    stop the game server (only call with 0 players online), e.g. to replace a PBO the
+                               running server keeps open
 """
 import json
 import os
@@ -49,6 +51,12 @@ def cmd_restart(message):
     return 0 if data.get('status') == 'success' else 1
 
 
+def cmd_stop(message):
+    data = request('/stop', 'POST', {'message': message, 'stop_message': ''})
+    print(json.dumps(data))
+    return 0 if data.get('status') == 'success' else 1
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -57,6 +65,8 @@ def main(argv):
         return cmd_status()
     if argv[1] == 'restart':
         return cmd_restart(' '.join(argv[2:]) or 'restart')
+    if argv[1] == 'stop':
+        return cmd_stop(' '.join(argv[2:]) or 'stop')
     print(__doc__)
     return 2
 

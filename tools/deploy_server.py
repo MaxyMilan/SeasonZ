@@ -1,6 +1,7 @@
 """Deploy helper for the Nitrado test server.
 
-Credentials come from the environment: DZ_FTP_HOST, DZ_FTP_USER, DZ_FTP_PASS.
+Credentials come from the environment: DZ_FTP_HOST, DZ_FTP_USER, DZ_FTP_PASS, and for the HTTPS fallback
+DZ_NITRADO_TOKEN and DZ_NITRADO_SERVICE.
 
   deploy_server.py mod <local @DynamicSeasons dir>     upload the mod and its bikey, verify by re-download
   deploy_server.py seed <config.json> <state.json> <backup dir>
@@ -11,8 +12,11 @@ Credentials come from the environment: DZ_FTP_HOST, DZ_FTP_USER, DZ_FTP_PASS.
 import ftplib
 import hashlib
 import io
+import json
 import os
 import sys
+import urllib.parse
+import urllib.request
 
 BASE = '/dayzstandalone'
 MOD_NAME = '@DynamicSeasons'
@@ -59,8 +63,33 @@ def upload_verified(ftp, local, remote):
     ftp.storbinary('STOR ' + remote, io.BytesIO(data))
     back = download(ftp, remote)
     ok = sha(back) == sha(data)
+    if not ok and os.environ.get('DZ_NITRADO_TOKEN'):
+        # FTP uploads of some files arrive with bytes zeroed (seen with the 10 MB v0.4.0 PBO, every attempt);
+        # the Nitrado file server API over HTTPS stores them intact
+        api_upload(data, remote)
+        back = download(ftp, remote)
+        ok = sha(back) == sha(data)
+        print('    retried over the Nitrado API: %s' % ('OK' if ok else 'still BAD'))
     print('%s %s %d %s' % ('OK ' if ok else 'BAD', remote, len(data), sha(data)))
     return ok
+
+
+def api_upload(data, remote):
+    """uploads data to an FTP path (under BASE) through the Nitrado file server API"""
+    folder, name = remote.rsplit('/', 1)
+    root = '/games/%s/ftproot' % os.environ['DZ_FTP_USER']
+    body = urllib.parse.urlencode({'path': root + folder, 'file': name}).encode('utf-8')
+    req = urllib.request.Request('https://api.nitrado.net/services/%s/gameservers/file_server/upload'
+                                 % os.environ['DZ_NITRADO_SERVICE'], data=body, method='POST')
+    req.add_header('Authorization', 'Bearer ' + os.environ['DZ_NITRADO_TOKEN'])
+    req.add_header('Accept', 'application/json')
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        token = json.loads(resp.read().decode('utf-8'))['data']['token']
+    put = urllib.request.Request(token['url'], data=data, method='POST')
+    put.add_header('token', token['token'])
+    put.add_header('Content-Type', 'application/binary')
+    with urllib.request.urlopen(put, timeout=600) as resp:
+        resp.read()
 
 
 def cmd_mod(local_mod):
