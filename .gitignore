@@ -1,0 +1,18 @@
+# Private signing key: never in git
+signing-private/
+*.biprivatekey
+
+# Build output and packaged releases (built from source with AddonBuilder)
+build/
+releases/
+*.pbo
+*.bisign
+
+# Local test environment, QA screenshots and trailer material
+testenv/
+report-*/
+trailer/
+
+# Python caches
+__pycache__/
+*.pyc

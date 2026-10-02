@@ -1,0 +1,82 @@
+ambient[]={1,1,1,1};
+diffuse[]={1,1,1,1};
+forcedDiffuse[]={0.25,0.25,0.25,0.25};
+emmisive[]={0,0,0,1};
+specular[]={0.25,0.25,0.25,0};
+specularPower=10;
+renderFlags[]={"AlphaTest32"};
+PixelShaderID="Super";
+VertexShaderID="Super";
+class TexGen0
+{
+	uvSource="tex";
+	class uvTransform
+	{
+		aside[]={1,0,0};
+		up[]={0,1,0};
+		dir[]={0,0,1};
+		pos[]={0,0,0};
+	};
+};
+class TexGen1
+{
+	uvSource="tex";
+	class uvTransform
+	{
+		aside[]={4,0,0};
+		up[]={0,4,0};
+		dir[]={0,0,1};
+		pos[]={0,0,0};
+	};
+};
+class TexGen2
+{
+	uvSource="tex";
+	class uvTransform
+	{
+		aside[]={16,0,0};
+		up[]={0,16,0};
+		dir[]={0,0,1};
+		pos[]={0,0,0};
+	};
+};
+class Stage0
+{
+	texture="DynamicSeasons\data\snow\ds_snow_s2_ca.paa";
+	texGen="0";
+};
+class Stage1
+{
+	texture="DynamicSeasons\data\snow\ds_snow_nohq.paa";
+	texGen="1";
+};
+class Stage2
+{
+	texture="DynamicSeasons\data\snow\ds_snow_detail_dt.paa";
+	texGen="2";
+};
+class Stage3
+{
+	texture="#(argb,8,8,3)color(0,0,0,0,MC)";
+	texGen="0";
+};
+class Stage4
+{
+	texture="#(argb,8,8,3)color(1,1,1,1,AS)";
+	texGen="0";
+};
+class Stage5
+{
+	texture="DynamicSeasons\data\snow\ds_snow_smdi.paa";
+	texGen="1";
+};
+class Stage6
+{
+	texture="#(ai,32,128,1)fresnel(0.14,0.17)";
+	texGen="0";
+};
+class Stage7
+{
+	texture="dz\data\data\env_land_co.paa";
+	texGen="0";
+};
