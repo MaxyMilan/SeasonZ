@@ -1,5 +1,5 @@
 //! One triangle of the snow cover: plane y = yc + a * (x - cx) + b * (z - cz) over a square (sub)cell
-class DS_SnowTri
+class SZ_SnowTri
 {
 	int m_Shape; // 0 = a, 1 = b, 2 = c, 3 = d
 	float m_Size;
@@ -14,7 +14,7 @@ class DS_SnowTri
 }
 
 //! One grid cell of the snow cover at one level of detail
-class DS_SnowCell
+class SZ_SnowCell
 {
 	int m_Level;
 	int m_Stage;
@@ -24,12 +24,12 @@ class DS_SnowCell
 	float m_Avg;
 	int m_Epoch; // forced re-placement generation (test harness lighting and height changes)
 	float m_RetiredAt;
-	ref array<ref DS_SnowTri> m_Tris;
+	ref array<ref SZ_SnowTri> m_Tris;
 	ref array<Object> m_Objects;
 
-	void DS_SnowCell()
+	void SZ_SnowCell()
 	{
-		m_Tris = new array<ref DS_SnowTri>;
+		m_Tris = new array<ref SZ_SnowTri>;
 		m_Objects = new array<Object>;
 	}
 }
@@ -42,7 +42,7 @@ class DS_SnowCell
 //! separate objects and short-lived steps while the layout follows the camera show snow instead of the dark ground.
 //! The models are made at their real size and every triangle picks the model of its place in the 30 m texture
 //! period, so the snow pattern, its relief and its lighting continue across all cells and levels.
-class DS_SnowCarpet
+class SZ_SnowCarpet
 {
 	static const int LEVELS = 5;
 	//! level 0 cells are built this far beyond the level 0 area, hidden under the level 1 cover, so they are ready
@@ -60,7 +60,7 @@ class DS_SnowCarpet
 	static const int RETIRE_MAX = 2000;
 	//! blocks of the coarsest level around the camera that are worked on first after every layout change
 	static const int NEAR_BLOCKS = 9;
-	protected static DS_SnowCarpet s_Instance;
+	protected static SZ_SnowCarpet s_Instance;
 
 	// per level: cell size in terrain cells, outer radius, height above the lifted terrain, largest lift
 	protected ref array<int> m_F;
@@ -69,7 +69,7 @@ class DS_SnowCarpet
 	protected ref array<float> m_Cap;
 	protected float m_Cell;
 	protected bool m_Ready;
-	protected ref array<ref map<int, ref DS_SnowCell>> m_Cells;
+	protected ref array<ref map<int, ref SZ_SnowCell>> m_Cells;
 	// per level: terrain rise above each cell's two triangles, and the lift shared by the cells around a vertex
 	protected ref array<ref map<int, float>> m_Rise;
 	protected ref array<ref map<int, float>> m_Lift;
@@ -97,7 +97,7 @@ class DS_SnowCarpet
 	// forced re-placement generation (test harness lighting normal and extra height)
 	protected int m_Epoch;
 	// cells of an earlier layout stay until the new layout has been built once, so moving opens no holes
-	protected ref array<ref DS_SnowCell> m_Retired;
+	protected ref array<ref SZ_SnowCell> m_Retired;
 	protected int m_RetiredCursor;
 	protected float m_Clock;
 	// work list items of the nearest blocks: after every layout change they are checked first
@@ -113,7 +113,7 @@ class DS_SnowCarpet
 	// level 0 cells: which diagonal the terrain uses (1 = from the low corner to the high corner)
 	protected ref map<int, int> m_Diag0;
 
-	void DS_SnowCarpet()
+	void SZ_SnowCarpet()
 	{
 		m_F = new array<int>;
 		m_Rad = new array<float>;
@@ -125,14 +125,14 @@ class DS_SnowCarpet
 		AddLevel(4, 600.0, 0.12, 1.2);
 		AddLevel(16, 1600.0, 0.5, 3.0);
 		AddLevel(32, 3200.0, 0.8, 4.0);
-		m_Cells = new array<ref map<int, ref DS_SnowCell>>;
+		m_Cells = new array<ref map<int, ref SZ_SnowCell>>;
 		m_Rise = new array<ref map<int, float>>;
 		m_Lift = new array<ref map<int, float>>;
 		m_Sig = new array<ref map<int, int>>;
 		m_Keep = new array<ref map<int, bool>>;
 		for (int level = 0; level < LEVELS; level++)
 		{
-			m_Cells.Insert(new map<int, ref DS_SnowCell>);
+			m_Cells.Insert(new map<int, ref SZ_SnowCell>);
 			m_Rise.Insert(new map<int, float>);
 			m_Lift.Insert(new map<int, float>);
 			m_Sig.Insert(new map<int, int>);
@@ -143,7 +143,7 @@ class DS_SnowCarpet
 		m_WZ = new array<int>;
 		m_SpiralX = new array<int>;
 		m_SpiralZ = new array<int>;
-		m_Retired = new array<ref DS_SnowCell>;
+		m_Retired = new array<ref SZ_SnowCell>;
 		m_Road0 = new map<int, float>;
 		m_Diag0 = new map<int, int>;
 		m_AnchorX = -1000000;
@@ -159,7 +159,7 @@ class DS_SnowCarpet
 		m_Cap.Insert(cap);
 	}
 
-	void ~DS_SnowCarpet()
+	void ~SZ_SnowCarpet()
 	{
 		Clear();
 		if (s_Instance == this)
@@ -182,7 +182,7 @@ class DS_SnowCarpet
 			sizes += " " + Size(level).ToString();
 			radii += " " + m_Rad[level].ToString();
 		}
-		Print(string.Format("[DynamicSeasons] snow cover: terrain grid detected=%1 m, level cells%2 m, radii%3 m", detected, sizes, radii));
+		Print(string.Format("[SeasonZ] snow cover: terrain grid detected=%1 m, level cells%2 m, radii%3 m", detected, sizes, radii));
 	}
 
 	@@KEEP GetObjectCount@@
@@ -365,12 +365,12 @@ class DS_SnowCarpet
 			return false;
 		int ix = Math.Floor(x / s_Instance.m_Cell);
 		int iz = Math.Floor(z / s_Instance.m_Cell);
-		DS_SnowCell cell = s_Instance.m_Cells[0].Get(ix * 65536 + iz);
+		SZ_SnowCell cell = s_Instance.m_Cells[0].Get(ix * 65536 + iz);
 		if (!cell)
 			return true;
 		if (cell.m_Stage <= 0)
 			return false;
-		foreach (DS_SnowTri t : cell.m_Tris)
+		foreach (SZ_SnowTri t : cell.m_Tris)
 		{
 			if (s_Instance.TriContains(t, x, z))
 				return true;
@@ -412,7 +412,7 @@ class DS_SnowCarpet
 			int x = m_WX[w];
 			int z = m_WZ[w];
 			float size = Size(lv);
-			DS_SnowCell c = m_Cells[lv].Get(x * 65536 + z);
+			SZ_SnowCell c = m_Cells[lv].Get(x * 65536 + z);
 			string why = "";
 			if (!c)
 			{
@@ -457,13 +457,13 @@ class DS_SnowCarpet
 		float s = Size(level);
 		int cx = Math.Floor(x / s);
 		int cz = Math.Floor(z / s);
-		DS_SnowCell cell = m_Cells[level].Get(cx * 65536 + cz);
+		SZ_SnowCell cell = m_Cells[level].Get(cx * 65536 + cz);
 		if (!cell || cell.m_Stage <= 0)
 		{
 			level = -1;
 			return 0;
 		}
-		foreach (DS_SnowTri t : cell.m_Tris)
+		foreach (SZ_SnowTri t : cell.m_Tris)
 		{
 			if (TriContains(t, x, z))
 				return t.m_YC + t.m_A * (x - t.m_CX) + t.m_B * (z - t.m_CZ) + t.m_Lift + m_ExtraOffset - g_Game.SurfaceY(x, z);
@@ -479,7 +479,7 @@ class DS_SnowCarpet
 		float s = Size(level);
 		int cx = Math.Floor(x / s);
 		int cz = Math.Floor(z / s);
-		DS_SnowCell cell = m_Cells[level].Get(cx * 65536 + cz);
+		SZ_SnowCell cell = m_Cells[level].Get(cx * 65536 + cz);
 		string info = string.Format("level=%1 list=%2 water=%3 terrain=%4", level, m_ListCamera, IsWater(x, z), g_Game.SurfaceY(x, z));
 		if (!cell)
 			return info + " cell=none";
@@ -715,7 +715,7 @@ class DS_SnowCarpet
 	}
 
 	//! coarse levels: two triangles over a large cell, corners lifted so the terrain stays underneath
-	protected void BuildCoarse(DS_SnowCell cell, int level, int cx, int cz, float s)
+	protected void BuildCoarse(SZ_SnowCell cell, int level, int cx, int cz, float s)
 	{
 		m_Cost += 0.05;
 		float x0 = cx * s;
@@ -743,9 +743,9 @@ class DS_SnowCarpet
 			cell.m_Tris.Insert(MakeTri(shapeB, x0, z0, s, h00, h10, h11, h01));
 	}
 
-	protected DS_SnowCell CreateCell(int level, int x, int z)
+	protected SZ_SnowCell CreateCell(int level, int x, int z)
 	{
-		DS_SnowCell cell = new DS_SnowCell();
+		SZ_SnowCell cell = new SZ_SnowCell();
 		cell.m_Level = level;
 		cell.m_X = x;
 		cell.m_Z = z;
@@ -768,7 +768,7 @@ class DS_SnowCarpet
 		}
 		else
 			BuildCoarse(cell, level, x, z, size);
-		foreach (DS_SnowTri t : cell.m_Tris)
+		foreach (SZ_SnowTri t : cell.m_Tris)
 			SetVariant(t, level);
 		return cell;
 	}
@@ -776,7 +776,7 @@ class DS_SnowCarpet
 	@@KEEP Wrap@@
 
 	//! picks the model of the triangle's size and place in the 30 m texture period
-	protected void SetVariant(DS_SnowTri t, int level)
+	protected void SetVariant(SZ_SnowTri t, int level)
 	{
 		float s = t.m_Size;
 		int f = m_F[level];
@@ -809,10 +809,10 @@ class DS_SnowCarpet
 	}
 
 	//! new corner heights for a cell whose coarser neighbours changed: the triangles stay, only their planes move
-	protected void Restitch(DS_SnowCell cell, int sig)
+	protected void Restitch(SZ_SnowCell cell, int sig)
 	{
 		cell.m_Sig = sig;
-		foreach (DS_SnowTri t : cell.m_Tris)
+		foreach (SZ_SnowTri t : cell.m_Tris)
 		{
 			float s = t.m_Size;
 			float x0 = t.m_CX - s * 0.5;
@@ -842,12 +842,12 @@ class DS_SnowCarpet
 			Retransform(cell);
 	}
 
-	protected int DesiredStage(DS_SnowCell cell, float dist)
+	protected int DesiredStage(SZ_SnowCell cell, float dist)
 	{
 		if (cell.m_Tris.Count() == 0)
 			return 0;
 
-		float depth = DS_State.SnowAt(cell.m_Avg, m_S0, m_S1, m_S2);
+		float depth = SZ_State.SnowAt(cell.m_Avg, m_S0, m_S1, m_S2);
 		int stage = 0;
 		if (depth >= 10.0)
 			stage = 4;
@@ -883,7 +883,7 @@ class DS_SnowCarpet
 
 	//! true when the area of a cell of an earlier layout is covered by built cells of the current layout (or lies
 	//! outside it), so the old cell can go without opening a hole or overlapping its replacement
-	protected bool Covered(DS_SnowCell c)
+	protected bool Covered(SZ_SnowCell c)
 	{
 		return RegionBuilt(c.m_Level, c.m_X, c.m_Z);
 	}
@@ -938,18 +938,18 @@ class DS_SnowCarpet
 		m_S2 = s2;
 		m_Camera = camera;
 		m_Clock += timeslice;
-		if (DS_State.s_DebugNoCarpet)
+		if (SZ_State.s_DebugNoCarpet)
 		{
 			if (m_Objects > 0 || m_Cells[0].Count() > 0)
 				Clear();
 			m_AnchorX = -1000000;
 			return;
 		}
-		if (DS_State.s_DebugExtraOffset != m_ExtraOffset || DS_State.s_DebugNormalMode != m_NormalMode)
+		if (SZ_State.s_DebugExtraOffset != m_ExtraOffset || SZ_State.s_DebugNormalMode != m_NormalMode)
 		{
 			// test harness: re-place every cell with the new height or lighting normal
-			m_ExtraOffset = DS_State.s_DebugExtraOffset;
-			m_NormalMode = DS_State.s_DebugNormalMode;
+			m_ExtraOffset = SZ_State.s_DebugExtraOffset;
+			m_NormalMode = SZ_State.s_DebugNormalMode;
 			m_Epoch++;
 		}
 		bool anySnow = Math.Max(s0, Math.Max(s1, s2)) >= 0.5;
@@ -999,14 +999,14 @@ class DS_SnowCarpet
 		int level = m_WLevel[index];
 		int x = m_WX[index];
 		int z = m_WZ[index];
-		map<int, ref DS_SnowCell> cells = m_Cells[level];
+		map<int, ref SZ_SnowCell> cells = m_Cells[level];
 		float size = Size(level);
 		int key = x * 65536 + z;
 		float dist = DistXZ((x + 0.5) * size, (z + 0.5) * size);
 		int sig = 0;
 		if (level < LEVELS - 1)
 			sig = m_Sig[level].Get(key);
-		DS_SnowCell cell = cells.Get(key);
+		SZ_SnowCell cell = cells.Get(key);
 		if (cell && cell.m_Sig != sig)
 			Restitch(cell, sig); // the border moved: same triangles, new edge heights
 		if (!cell)

@@ -3,7 +3,7 @@
 Credentials come from the environment: DZ_FTP_HOST, DZ_FTP_USER, DZ_FTP_PASS, and for the HTTPS fallback
 DZ_NITRADO_TOKEN and DZ_NITRADO_SERVICE.
 
-  deploy_server.py mod <local @DynamicSeasons dir>     upload the mod and its bikey, verify by re-download
+  deploy_server.py mod <local @SeasonZ dir>     upload the mod and its bikey, verify by re-download
   deploy_server.py seed <config.json> <state.json> <backup dir>
                                                        back up existing season files, then upload new ones
   deploy_server.py ls <remote dir>                     list a remote directory
@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 
 BASE = '/dayzstandalone'
-MOD_NAME = '@DynamicSeasons'
+MOD_NAME = '@SeasonZ'
 
 
 def connect():
@@ -113,7 +113,7 @@ def cmd_mod(local_mod):
 
 def cmd_seed(config, state, backup_dir):
     ftp = connect()
-    remote_dir = BASE + '/config/DynamicSeasons'
+    remote_dir = BASE + '/config/SeasonZ'
     os.makedirs(backup_dir, exist_ok=True)
     for name in ('config.json', 'state.json'):
         remote = remote_dir + '/' + name

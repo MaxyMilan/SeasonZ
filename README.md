@@ -1,4 +1,4 @@
-# SeasonZ - Dynamic Seasons (v0.4.0)
+# SeasonZ (v0.4.0)
 
 Seasons for DayZ Chernarus, driven by the real date or by an adjustable season clock, with a climate based on Kyiv.
 
@@ -43,7 +43,7 @@ The tree swaps are mapped for the Chernarus tree species.
 
 ## Server configuration
 
-`$profile:DynamicSeasons/config.json`, in the folder the server's `-profiles` parameter points to. It is created with
+`$profile:SeasonZ/config.json`, in the folder the server's `-profiles` parameter points to. It is created with
 the defaults on the first start. Stop the server before editing it; the settings are read once at server start. A
 config.json with a JSON error is ignored for that session (the defaults apply and the script log says so).
 
@@ -59,14 +59,14 @@ config.json with a JSON error is ignored for that session (the defaults apply an
 
 Values out of range are clamped and the checked config is saved back. The season clock runs while the server runs.
 
-`$profile:DynamicSeasons/state.json` holds the running season clock, snow depths and pond ice. To start over at
+`$profile:SeasonZ/state.json` holds the running season clock, snow depths and pond ice. To start over at
 `StartDayOfYear`, stop the server and move state.json away: the snow and the ice then start from the climate of that
 date (deep snow in January, none in summer).
 
 ## Install
 
-Server: copy the whole `@DynamicSeasons` folder, add it to `-mod=` (it must run on the server and on every client),
-and copy `@DynamicSeasons/keys/DynamicSeasons.bikey` into the server's `keys` folder. Clients load the same mod.
+Server: copy the whole `@SeasonZ` folder, add it to `-mod=` (it must run on the server and on every client),
+and copy `@SeasonZ/keys/SeasonZ.bikey` into the server's `keys` folder. Clients load the same mod.
 
 SeasonZ sets the calendar date (the time of day stays) and changes weather, lighting, trees, farming and food. Test it
 together with other mods that change the same things.
