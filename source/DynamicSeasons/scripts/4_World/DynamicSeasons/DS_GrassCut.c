@@ -7,6 +7,8 @@ class DS_GrassCut
 	static const float STEP = 6.0;
 	static const float RADIUS = 120.0;
 	static const float KEEP_RADIUS = 150.0;
+	//! pause after a full pass while the camera stays in the same grid cell: the snow depth changes far slower
+	static const float REST = 1.0;
 	static const string MODEL = "DZ\\gear\\cultivation\\clutter_cutter_6m_x_6m.p3d";
 
 	protected ref map<int, Object> m_Cutters;
@@ -18,6 +20,12 @@ class DS_GrassCut
 	protected bool m_Swept;
 	// time since the cutters left behind were last removed
 	protected float m_DropTimer;
+	// grid cell of the camera when the cutters left behind were last removed: cutters are only placed within
+	// RADIUS of the camera's cell and kept to KEEP_RADIUS, so none can be out of reach before the camera moves on
+	protected int m_DropX;
+	protected int m_DropZ;
+	// time left before the next pass at an unchanged grid cell
+	protected float m_Rest;
 
 	void DS_GrassCut()
 	{
@@ -26,6 +34,8 @@ class DS_GrassCut
 		m_SpiralZ = new array<int>;
 		m_AnchorX = -100000;
 		m_AnchorZ = -100000;
+		m_DropX = -200000;
+		m_DropZ = -200000;
 		int n = Math.Ceil(RADIUS / STEP);
 		array<float> dists = new array<float>;
 		for (int dx = -n; dx <= n; dx++)
@@ -73,14 +83,21 @@ class DS_GrassCut
 			m_AnchorZ = az;
 			m_Scan = 0;
 			m_Swept = false;
+			m_Rest = 0;
 		}
 		// while travelling the grid restarts at every step and a full pass never completes: the cutters left
-		// behind are removed every second as well
+		// behind are removed every second as well (only after the camera moved to another grid cell)
 		m_DropTimer += timeslice;
 		if (m_DropTimer >= 1.0)
 		{
 			m_DropTimer = 0;
-			DropFar(camera);
+			if (ax != m_DropX || az != m_DropZ)
+				DropFar(camera);
+		}
+		if (m_Rest > 0)
+		{
+			m_Rest -= timeslice;
+			return;
 		}
 
 		int count = m_SpiralX.Count();
@@ -93,6 +110,9 @@ class DS_GrassCut
 				m_Scan = 0;
 				if (!m_Swept)
 					DropFar(camera);
+				// a full pass is done: the next one waits a moment while the camera stays in this grid cell
+				m_Rest = REST;
+				break;
 			}
 			int gx = ax + m_SpiralX[m_Scan];
 			int gz = az + m_SpiralZ[m_Scan];
@@ -133,10 +153,11 @@ class DS_GrassCut
 	protected void DropFar(vector camera)
 	{
 		m_Swept = true;
+		m_DropX = Math.Floor(camera[0] / STEP);
+		m_DropZ = Math.Floor(camera[2] / STEP);
 		array<int> drop = new array<int>;
-		for (int i = 0; i < m_Cutters.Count(); i++)
+		foreach (int key, Object cutter : m_Cutters)
 		{
-			int key = m_Cutters.GetKey(i);
 			int gx = Math.Floor(key / 65536.0);
 			int gz = key - gx * 65536;
 			float dx = (gx + 0.5) * STEP - camera[0];

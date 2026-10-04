@@ -91,6 +91,10 @@ class DS_SnowCarpet
 	//! floor is looked for below RAISED_PROBE above the ground (the ground floor, not an upper storey)
 	static const float RAISED_FLOOR = 0.2;
 	static const float RAISED_PROBE = 2.5;
+	//! a raised floor only hides the snow under it when it lies at least this far above the cover there; a lower
+	//! one (the cover is lifted by a road, path or porch nearby) counts as a floor on the ground, and the cover is cut
+	//! along the walls instead of running under the building and showing through the floor
+	static const float RAISED_CLEAR = 0.03;
 	//! deep under a wide open roof (open sheds, canopies, fuel stations) no snow falls: the roof reaches this far
 	//! around the point in all four directions of the building (metres)
 	static const float WIDE_ROOF = 2.0;
@@ -555,9 +559,31 @@ class DS_SnowCarpet
 		float d = road - ground;
 		if (d < 0.002 || d > m_RoadProbe)
 			return 0;
+		// the floor inside a building is no road: lifting the cover over it raises the snow above the floor of the
+		// rooms, and over the whole cells around the building. The cover runs under raised floors or is cut along
+		// the walls instead
+		if (IndoorFloorAt(x, road, z))
+			return 0;
 		if (d > ROAD_NARROW && m_RoadWide && !RoadWide(x, z, d))
 			return 0;
 		return d;
+	}
+
+	//! the walkable surface at this height is the floor of a building's inside (CfgSurfaces interior)
+	protected bool IndoorFloorAt(float x, float y, float z)
+	{
+		string surface;
+		float found = g_Game.SurfaceGetType3D(x, y + 0.05, z, surface);
+		if (Math.AbsFloat(found - y) > 0.05)
+			return false;
+		return IsInteriorSurface(surface);
+	}
+
+	//! height of the level 0 cover above the terrain at a point (roads and paths lift it)
+	protected float CoverAbove0(float x, float z)
+	{
+		float lift = RoadLift0(x, z);
+		return lift + OFF0 + m_ExtraOffset;
 	}
 
 	//! the walkable surface at a point continues at about the same height above the ground in at least three of the
@@ -987,11 +1013,17 @@ class DS_SnowCarpet
 		if (!building)
 			return false;
 		// a raised ground floor hides the snow under it: the cover runs under the building, its walls and foundation
-		// hide the edge, and nothing has to be cut out
+		// hide the edge, and nothing has to be cut out. Only while the floor really lies above the cover there: a
+		// floor the cover reaches (lifted by a road or porch nearby) would show the snow through it
 		string groundType;
 		float groundFloor = g_Game.SurfaceGetType3D(x, ground + RAISED_PROBE, z, groundType);
-		if (groundFloor - ground >= RAISED_FLOOR)
-			return false;
+		float raised = groundFloor - ground;
+		if (raised >= RAISED_FLOOR)
+		{
+			float cover = CoverAbove0(x, z);
+			if (raised >= cover + RAISED_CLEAR)
+				return false;
+		}
 		if (IsInteriorSurface(groundType))
 			return true;
 		string floorType;
@@ -1178,6 +1210,32 @@ class DS_SnowCarpet
 		return !CornerBlocked(ax, az) || !CornerBlocked(bx, bz) || !CornerBlocked(cx, cz);
 	}
 
+	//! whether the floor over a corner inside a building lies clear above the cover, so a triangle reaching into the
+	//! building with that corner stays hidden under the floor. Cached like CornerBlocked
+	protected ref map<int, bool> m_CornerHidden;
+
+	protected bool CornerHidden(float x, float z)
+	{
+		if (!m_CornerHidden)
+			m_CornerHidden = new map<int, bool>;
+		float q = m_Cell / 8.0;
+		int qx = Math.Round(x / q);
+		int qz = Math.Round(z / q);
+		int key = qx * 65536 + qz;
+		bool hidden;
+		if (m_CornerHidden.Find(key, hidden))
+			return hidden;
+		if (m_CornerHidden.Count() > 400000)
+			m_CornerHidden.Clear();
+		float ground = g_Game.SurfaceY(x, z);
+		string surface;
+		float floorY = g_Game.SurfaceGetType3D(x, ground + RAISED_PROBE, z, surface);
+		float cover = CoverAbove0(x, z);
+		hidden = floorY - ground >= cover + RAISED_CLEAR;
+		m_CornerHidden.Set(key, hidden);
+		return hidden;
+	}
+
 	//! where the snow ends on the edge from a point outside (f) to a point inside a building (b), found by halving
 	//! the edge; it reaches just past the wall line, so the wall hides the cut
 	protected vector WallCross(float fx, float fz, float bx, float bz)
@@ -1212,9 +1270,10 @@ class DS_SnowCarpet
 		cell.m_Tris.Insert(t);
 	}
 
-	//! a smallest triangle at a wall: whole while at most one corner is inside (the wall hides the corner that
-	//! reaches into it), cut along the wall when two corners are inside, so the snow still reaches the wall, and gone
-	//! when it lies inside
+	//! a smallest triangle at a wall: whole while no corner is inside, or one corner is inside under a floor that lies
+	//! clear above the cover (the floor hides the corner that reaches into it); otherwise cut along the wall, so the
+	//! snow still reaches the wall without showing through the floor of the room behind it, and gone when it lies
+	//! inside
 	protected void BuildWallTri(DS_SnowCell cell, int shape, float x0, float z0, float s, float h00, float h10, float h11, float h01)
 	{
 		if (TriWater(shape, x0, z0, s))
@@ -1250,13 +1309,37 @@ class DS_SnowCarpet
 		}
 		if (s_DebugBuild)
 			Print(string.Format("[DSTest] build wall shape=%1 x0=%2 z0=%3 s=%4 corners=%5 %6 %7 inside=%8", shape, x0, z0, s, k[0], k[1], k[2], inside));
-		if (inside <= 1)
+		if (inside == 0)
 		{
 			cell.m_Tris.Insert(MakeTri(shape, x0, z0, s, h00, h10, h11, h01));
 			return;
 		}
 		if (inside == 3)
 			return;
+		if (inside == 1)
+		{
+			int inner = 0;
+			for (int m = 0; m < 3; m++)
+			{
+				if (k[m])
+					inner = m;
+			}
+			vector p = v[inner];
+			if (CornerHidden(p[0], p[2]))
+			{
+				cell.m_Tris.Insert(MakeTri(shape, x0, z0, s, h00, h10, h11, h01));
+				return;
+			}
+			// the two corners outside in the triangle's order; the corner inside is cut off along the wall, which
+			// leaves a four-sided piece made of two triangles
+			vector o1 = v[(inner + 1) % 3];
+			vector o2 = v[(inner + 2) % 3];
+			vector c1 = WallCross(o1[0], o1[2], p[0], p[2]);
+			vector c2 = WallCross(o2[0], o2[2], p[0], p[2]);
+			AddCut(cell, shape, x0, z0, s, h00, h10, h11, h01, c1, o1, o2);
+			AddCut(cell, shape, x0, z0, s, h00, h10, h11, h01, c1, o2, c2);
+			return;
+		}
 
 		// the corner outside, then the two inside in the triangle's order
 		int odd = 0;

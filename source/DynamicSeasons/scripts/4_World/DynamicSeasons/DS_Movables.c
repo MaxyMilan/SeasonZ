@@ -1,5 +1,6 @@
 //! Registers the entities that carry snow while they stand still (vehicles, tents, base parts, containers) with the
-//! client's roof snow (DS_RoofSnow), and the vehicles with the tyre tracks (DS_TyreTracks)
+//! client's roof snow (DS_RoofSnow), and the vehicles with the tyre tracks (DS_TyreTracks). Barrels carry none: a
+//! slab on their small round lid looks wrong
 modded class CarScript
 {
 	override void EEInit()
@@ -57,7 +58,7 @@ modded class DeployableContainer_Base
 	override void EEInit()
 	{
 		super.EEInit();
-		if (!g_Game.IsDedicatedServer())
+		if (!g_Game.IsDedicatedServer() && !IsInherited(Barrel_ColorBase))
 			DS_RoofSnow.RegisterMovable(this);
 	}
 
