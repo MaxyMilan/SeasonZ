@@ -15,6 +15,8 @@ Snow on buildings and objects
   shelf.
 - Valleys between roof planes are filled smoothly instead of in a row of steps.
 - No tilted snow slabs on HESCO barriers.
+- Snow on the Livonia objects placed on Chernarus (wrapped hay bales, tractor wrecks, sheds, pipes, bus stops)
+  and on transformers.
 - Far buildings (90 to 220 m) carry snow up to the rim of the roof.
 - Ramps and loading platforms keep their snow; stairs still show their steps.
 - Small buildings (outhouses, coops, kennels), loose stones, bins, well pumps, sandboxes and the corner pieces of
