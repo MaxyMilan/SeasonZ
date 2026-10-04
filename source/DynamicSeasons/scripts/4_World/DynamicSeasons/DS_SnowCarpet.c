@@ -98,6 +98,9 @@ class DS_SnowCarpet
 	//! deep under a wide open roof (open sheds, canopies, fuel stations) no snow falls: the roof reaches this far
 	//! around the point in all four directions of the building (metres)
 	static const float WIDE_ROOF = 2.0;
+	//! level 0 cells: buildings whose centre lies this far beyond the cell are looked for as footprints (the probes
+	//! of a large triangle find the larger ones on their own)
+	static const float FOOT_REACH = 6.0;
 	protected static DS_SnowCarpet s_Instance;
 	//! test harness: print every decision while building a cell
 	static bool s_DebugBuild;
@@ -166,6 +169,11 @@ class DS_SnowCarpet
 	// road rule in use: highest walkable surface the cover rises over, and whether it has to be wide
 	protected float m_RoadProbe;
 	protected bool m_RoadWide;
+	//! the level 0 cell being built: footprints of the buildings on it (centre x, z, unit axis x, z, half lengths
+	//! along the axis and across it), so a triangle over a small shed is split even when its four probes miss it
+	protected ref array<float> m_Foot;
+	//! objects known to have (true) or not to have a roof a metre or more above the ground, as the inside test needs
+	protected ref map<Object, bool> m_Roofed;
 
 	void DS_SnowCarpet()
 	{
@@ -984,7 +992,17 @@ class DS_SnowCarpet
 		vector hitDir;
 		int component;
 		set<Object> hits = new set<Object>;
-		if (!DayZPhysics.RaycastRV(from, to, hitPos, hitDir, component, hits, null, null, false, false, ObjIntersectView, 0.0))
+		int geo = ObjIntersectView;
+		bool hit = DayZPhysics.RaycastRV(from, to, hitPos, hitDir, component, hits, null, null, false, false, ObjIntersectView, 0.0);
+		if ((!hit || hitPos[1] - ground < 1.0) && InFootprint(x, z))
+		{
+			// see-through buildings (greenhouses, polytunnels) have no view geometry over their glass or film: their
+			// fire geometry tells the roof and the walls
+			hits.Clear();
+			geo = ObjIntersectFire;
+			hit = DayZPhysics.RaycastRV(from, to, hitPos, hitDir, component, hits, null, null, false, false, ObjIntersectFire, 0.0);
+		}
+		if (!hit)
 			return false;
 
 		// only a roof or ceiling well above the ground means "inside"; floors and low props keep their snow
@@ -1031,14 +1049,14 @@ class DS_SnowCarpet
 		if (IsInteriorSurface(floorType))
 			return true;
 		// sheds and barns standing on the bare ground: inside when walls close the point in on three sides or more
-		if (Enclosed(x, z, ground, building))
+		if (Enclosed(x, z, ground, building, geo))
 			return true;
-		return UnderWideRoof(x, z, building);
+		return UnderWideRoof(x, z, building, geo);
 	}
 
 	//! true when the roof of the building also covers the ground WIDE_ROOF metres away in all four directions of
 	//! the building: snow does not get there (it does under eaves and narrow canopies)
-	protected bool UnderWideRoof(float x, float z, Object building)
+	protected bool UnderWideRoof(float x, float z, Object building, int geo = ObjIntersectView)
 	{
 		m_Calls[4] = m_Calls[4] + 1;
 		vector axes[4];
@@ -1052,14 +1070,14 @@ class DS_SnowCarpet
 		offs.Insert(az * (-1.0 * WIDE_ROOF));
 		foreach (vector off : offs)
 		{
-			if (!RoofOf(x + off[0], z + off[2], building))
+			if (!RoofOf(x + off[0], z + off[2], building, geo))
 				return false;
 		}
 		return true;
 	}
 
 	//! the building's roof lies more than a metre above the ground at a point
-	protected bool RoofOf(float x, float z, Object building)
+	protected bool RoofOf(float x, float z, Object building, int geo = ObjIntersectView)
 	{
 		m_Calls[5] = m_Calls[5] + 1;
 		m_Cost += 0.03;
@@ -1068,14 +1086,14 @@ class DS_SnowCarpet
 		vector hitDir;
 		int component;
 		set<Object> hits = new set<Object>;
-		if (!DayZPhysics.RaycastRV(Vector(x, ground + 40.0, z), Vector(x, ground + 0.05, z), hitPos, hitDir, component, hits, null, null, false, false, ObjIntersectView, 0.0))
+		if (!DayZPhysics.RaycastRV(Vector(x, ground + 40.0, z), Vector(x, ground + 0.05, z), hitPos, hitDir, component, hits, null, null, false, false, geo, 0.0))
 			return false;
 		return hitPos[1] - ground >= 1.0 && hits.Find(building) >= 0;
 	}
 
 	//! true when walls of the building stand around a point on at least three of its four sides (within 12 m),
 	//! looking along the building's own axes, so a point under the eaves of a turned building is not closed in
-	protected bool Enclosed(float x, float z, float ground, Object building)
+	protected bool Enclosed(float x, float z, float ground, Object building, int geo = ObjIntersectView)
 	{
 		m_Calls[6] = m_Calls[6] + 1;
 		m_Cost += 0.12;
@@ -1097,7 +1115,7 @@ class DS_SnowCarpet
 			vector hitDir;
 			int component;
 			set<Object> hits = new set<Object>;
-			bool hit = DayZPhysics.RaycastRV(from, from + d * 12.0, hitPos, hitDir, component, hits, null, null, false, false, ObjIntersectView, 0.0);
+			bool hit = DayZPhysics.RaycastRV(from, from + d * 12.0, hitPos, hitDir, component, hits, null, null, false, false, geo, 0.0);
 			if (hit && hits.Find(building) >= 0)
 				walls++;
 			else
@@ -1163,6 +1181,33 @@ class DS_SnowCarpet
 		string gType;
 		float gFloor = g_Game.SurfaceGetType3D(x, ground + RAISED_PROBE, z, gType);
 		return string.Format("hit=%1 roof=%2 floorY=%3 floor=%4 groundFloor=%5 %6 blocked=%7 rays:%8", hit, hitPos[1] - ground, floorY - ground, floorType, gFloor - ground, gType, blocked, rays);
+	}
+
+	//! test harness: the inside test at a point (see ProbeBlocked)
+	bool DebugInside(float x, float z)
+	{
+		// the footprints of the cell the point lies in, as when the cell is built
+		float fx0 = Math.Floor(x / m_Cell) * m_Cell;
+		float fz0 = Math.Floor(z / m_Cell) * m_Cell;
+		CollectFootprints(fx0, fz0, m_Cell);
+		return ProbeBlocked(x, z);
+	}
+
+	//! test harness: whether a surface is the floor of a building's inside (CfgSurfaces interior)
+	bool DebugInterior(string surface)
+	{
+		return IsInteriorSurface(surface);
+	}
+
+	//! test harness: the number of triangles of the level 0 cell at a point (-1 when it is not built)
+	int DebugCell0(float x, float z)
+	{
+		int ix = Math.Floor(x / m_Cell);
+		int iz = Math.Floor(z / m_Cell);
+		DS_SnowCell cell = m_Cells[0].Get(ix * 65536 + iz);
+		if (!cell)
+			return -1;
+		return cell.m_Tris.Count();
 	}
 
 	protected int BlockedProbes(float ax, float az, float bx, float bz, float cx, float cz, out bool centre)
@@ -1489,7 +1534,9 @@ class DS_SnowCarpet
 		{
 			TriCorners(shapeA, x0, z0, s, ax, az, bx, bz, cx, cz);
 			int blockedA = BlockedProbes(ax, az, bx, bz, cx, cz, centreA);
-			if (blockedA == 0)
+			if (blockedA == 0 && FootOverlap(ax, az, bx, bz, cx, cz))
+				subdivide = true; // a building smaller than the triangle stands between its probes
+			else if (blockedA == 0)
 				addA = true;
 			else if (blockedA < 4 || (!DS_State.s_DebugOldWalls && AnyCornerFree(ax, az, bx, bz, cx, cz)))
 				subdivide = true; // the wall runs through it (a corner sticking out of a building counts too)
@@ -1498,7 +1545,9 @@ class DS_SnowCarpet
 		{
 			TriCorners(shapeB, x0, z0, s, ax, az, bx, bz, cx, cz);
 			int blockedB = BlockedProbes(ax, az, bx, bz, cx, cz, centreB);
-			if (blockedB == 0)
+			if (blockedB == 0 && FootOverlap(ax, az, bx, bz, cx, cz))
+				subdivide = true;
+			else if (blockedB == 0)
 				addB = true;
 			else if (blockedB < 4 || (!DS_State.s_DebugOldWalls && AnyCornerFree(ax, az, bx, bz, cx, cz)))
 				subdivide = true;
@@ -1522,6 +1571,167 @@ class DS_SnowCarpet
 			cell.m_Tris.Insert(MakeTri(shapeB, x0, z0, s, h00, h10, h11, h01));
 		if (s_DebugBuild)
 			Print(string.Format("[DSTest] build keep x0=%1 z0=%2 s=%3 addA=%4 addB=%5", x0, z0, s, addA, addB));
+	}
+
+	//! the footprints of the buildings standing on a level 0 cell (as the inside test counts them: solid, at least
+	//! 3 x 3 x 2 m), see m_Foot
+	protected void CollectFootprints(float x0, float z0, float s)
+	{
+		if (!m_Foot)
+			m_Foot = new array<float>;
+		m_Foot.Clear();
+		vector c = Vector(x0 + s * 0.5, 0, z0 + s * 0.5);
+		c[1] = g_Game.SurfaceY(c[0], c[2]);
+		array<Object> objs = new array<Object>;
+		g_Game.GetObjectsAtPosition(c, s * 0.71 + FOOT_REACH, objs, null);
+		m_Cost += 0.02 + objs.Count() * 0.002;
+		foreach (Object o : objs)
+		{
+			if (!o || o.IsRock() || o.IsTree() || o.IsBush())
+				continue;
+			if (o.IsInherited(Man) || o.IsInherited(DayZCreature) || o.IsInherited(ItemBase) || o.IsInherited(Transport) || o.IsInherited(Camera))
+				continue;
+			vector mm[2];
+			o.ClippingInfo(mm);
+			vector size = mm[1] - mm[0];
+			if (size[0] < 3.0 || size[2] < 3.0 || size[1] < 2.0)
+				continue;
+			if (DS_Util.IsVegetation(o))
+				continue;
+			if (!Roofed(o))
+				continue;
+			vector mat[4];
+			o.GetTransform(mat);
+			vector au = Vector(mat[0][0], 0, mat[0][2]);
+			vector av = Vector(mat[2][0], 0, mat[2][2]);
+			float su = au.Length();
+			float sv = av.Length();
+			if (su < 0.01 || sv < 0.01)
+				continue;
+			vector centre = o.ModelToWorld((mm[0] + mm[1]) * 0.5);
+			m_Foot.Insert(centre[0]);
+			m_Foot.Insert(centre[2]);
+			m_Foot.Insert(au[0] / su);
+			m_Foot.Insert(au[2] / su);
+			m_Foot.Insert(size[0] * 0.5 * su);
+			m_Foot.Insert(size[2] * 0.5 * sv);
+		}
+	}
+
+	//! the object has a roof a metre or more above the ground somewhere over its box (roads, tracks, slabs and
+	//! bridges do not): only such a building can hold an inside the cover has to keep out of. Cached per object
+	protected bool Roofed(Object o)
+	{
+		if (!m_Roofed)
+			m_Roofed = new map<Object, bool>;
+		bool known;
+		if (m_Roofed.Find(o, known))
+			return known;
+		if (m_Roofed.Count() > 20000)
+			m_Roofed.Clear();
+		vector mm[2];
+		o.ClippingInfo(mm);
+		bool roofed = false;
+		for (int k = 0; k < 5 && !roofed; k++)
+		{
+			float fu = 0.5;
+			float fv = 0.5;
+			if (k == 1 || k == 2)
+				fu = 0.25;
+			else if (k > 2)
+				fu = 0.75;
+			if (k == 1 || k == 3)
+				fv = 0.25;
+			else if (k == 2 || k == 4)
+				fv = 0.75;
+			vector lp = Vector(mm[0][0] + (mm[1][0] - mm[0][0]) * fu, mm[1][1], mm[0][2] + (mm[1][2] - mm[0][2]) * fv);
+			vector w = o.ModelToWorld(lp);
+			float ground = g_Game.SurfaceY(w[0], w[2]);
+			// view geometry first; see-through roofs (greenhouses) only have fire geometry
+			for (int g = 0; g < 2 && !roofed; g++)
+			{
+				int geo = ObjIntersectView;
+				if (g == 1)
+					geo = ObjIntersectFire;
+				vector hitPos;
+				vector hitDir;
+				int component;
+				set<Object> hits = new set<Object>;
+				if (!DayZPhysics.RaycastRV(Vector(w[0], w[1] + 1.0, w[2]), Vector(w[0], ground + 0.05, w[2]), hitPos, hitDir, component, hits, null, null, false, false, geo, 0.0))
+					continue;
+				if (hitPos[1] - ground >= 1.0 && hits.Find(o) >= 0)
+					roofed = true;
+			}
+		}
+		m_Cost += 0.03;
+		m_Roofed.Set(o, roofed);
+		return roofed;
+	}
+
+	//! a point lies inside one of the footprints of m_Foot
+	protected bool InFootprint(float x, float z)
+	{
+		if (!m_Foot)
+			return false;
+		int n = m_Foot.Count() / 6;
+		for (int i = 0; i < n; i++)
+		{
+			int k = i * 6;
+			float dx = x - m_Foot[k];
+			float dz = z - m_Foot[k + 1];
+			float u = dx * m_Foot[k + 2] + dz * m_Foot[k + 3];
+			float v = dz * m_Foot[k + 2] - dx * m_Foot[k + 3];
+			if (Math.AbsFloat(u) <= m_Foot[k + 4] && Math.AbsFloat(v) <= m_Foot[k + 5])
+				return true;
+		}
+		return false;
+	}
+
+	//! a triangle and a footprint of m_Foot overlap (separating axes: the footprint's two and the triangle's three)
+	protected bool FootOverlap(float ax, float az, float bx, float bz, float cx, float cz)
+	{
+		if (!m_Foot)
+			return false;
+		int n = m_Foot.Count() / 6;
+		for (int i = 0; i < n; i++)
+		{
+			int k = i * 6;
+			float fx = m_Foot[k];
+			float fz = m_Foot[k + 1];
+			float ux = m_Foot[k + 2];
+			float uz = m_Foot[k + 3];
+			float hu = m_Foot[k + 4];
+			float hv = m_Foot[k + 5];
+			// the corners in the footprint's own axes (v = the axis across u)
+			float au = (ax - fx) * ux + (az - fz) * uz;
+			float av = (az - fz) * ux - (ax - fx) * uz;
+			float bu = (bx - fx) * ux + (bz - fz) * uz;
+			float bv = (bz - fz) * ux - (bx - fx) * uz;
+			float cu = (cx - fx) * ux + (cz - fz) * uz;
+			float cv = (cz - fz) * ux - (cx - fx) * uz;
+			if (Math.Max(au, Math.Max(bu, cu)) < -hu || Math.Min(au, Math.Min(bu, cu)) > hu)
+				continue;
+			if (Math.Max(av, Math.Max(bv, cv)) < -hv || Math.Min(av, Math.Min(bv, cv)) > hv)
+				continue;
+			if (EdgeSeparates(au, av, bu, bv, cu, cv, hu, hv) || EdgeSeparates(bu, bv, cu, cv, au, av, hu, hv) || EdgeSeparates(cu, cv, au, av, bu, bv, hu, hv))
+				continue;
+			return true;
+		}
+		return false;
+	}
+
+	//! the line through p and q (an edge of a triangle with third corner r) separates the triangle from a rectangle
+	//! centred on 0 with half lengths hu, hv
+	protected bool EdgeSeparates(float pu, float pv, float qu, float qv, float ru, float rv, float hu, float hv)
+	{
+		float nu = pv - qv;
+		float nv = qu - pu;
+		float dp = nu * pu + nv * pv;
+		float dr = nu * ru + nv * rv;
+		float radius = Math.AbsFloat(nu) * hu + Math.AbsFloat(nv) * hv;
+		if (dr >= dp)
+			return dp > radius || dr < -radius;
+		return dp < -radius || dr > radius;
 	}
 
 	//! height of the two-triangle approximation of a square at relative position (u, v) in 0..1
@@ -1791,6 +2001,7 @@ class DS_SnowCarpet
 			float h01 = g_Game.SurfaceY(x0, z0 + size);
 			float hc = g_Game.SurfaceY(x0 + size * 0.5, z0 + size * 0.5);
 			bool diag = Math.AbsFloat(hc - (h00 + h11) * 0.5) <= Math.AbsFloat(hc - (h10 + h01) * 0.5);
+			CollectFootprints(x0, z0, size);
 			BuildExact(cell, x0, z0, size, diag, 0);
 		}
 		else

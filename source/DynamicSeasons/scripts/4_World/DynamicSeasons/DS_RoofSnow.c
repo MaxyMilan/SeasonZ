@@ -155,6 +155,8 @@ class DS_RoofSnow
 	//! small structures (blocks, boxes, benches, hay bales) carry snow this close to the camera; further out they are
 	//! a few pixels on screen
 	static const float SMALL_RADIUS = 90.0;
+	//! the narrow side of the smallest structure that carries snow (a garbage bin, a stone)
+	static const float SMALL_MIN = 0.6;
 	//! walls, fences and wrecks carry snow this close to the camera: further out their tops are a line of one or two
 	//! pixels (no visible change from 160 to 220 m, about 4 percent of the frame rate in a village)
 	static const float WALL_RADIUS = 160.0;
@@ -204,6 +206,12 @@ class DS_RoofSnow
 	//! sample of it behind: its slope towards the edge is measured this far in
 	static const float CROSS_PROBE = 0.25;
 	static const float EDGE_PROBE = 0.2;
+	//! surfaces lower than this above the ground are checked for a see-through roof over them (see SampleAt)
+	static const float SEE_THROUGH = 1.5;
+	//! walls, fences and wrecks: a piece is dropped when two of its test points (its centre and its corners pulled
+	//! 30 percent in) find the top more than this far below it or not at all. Fences of planks or pickets with an
+	//! uneven top would otherwise carry straight strips of snow hanging over the gaps
+	static const float WALL_GAP = 0.05;
 
 	//! vehicles, tents, base parts and containers known to this client (filled from their EEInit)
 	protected static ref array<EntityAI> s_Movables;
@@ -479,23 +487,29 @@ class DS_RoofSnow
 			// walls keep the fine grid of thin tops, whatever their bounding box
 			bool wall = shape.IndexOf("\\walls\\") >= 0;
 			bool plain = !o.IsBuilding() && !o.IsRock() && DS_State.s_DebugRoofPlain > 0 && IsPlainStructure(shape);
+			// small buildings (outhouses, coops, kennels, kiosks) and loose stones: like the small plain structures.
+			// Poles, lamps and wires stay without snow (see IsPlainStructure)
+			bool smallBody = plain || o.IsRock() || (o.IsBuilding() && IsPlainStructure(shape));
 			if (!wall && (o.IsBuilding() || o.IsRock() || plain) && size[0] >= 2.5 && size[2] >= 2.5 && size[1] >= 2.0)
 			{
 				kind = 0;
 			}
-			else if (plain && !wall && DS_State.s_DebugRoofPlain == 3 && size[0] >= 0.9 && size[2] >= 0.9 && size[1] >= 0.5)
+			else if (smallBody && !wall && DS_State.s_DebugRoofPlain == 3 && size[0] >= SMALL_MIN && size[2] >= SMALL_MIN && size[1] >= 0.5)
 			{
-				// smaller plain structures (blocks, barriers, boxes, benches, hay bales): a grid sized to them, and
-				// flat tops drawn as single polygons
+				// smaller structures (blocks, barriers, boxes, benches, bins, hay bales, small buildings, stones): a
+				// grid sized to them, and flat tops drawn as single polygons
 				kind = 0;
 				small = true;
 			}
 			else
 			{
 				// walls, fences, car wrecks and smaller plain structures (barriers, pipes, wood piles): narrow tops
-				// that hold a strip of snow
+				// that hold a strip of snow; the short corner and post pieces of walls too
 				bool thin = (plain && DS_State.s_DebugRoofPlain > 1) || wall || shape.IndexOf("\\wrecks\\") >= 0;
-				if (thin && Math.Max(size[0], size[2]) >= 1.2 && size[1] >= 0.4)
+				float minLength = 1.2;
+				if (wall)
+					minLength = 0.5;
+				if (thin && Math.Max(size[0], size[2]) >= minLength && size[1] >= 0.4)
 					kind = 1;
 			}
 			if (kind < 0)
@@ -654,7 +668,36 @@ class DS_RoofSnow
 		}
 		if (h != NO_HIT && (blockTop > h + 0.3 || h < groundHere + 0.25))
 			return NO_HIT;
+		// a low surface under a see-through roof (greenhouse glass, polytunnel film): the roof has view geometry but
+		// little or no fire geometry, so the highest fire hit can be a bed or the floor inside
+		if (h != NO_HIT && b.m_Kind == 0 && h < groundHere + SEE_THROUGH && RoofInView(b, x, z, h))
+			return NO_HIT;
 		return h;
+	}
+
+	//! the structure's view geometry lies over a point well above a height
+	protected bool RoofInView(DS_RoofBuilding b, float x, float z, float h)
+	{
+		if (b.m_Top < h + 0.6)
+			return false;
+		RaycastRVParams rp = new RaycastRVParams(Vector(x, b.m_Top, z), Vector(x, h + 0.5, z), null, 0);
+		rp.type = ObjIntersectView;
+		rp.flags = CollisionFlags.ALLOBJECTS;
+		rp.sorted = false;
+		array<ref RaycastRVResult> results = new array<ref RaycastRVResult>;
+		m_Rays++;
+		m_Cost += 0.02;
+		if (!DayZPhysics.RaycastRVProxy(rp, results))
+			return false;
+		foreach (RaycastRVResult res : results)
+		{
+			Object hit = res.obj;
+			if (res.parent)
+				hit = res.parent;
+			if (hit == b.m_Obj)
+				return true;
+		}
+		return false;
 	}
 
 	protected vector SamplePos(DS_RoofBuilding b, int i, int j)
@@ -1327,6 +1370,8 @@ class DS_RoofSnow
 				b.m_Cross.Clear();
 			BuildGridTris(b, sgrp, gridGroup);
 		}
+		if (b.m_Kind == 1)
+			DropUnsupported(b);
 		b.m_Job = null;
 		b.m_H.Clear();
 		b.m_NY.Clear();
@@ -1341,6 +1386,63 @@ class DS_RoofSnow
 			b.m_Reach = WALL_RADIUS;
 			if (b.m_Tris.Count() > DENSE_WALL * Math.Max(length, 1.0))
 				b.m_Reach = DENSE_WALL_RADIUS;
+		}
+	}
+
+	//! the corners of a piece (three, or four for a square), on its plane
+	protected void PieceCorners(DS_RoofTri t, array<vector> cs)
+	{
+		cs.Clear();
+		if (t.m_Free)
+		{
+			cs.Insert(t.m_P0);
+			cs.Insert(t.m_P1);
+			cs.Insert(t.m_P2);
+			return;
+		}
+		vector hu = t.m_AxisU * 0.5;
+		vector hv = t.m_AxisV * 0.5;
+		vector c00 = t.m_Center - hu - hv;
+		vector c10 = t.m_Center + hu - hv;
+		vector c11 = t.m_Center + hu + hv;
+		vector c01 = t.m_Center - hu + hv;
+		if (t.m_Quad || t.m_Shape == 0 || t.m_Shape == 1 || t.m_Shape == 2)
+			cs.Insert(c00);
+		if (t.m_Quad || t.m_Shape == 0 || t.m_Shape == 2 || t.m_Shape == 3)
+			cs.Insert(c10);
+		if (t.m_Quad || t.m_Shape == 0 || t.m_Shape == 1 || t.m_Shape == 3)
+			cs.Insert(c11);
+		if (t.m_Quad || t.m_Shape == 1 || t.m_Shape == 2 || t.m_Shape == 3)
+			cs.Insert(c01);
+	}
+
+	//! walls, fences and wrecks: drops the pieces that hang over a gap (see WALL_GAP)
+	protected void DropUnsupported(DS_RoofBuilding b)
+	{
+		array<vector> cs = new array<vector>;
+		for (int i = b.m_Tris.Count() - 1; i >= 0; i--)
+		{
+			DS_RoofTri t = b.m_Tris[i];
+			PieceCorners(t, cs);
+			int nc = cs.Count();
+			if (nc < 3)
+				continue;
+			vector g = "0 0 0";
+			for (int c = 0; c < nc; c++)
+				g = g + cs[c];
+			g = g * (1.0 / nc);
+			int bad = 0;
+			for (int q = -1; q < nc && bad < 2; q++)
+			{
+				vector p = g;
+				if (q >= 0)
+					p = g + (cs[q] - g) * 0.7;
+				float h = SampleNear(b, p[0], p[2], p[1], 0.1, 0.4);
+				if (h == NO_HIT || p[1] - h > WALL_GAP)
+					bad++;
+			}
+			if (bad >= 2)
+				b.m_Tris.Remove(i);
 		}
 	}
 
@@ -3682,6 +3784,78 @@ class DS_RoofSnow
 			Print(string.Format("[DSTest] rooftri %1 %2%3 centre=%4 u=%5 v=%6 ny=%7 drop=%8 obj=%9", k, ShapeName(tr.m_Shape), tr.m_Variant, tr.m_Center, tr.m_AxisU.Length(), tr.m_AxisV.Length(), tr.m_Normal[1], tr.m_Drop, objPos));
 		}
 		return string.Format("%1 tris=%2 objects=%3 stage=%4 offset=%5 caps: %6", best.m_Obj.GetType(), best.m_Tris.Count(), best.m_Objects.Count(), best.m_Stage, best.m_Offset, best.m_CapInfo);
+	}
+
+	//! test harness: the structures within a radius of a point whose snow is complete (sampled at the detail of
+	//! their distance, their stage placed); pending counts the others there, plus 1000 for every tile around the
+	//! point not scanned yet
+	void DebugReady(vector c, float radius, array<DS_RoofBuilding> ready, out int pending)
+	{
+		pending = 0;
+		// tiles around the point that are not scanned yet hold structures nobody knows of so far
+		int tx0 = Math.Floor((c[0] - radius) / TILE);
+		int tx1 = Math.Floor((c[0] + radius) / TILE);
+		int tz0 = Math.Floor((c[2] - radius) / TILE);
+		int tz1 = Math.Floor((c[2] + radius) / TILE);
+		for (int tx = tx0; tx <= tx1; tx++)
+		{
+			for (int tz = tz0; tz <= tz1; tz++)
+			{
+				DS_RoofTile st = m_Tiles.Get(tx * 65536 + tz);
+				if (!st || !st.m_Scanned)
+					pending += 1000;
+			}
+		}
+		for (int i = 0; i < m_Tiles.Count(); i++)
+		{
+			DS_RoofTile t = m_Tiles.GetElement(i);
+			if (!t)
+				continue;
+			foreach (DS_RoofBuilding b : t.m_Buildings)
+			{
+				if (!b.m_Obj)
+					continue;
+				vector p = b.m_Obj.GetPosition();
+				float dx = p[0] - c[0];
+				float dz = p[2] - c[2];
+				if (dx * dx + dz * dz > radius * radius)
+					continue;
+				bool done = b.m_State == 2 && !b.m_Pending && b.m_Stage == StageFor(b);
+				if (done && b.m_Kind == 0 && !b.m_Small && b.m_Dist < FINE_RADIUS && !b.m_Fine)
+					done = false;
+				if (done)
+					ready.Insert(b);
+				else
+					pending++;
+			}
+		}
+	}
+
+	//! test harness: the snow depth a structure carries (cm)
+	float DebugDepth(DS_RoofBuilding b)
+	{
+		return DepthFor(b);
+	}
+
+	//! test harness: every object the roof snow knows within a radius of a point (whether it carries snow or not)
+	void DebugKnown(vector c, float radius, map<Object, bool> known)
+	{
+		for (int i = 0; i < m_Tiles.Count(); i++)
+		{
+			DS_RoofTile t = m_Tiles.GetElement(i);
+			if (!t)
+				continue;
+			foreach (DS_RoofBuilding b : t.m_Buildings)
+			{
+				if (!b.m_Obj)
+					continue;
+				vector p = b.m_Obj.GetPosition();
+				float dx = p[0] - c[0];
+				float dz = p[2] - c[2];
+				if (dx * dx + dz * dz <= radius * radius)
+					known.Set(b.m_Obj, true);
+			}
+		}
 	}
 
 	//! test harness: samples the structure nearest to a point once more and prints its ray grid row by row: the hit
