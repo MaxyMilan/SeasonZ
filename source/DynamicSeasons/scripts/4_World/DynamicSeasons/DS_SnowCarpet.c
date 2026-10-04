@@ -95,6 +95,9 @@ class DS_SnowCarpet
 	//! one (the cover is lifted by a road, path or porch nearby) counts as a floor on the ground, and the cover is cut
 	//! along the walls instead of running under the building and showing through the floor
 	static const float RAISED_CLEAR = 0.03;
+	//! only the lowest floor of a building hides the snow under it: a platform or a raised part of a hall more than
+	//! this above the hall's floor would show the snow under it from that floor (its edge is open to the hall)
+	static const float RAISED_STEP = 0.15;
 	//! deep under a wide open roof (open sheds, canopies, fuel stations) no snow falls: the roof reaches this far
 	//! around the point in all four directions of the building (metres)
 	static const float WIDE_ROOF = 2.0;
@@ -102,6 +105,9 @@ class DS_SnowCarpet
 	//! it, down to FOOT_DEPTH (1.9 m triangles): the four probes of a smaller triangle cannot miss a building of 3 m
 	static const float FOOT_MAX = 8.0;
 	static const int FOOT_DEPTH = 2;
+	//! the corners of a larger building's footprint are tested this far inside it (the footprint is its bounding box,
+	//! a little wider than its walls)
+	static const float FOOT_INSET = 0.3;
 	//! footprints are collected per tile of this size, from buildings whose centre lies up to FOOT_SEARCH beyond it
 	static const float FOOT_TILE = 40.0;
 	static const float FOOT_SEARCH = 30.0;
@@ -995,6 +1001,7 @@ class DS_SnowCarpet
 	{
 		m_Calls[3] = m_Calls[3] + 1;
 		m_Cost += 0.05;
+		m_Platform = false;
 		float ground = g_Game.SurfaceY(x, z);
 		vector from = Vector(x, ground + 40.0, z);
 		vector to = Vector(x, ground + 0.05, z);
@@ -1050,7 +1057,11 @@ class DS_SnowCarpet
 		{
 			float cover = CoverAbove0(x, z);
 			if (raised >= cover + RAISED_CLEAR)
-				return false;
+			{
+				if (groundFloor - LowestFloor(building) < RAISED_STEP)
+					return false;
+				m_Platform = true;
+			}
 		}
 		if (IsInteriorSurface(groundType))
 			return true;
@@ -1241,11 +1252,20 @@ class DS_SnowCarpet
 	//! whether a corner of the wall triangles lies inside a building. Cached: the corners of all subdivisions lie on
 	//! the grid of eighth cells and are shared by up to eight triangles (buildings do not move)
 	protected ref map<int, bool> m_CornerIn;
+	//! the corners that lie on a platform or raised part inside a building (see RAISED_STEP): their floor does not hide
+	//! a triangle reaching under it
+	protected ref map<int, bool> m_CornerPlat;
+	//! set by ProbeBlocked: the point lies on such a platform
+	protected bool m_Platform;
+	//! the lowest floor inside each building met (absolute height), see LowestFloor
+	protected ref map<Object, float> m_LowFloor;
 
 	protected bool CornerBlocked(float x, float z)
 	{
 		if (!m_CornerIn)
 			m_CornerIn = new map<int, bool>;
+		if (!m_CornerPlat)
+			m_CornerPlat = new map<int, bool>;
 		float q = m_Cell / 8.0;
 		// whole numbers first: the key does not fit the precision of a float
 		int qx = Math.Round(x / q);
@@ -1255,10 +1275,48 @@ class DS_SnowCarpet
 		if (m_CornerIn.Find(key, inside))
 			return inside;
 		if (m_CornerIn.Count() > 400000)
+		{
 			m_CornerIn.Clear();
+			m_CornerPlat.Clear();
+		}
 		inside = ProbeBlocked(x, z);
 		m_CornerIn.Set(key, inside);
+		if (m_Platform)
+			m_CornerPlat.Set(key, true);
 		return inside;
+	}
+
+	//! the lowest floor inside a building (absolute height), from its floor under a grid of 3 x 3 points over its plan;
+	//! a very high value when none of them is inside
+	protected float LowestFloor(Object building)
+	{
+		if (!m_LowFloor)
+			m_LowFloor = new map<Object, float>;
+		float low;
+		if (m_LowFloor.Find(building, low))
+			return low;
+		if (m_LowFloor.Count() > 20000)
+			m_LowFloor.Clear();
+		low = 100000.0;
+		vector mm[2];
+		building.ClippingInfo(mm);
+		for (int i = 0; i < 3; i++)
+		{
+			for (int j = 0; j < 3; j++)
+			{
+				float mu = mm[0][0] + (mm[1][0] - mm[0][0]) * (0.2 + 0.3 * i);
+				float mv = mm[0][2] + (mm[1][2] - mm[0][2]) * (0.2 + 0.3 * j);
+				vector wp = building.ModelToWorld(Vector(mu, 0, mv));
+				float wg = g_Game.SurfaceY(wp[0], wp[2]);
+				string surf;
+				float fy = g_Game.SurfaceGetType3D(wp[0], wg + RAISED_PROBE, wp[2], surf);
+				if (IsInteriorSurface(surf) && fy < low)
+					low = fy;
+			}
+		}
+		m_Cost += 0.1;
+		m_LowFloor.Set(building, low);
+		return low;
 	}
 
 	protected bool AnyCornerFree(float ax, float az, float bx, float bz, float cx, float cz)
@@ -1283,6 +1341,11 @@ class DS_SnowCarpet
 			return hidden;
 		if (m_CornerHidden.Count() > 400000)
 			m_CornerHidden.Clear();
+		if (m_CornerPlat && m_CornerPlat.Contains(key))
+		{
+			m_CornerHidden.Set(key, false);
+			return false;
+		}
 		float ground = g_Game.SurfaceY(x, z);
 		string surface;
 		float floorY = g_Game.SurfaceGetType3D(x, ground + RAISED_PROBE, z, surface);
@@ -1551,6 +1614,8 @@ class DS_SnowCarpet
 			int blockedA = BlockedProbes(ax, az, bx, bz, cx, cz, centreA);
 			if (blockedA == 0 && depth < FOOT_DEPTH && FootOverlap(ax, az, bx, bz, cx, cz, true))
 				subdivide = true; // a building smaller than the triangle stands between its probes
+			else if (blockedA == 0 && FootOverlap(ax, az, bx, bz, cx, cz, false) && FootCornerBlocked(ax, az, bx, bz, cx, cz))
+				subdivide = true; // the corner of a larger building (a hall) reaches into it between its probes
 			else if (blockedA == 0)
 				addA = true;
 			else if (blockedA < 4 || (!DS_State.s_DebugOldWalls && AnyCornerFree(ax, az, bx, bz, cx, cz)))
@@ -1561,6 +1626,8 @@ class DS_SnowCarpet
 			TriCorners(shapeB, x0, z0, s, ax, az, bx, bz, cx, cz);
 			int blockedB = BlockedProbes(ax, az, bx, bz, cx, cz, centreB);
 			if (blockedB == 0 && depth < FOOT_DEPTH && FootOverlap(ax, az, bx, bz, cx, cz, true))
+				subdivide = true;
+			else if (blockedB == 0 && FootOverlap(ax, az, bx, bz, cx, cz, false) && FootCornerBlocked(ax, az, bx, bz, cx, cz))
 				subdivide = true;
 			else if (blockedB == 0)
 				addB = true;
@@ -1789,6 +1856,51 @@ class DS_SnowCarpet
 			return true;
 		}
 		return false;
+	}
+
+	//! a corner of the triangle, or a corner of a footprint of m_Foot inside the triangle, lies inside a building. The
+	//! probes of a triangle sit at its centre and a fifth of the way in from its corners, so a hall whose corner reaches
+	//! a metre or two into a large triangle can stand between all of them
+	protected bool FootCornerBlocked(float ax, float az, float bx, float bz, float cx, float cz)
+	{
+		if (CornerBlocked(ax, az) || CornerBlocked(bx, bz) || CornerBlocked(cx, cz))
+			return true;
+		if (!m_Foot)
+			return false;
+		int n = m_Foot.Count() / FOOT_STRIDE;
+		for (int i = 0; i < n; i++)
+		{
+			int k = i * FOOT_STRIDE;
+			float hu = m_Foot[k + 4] - FOOT_INSET;
+			float hv = m_Foot[k + 5] - FOOT_INSET;
+			if (hu <= 0 || hv <= 0)
+				continue;
+			for (int c = 0; c < 4; c++)
+			{
+				float su = hu;
+				if (c == 1 || c == 2)
+					su = -hu;
+				float sv = hv;
+				if (c >= 2)
+					sv = -hv;
+				// the footprint's axis u and the axis v across it
+				float px = m_Foot[k] + m_Foot[k + 2] * su - m_Foot[k + 3] * sv;
+				float pz = m_Foot[k + 1] + m_Foot[k + 3] * su + m_Foot[k + 2] * sv;
+				if (PointInTri(px, pz, ax, az, bx, bz, cx, cz) && ProbeBlocked(px, pz))
+					return true;
+			}
+		}
+		return false;
+	}
+
+	protected bool PointInTri(float px, float pz, float ax, float az, float bx, float bz, float cx, float cz)
+	{
+		float d1 = (px - bx) * (az - bz) - (ax - bx) * (pz - bz);
+		float d2 = (px - cx) * (bz - cz) - (bx - cx) * (pz - cz);
+		float d3 = (px - ax) * (cz - az) - (cx - ax) * (pz - az);
+		bool neg = d1 < 0 || d2 < 0 || d3 < 0;
+		bool pos = d1 > 0 || d2 > 0 || d3 > 0;
+		return !(neg && pos);
 	}
 
 	//! the line through p and q (an edge of a triangle with third corner r) separates the triangle from a rectangle

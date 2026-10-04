@@ -73,6 +73,9 @@ class DS_RoofBuilding
 	bool m_Small;
 	//! a wall: a flat top becomes one strip of snow (its edges are found like those of the small structures)
 	bool m_Wall;
+	//! the geometry the rays look for: the fire geometry, or the collision geometry of a structure that has no fire
+	//! geometry (hay stacks, some pumps and racks)
+	int m_Geo;
 	//! how far from the camera this wall carries snow (set once its pieces are known; -1 = not yet)
 	float m_Reach;
 	vector m_U;
@@ -119,6 +122,7 @@ class DS_RoofBuilding
 	void DS_RoofBuilding()
 	{
 		m_Reach = -1;
+		m_Geo = ObjIntersectFire;
 		m_Tris = new array<ref DS_RoofTri>;
 		m_Objects = new array<Object>;
 		m_H = new array<float>;
@@ -194,6 +198,9 @@ class DS_RoofSnow
 	static const float JOIN_TOL = 0.08;
 	static const float STAIR_ROAD = 0.25;
 	static const float STAIR_FOOT = 0.6;
+	//! stairs climb 30 to 40 degrees; ramps for vehicles and loading (up to about 15 degrees) are no stairs and keep
+	//! their snow: metres of rise per metre between two samples on a stair
+	static const float STAIR_SLOPE = 0.4;
 	//! where a surface ends at a stair, how far from its height the refining rays may still find it (the snow of a
 	//! landing does not reach out over the top steps)
 	static const float STEP_REFINE = 0.08;
@@ -484,6 +491,10 @@ class DS_RoofSnow
 			bool small = false;
 			string shape = o.GetShapeName();
 			shape.ToLower();
+			// the long straw stack: its geometry lies inside the hay on top and sticks out of it at the ends, so its
+			// snow would be hidden on top and stand as white blocks at the ends
+			if (shape.IndexOf("farm_strawstack") >= 0)
+				continue;
 			// walls keep the fine grid of thin tops, whatever their bounding box
 			bool wall = shape.IndexOf("\\walls\\") >= 0;
 			bool plain = !o.IsBuilding() && !o.IsRock() && DS_State.s_DebugRoofPlain > 0 && IsPlainStructure(shape);
@@ -629,7 +640,7 @@ class DS_RoofSnow
 	{
 		float groundHere = g_Game.SurfaceY(x, z);
 		RaycastRVParams rp = new RaycastRVParams(Vector(x, b.m_Top, z), Vector(x, b.m_Bottom, z), null, 0);
-		rp.type = ObjIntersectFire;
+		rp.type = b.m_Geo;
 		rp.flags = CollisionFlags.ALLOBJECTS;
 		rp.sorted = true;
 		array<ref RaycastRVResult> results = new array<ref RaycastRVResult>;
@@ -714,8 +725,29 @@ class DS_RoofSnow
 			b.m_H.Insert(SampleAt(b, p[0], p[2]));
 		}
 		b.m_Row++;
-		if (b.m_Row >= b.m_NV)
-			FinishGrid(b);
+		if (b.m_Row < b.m_NV)
+			return;
+		if (b.m_Geo == ObjIntersectFire && (b.m_Kind == 0 || (b.m_Kind == 1 && !b.m_Wall)) && !AnyHit(b))
+		{
+			// a structure without fire geometry (hay stacks, pumps, racks, crash barriers, tombstones, signs): sampled
+			// again on its collision geometry. Walls and fences without fire geometry (wire mesh, gates) keep none:
+			// their collision box would draw a solid strip over the mesh
+			b.m_Geo = ObjIntersectGeom;
+			b.m_Row = 0;
+			b.m_H.Clear();
+			return;
+		}
+		FinishGrid(b);
+	}
+
+	protected bool AnyHit(DS_RoofBuilding b)
+	{
+		foreach (float h : b.m_H)
+		{
+			if (h != NO_HIT)
+				return true;
+		}
+		return false;
 	}
 
 	//! the grid is complete: close buildings look for their roof edges first, everything else is built right away
@@ -801,7 +833,7 @@ class DS_RoofSnow
 		return walk;
 	}
 
-	//! close range grid: samples on stairs and ramps that come down to the ground get no snow (see STAIR_FOOT)
+	//! close range grid: samples on stairs that come down to the ground get no snow (see STAIR_FOOT, STAIR_SLOPE)
 	protected void DropStairs(DS_RoofBuilding b)
 	{
 		if (b.m_Kind != 0 || !b.m_Fine || b.m_Small)
@@ -830,7 +862,10 @@ class DS_RoofSnow
 				if (!SameLine(b, a, n))
 					continue;
 				float hn = b.m_H[n];
-				if (!Joined(b, ha, hn) || Math.AbsFloat(hn - ha) <= JOIN_TOL)
+				float run = b.m_StepU;
+				if (dir == 1)
+					run = b.m_StepV;
+				if (!Joined(b, ha, hn) || Math.AbsFloat(hn - ha) <= Math.Max(JOIN_TOL, run * STAIR_SLOPE))
 					continue;
 				if (!Walkable(b, a, walk) || !Walkable(b, n, walk))
 					continue;
@@ -1370,7 +1405,9 @@ class DS_RoofSnow
 				b.m_Cross.Clear();
 			BuildGridTris(b, sgrp, gridGroup);
 		}
-		if (b.m_Kind == 1)
+		// small structures too: the slats, beams and frames of benches, sawhorses and racks leave gaps the grid
+		// pieces would bridge. Buildings keep theirs (eaves and overhangs often have no fire geometry)
+		if (b.m_Kind == 1 || b.m_Small)
 			DropUnsupported(b);
 		b.m_Job = null;
 		b.m_H.Clear();
@@ -1416,7 +1453,7 @@ class DS_RoofSnow
 			cs.Insert(c01);
 	}
 
-	//! walls, fences and wrecks: drops the pieces that hang over a gap (see WALL_GAP)
+	//! walls, fences, wrecks and small structures: drops the pieces that hang over a gap (see WALL_GAP)
 	protected void DropUnsupported(DS_RoofBuilding b)
 	{
 		array<vector> cs = new array<vector>;
@@ -2508,7 +2545,7 @@ class DS_RoofSnow
 	protected float SampleNear(DS_RoofBuilding b, float x, float z, float expect, float above, float below)
 	{
 		RaycastRVParams rp = new RaycastRVParams(Vector(x, expect + above, z), Vector(x, expect - below, z), null, 0);
-		rp.type = ObjIntersectFire;
+		rp.type = b.m_Geo;
 		rp.flags = CollisionFlags.ALLOBJECTS;
 		rp.sorted = false;
 		array<ref RaycastRVResult> results = new array<ref RaycastRVResult>;

@@ -12,16 +12,18 @@ Seasons for DayZ Chernarus, driven by the real date or by an adjustable season c
     over roads and squares, while steps, porches and low blocks keep their own snow. From 4-6 cm the grass
     disappears, and from 5 cm footpaths, road decals, the kerbs around trees on squares, the grass in airfield
     panels and the reeds and weeds along ponds are buried
-  - roofs: a slab of snow on every roof plane, ending in straight lines at the rim, along ridges and hips and around
-    chimneys and dormers; thin on steep roofs, none on the steepest
+  - roofs: a slab of snow on the roof planes of the buildings around the player (out to 220 m), ending in straight
+    lines at the rim, along ridges and hips and around chimneys and dormers; thin on steep roofs, none on the steepest
   - ledges, walls, fences, car wrecks, open sheds, containers, platforms, bridges and big rocks carry snow too, and
     near the player so do small structures: benches, boxes, hay bales, concrete blocks and barriers
   - trees and bushes: swapped for snow laden Frostline (Sakhal) models while there is snow, out to 1.6 km in clear
     air and as far as the fog lets the game draw them
 - Trees: bare branches in late autumn and early spring, fresh green foliage (Livonia summer models) in late spring and summer
-- Ponds and lakes freeze over and carry players once the ice is thick enough
-- Winter food: crops stop growing in frost and die in hard frost outdoors (greenhouses keep them alive); wild berries
-  and mushrooms spawn spoiled or dried in the cold
+- Ponds and lakes freeze over and carry players once the ice is thick enough (Chernarus); frozen ponds give no water
+  and no fish, and the snow can be eaten and melted for water
+- Winter food: crops grow only above a daily mean of 5 °C and die outdoors at -2 °C; greenhouses and polytunnels keep
+  them alive down to -12 °C outside. Frozen or snowed over ground cannot be sown. Wild berries and most mushrooms
+  spawn spoiled or dried in the cold
 - Lighting and colour grading per season and snow cover
 - Footsteps sound and puff like snow on the snow cover; footprints and tyre tracks fill up again during snowfall
 
@@ -31,6 +33,8 @@ The tree swaps are mapped for the Chernarus tree species.
 
 ## Known limits
 
+- Made for Chernarus. Livonia gets the climate and weather but no pond ice; on Sakhal the mod stays off. Other maps
+  are not tested.
 - Grass stays on pond banks and on coastal ground below the sea's water line: the game ignores grass cutters there.
 - Every snow piece is its own object, so the big towns (Chernogorsk, Elektrozavodsk) cost noticeably more frame rate
   in winter than villages and open country.
@@ -39,22 +43,30 @@ The tree swaps are mapped for the Chernarus tree species.
 
 ## Server configuration
 
-`$profile/DynamicSeasons/config.json` (created on first start, profile folder = the server's `-profiles` folder):
+`$profile:DynamicSeasons/config.json`, in the folder the server's `-profiles` parameter points to. It is created with
+the defaults on the first start. Stop the server before editing it; the settings are read once at server start. A
+config.json with a JSON error is ignored for that session (the defaults apply and the script log says so).
 
-| Setting | Meaning |
-| --- | --- |
-| `Mode` | `"RealTime"`: follow the real calendar date of the server machine. `"Multiplier"`: own season clock |
-| `SeasonSpeedMultiplier` | Multiplier mode: 1 = one season year per real year, 12 = per real month, 52 = per week, 365 = per day |
-| `SpringLengthMultiplier` ... `WinterLengthMultiplier` | Multiplier mode: relative length of each season (2 = twice as long) |
-| `StartDayOfYear` | Multiplier mode: day of year (1-365) the clock starts at on the very first run |
-| `SnowBuildupMultiplier` / `SnowMeltMultiplier` | how fast snow builds up and melts |
-| `WinterHaze` | haze while snow lies: 1 = default, 0 = off, up to 2 = thicker. Less haze shows more of the snowy world at a lower frame rate |
-| `ConfigVersion` | managed by the mod: a config.json from an older version gets the new settings at their defaults once |
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `Mode` | `"RealTime"` | `"RealTime"`: follow the calendar date of the server machine. `"Multiplier"`: own season clock |
+| `SeasonSpeedMultiplier` | `12` | Multiplier mode: season years per year of server uptime (1 = a year, 12 = a month, 52 = a week, 365 = a day, 0 = hold the date) |
+| `SpringLengthMultiplier`, `SummerLengthMultiplier`, `AutumnLengthMultiplier`, `WinterLengthMultiplier` | `1` | Multiplier mode: relative length of each season (2 = twice as long), 0.05 to 20 |
+| `StartDayOfYear` | `335` (1 December) | Multiplier mode: day of the year (1-365) a new clock starts at; an existing clock in state.json keeps running |
+| `SnowBuildupMultiplier` / `SnowMeltMultiplier` | `1` | how fast snow builds up and melts, 0 to 100 |
+| `WinterHaze` | `1` | haze while snow lies: 0 = off, up to 2 = thicker. Less haze shows more of the snowy world at a lower frame rate |
+| `ConfigVersion` | `2` | managed by the mod |
 
-`state.json` holds the running season clock and snow depths; delete it (server stopped) to restart the clock at
-`StartDayOfYear` without snow.
+Values out of range are clamped and the checked config is saved back. The season clock runs while the server runs.
+
+`$profile:DynamicSeasons/state.json` holds the running season clock, snow depths and pond ice. To start over at
+`StartDayOfYear`, stop the server and move state.json away: the snow and the ice then start from the climate of that
+date (deep snow in January, none in summer).
 
 ## Install
 
-Server: `@DynamicSeasons` in the mod list (-mod), `keys/DynamicSeasons.bikey` in the server keys folder.
-Clients load the same mod.
+Server: copy the whole `@DynamicSeasons` folder, add it to `-mod=` (it must run on the server and on every client),
+and copy `@DynamicSeasons/keys/DynamicSeasons.bikey` into the server's `keys` folder. Clients load the same mod.
+
+SeasonZ sets the calendar date (the time of day stays) and changes weather, lighting, trees, farming and food. Test it
+together with other mods that change the same things.
