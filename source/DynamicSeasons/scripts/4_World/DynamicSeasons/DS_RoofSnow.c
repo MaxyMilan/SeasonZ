@@ -87,6 +87,10 @@ class DS_RoofBuilding
 	int m_Row;
 	ref array<float> m_H;
 	ref array<float> m_NY;
+	//! close range samples left without snow because they lie on stairs (see DropStairs)
+	ref map<int, bool> m_Stair;
+	//! slopes measured with short rays where the samples of a surface do not tell them (see CrossSlope)
+	ref map<int, float> m_Cross2;
 	//! close buildings: the grid edges between a sample on the roof and one beside it, and where the roof ends on
 	//! them (found with a few more rays after the grid)
 	ref array<int> m_EdgeKeys;
@@ -119,6 +123,8 @@ class DS_RoofBuilding
 		m_Objects = new array<Object>;
 		m_H = new array<float>;
 		m_NY = new array<float>;
+		m_Stair = new map<int, bool>;
+		m_Cross2 = new map<int, float>;
 		m_EdgeKeys = new array<int>;
 		m_Cross = new map<int, vector>;
 	}
@@ -179,6 +185,25 @@ class DS_RoofSnow
 	//! of a plane must lie
 	static const int MAX_PLANES = 160;
 	static const float CAP_FLAT = 0.04;
+	//! close range grid: stairs and ramps. Their fire geometry is one sloping surface over the steps, so snow drawn on
+	//! it is a slab hiding them. Neighbouring samples more than JOIN_TOL apart in height, both on a walkable surface
+	//! (the roadway of stairs runs up to STAIR_ROAD above or below the fire geometry), form a stair when they come
+	//! down to within STAIR_FOOT of the ground; a walkable roof higher up keeps its snow
+	static const float JOIN_TOL = 0.08;
+	static const float STAIR_ROAD = 0.25;
+	static const float STAIR_FOOT = 0.6;
+	//! where a surface ends at a stair, how far from its height the refining rays may still find it (the snow of a
+	//! landing does not reach out over the top steps)
+	static const float STEP_REFINE = 0.08;
+	//! close range grid: two neighbouring samples are on two surfaces with a step between them when the height
+	//! between them is this much more than the slope on either side of them (the edge of a roof above a lower roof
+	//! or a ledge; snow drawn across makes a band in the air)
+	static const float DROP_TOL = 0.25;
+	//! a surface sampled in one row only (a narrow roof, a lean-to below the eaves of a higher roof): its slope
+	//! across the row is measured with a short ray this far to either side, and a surface ends at an edge with no
+	//! sample of it behind: its slope towards the edge is measured this far in
+	static const float CROSS_PROBE = 0.25;
+	static const float EDGE_PROBE = 0.2;
 
 	//! vehicles, tents, base parts and containers known to this client (filled from their EEInit)
 	protected static ref array<EntityAI> s_Movables;
@@ -575,6 +600,8 @@ class DS_RoofSnow
 		b.m_Row = 0;
 		b.m_H.Clear();
 		b.m_NY.Clear();
+		b.m_Stair.Clear();
+		b.m_Cross2.Clear();
 		b.m_EdgeKeys.Clear();
 		b.m_EdgeCursor = 0;
 		b.m_Cross.Clear();
@@ -651,6 +678,7 @@ class DS_RoofSnow
 	//! the grid is complete: close buildings look for their roof edges first, everything else is built right away
 	protected void FinishGrid(DS_RoofBuilding b)
 	{
+		DropStairs(b);
 		if (DS_State.s_DebugRoofEdges && ((b.m_Kind == 0 && (b.m_Fine || b.m_Small)) || (b.m_Wall && DS_State.s_DebugRoofCaps > 0)))
 		{
 			CollectEdges(b);
@@ -669,6 +697,140 @@ class DS_RoofSnow
 		return ha != NO_HIT && hb != NO_HIT && Math.AbsFloat(ha - hb) <= Math.Min(b.m_StepU, b.m_StepV) * 1.35;
 	}
 
+	//! Joined for two neighbouring samples of the grid (by index), unless there is a step between them
+	protected bool JoinedK(DS_RoofBuilding b, int ka, int kb)
+	{
+		if (!Joined(b, b.m_H[ka], b.m_H[kb]))
+			return false;
+		return !DropStep(b, ka, kb);
+	}
+
+	//! close range grid: the height between two neighbouring samples is much steeper than the slope beside them on
+	//! either side (a roof edge above a lower roof, a ledge, a chimney): two surfaces, not one
+	protected bool DropStep(DS_RoofBuilding b, int ka, int kb)
+	{
+		if (b.m_Kind != 0 || !b.m_Fine)
+			return false;
+		float across = Math.AbsFloat(b.m_H[kb] - b.m_H[ka]);
+		if (across <= DROP_TOL)
+			return false;
+		int dk = kb - ka;
+		float side = -1.0;
+		int ka2 = ka - dk;
+		if (SameLine(b, ka, ka2) && Joined(b, b.m_H[ka2], b.m_H[ka]))
+			side = Math.AbsFloat(b.m_H[ka] - b.m_H[ka2]);
+		int kb2 = kb + dk;
+		if (SameLine(b, kb, kb2) && Joined(b, b.m_H[kb], b.m_H[kb2]))
+			side = Math.Max(side, Math.AbsFloat(b.m_H[kb2] - b.m_H[kb]));
+		if (side < 0)
+			return false;
+		return across > side + DROP_TOL;
+	}
+
+	//! a sample index and its neighbour one step further along the same row or column of the grid
+	protected bool SameLine(DS_RoofBuilding b, int k, int k2)
+	{
+		if (k2 < 0 || k2 >= b.m_H.Count())
+			return false;
+		int d = k2 - k;
+		if (d == 1 || d + 1 == 0)
+		{
+			int r1 = k / b.m_NU;
+			int r2 = k2 / b.m_NU;
+			return r1 == r2;
+		}
+		return true;
+	}
+
+	//! the sampled surface is walkable there: a roadway lies within STAIR_ROAD of it (cached per sample)
+	protected bool Walkable(DS_RoofBuilding b, int k, map<int, bool> cache)
+	{
+		bool known;
+		if (cache.Find(k, known))
+			return known;
+		int i = k % b.m_NU;
+		int j = k / b.m_NU;
+		vector p = SamplePos(b, i, j);
+		float h = b.m_H[k];
+		float road = g_Game.SurfaceRoadY3D(p[0], h + STAIR_ROAD + 0.05, p[2], RoadSurfaceDetection.UNDER);
+		bool walk = road <= h + STAIR_ROAD && road >= h - STAIR_ROAD;
+		cache.Set(k, walk);
+		return walk;
+	}
+
+	//! close range grid: samples on stairs and ramps that come down to the ground get no snow (see STAIR_FOOT)
+	protected void DropStairs(DS_RoofBuilding b)
+	{
+		if (b.m_Kind != 0 || !b.m_Fine || b.m_Small)
+			return;
+		int nu = b.m_NU;
+		int total = b.m_H.Count();
+		map<int, bool> walk = new map<int, bool>;
+		array<int> parent = new array<int>;
+		array<bool> sloped = new array<bool>;
+		for (int k = 0; k < total; k++)
+		{
+			parent.Insert(k);
+			sloped.Insert(false);
+		}
+		bool found = false;
+		for (int a = 0; a < total; a++)
+		{
+			float ha = b.m_H[a];
+			if (ha == NO_HIT)
+				continue;
+			for (int dir = 0; dir < 2; dir++)
+			{
+				int n = a + 1;
+				if (dir == 1)
+					n = a + nu;
+				if (!SameLine(b, a, n))
+					continue;
+				float hn = b.m_H[n];
+				if (!Joined(b, ha, hn) || Math.AbsFloat(hn - ha) <= JOIN_TOL)
+					continue;
+				if (!Walkable(b, a, walk) || !Walkable(b, n, walk))
+					continue;
+				sloped[a] = true;
+				sloped[n] = true;
+				int ra = UnionRoot(parent, a);
+				int rn = UnionRoot(parent, n);
+				if (ra != rn)
+					parent[ra] = rn;
+				found = true;
+			}
+		}
+		if (!found)
+			return;
+		// the lowest point of every walkable slope above the ground
+		map<int, float> lowest = new map<int, float>;
+		for (int s = 0; s < total; s++)
+		{
+			if (!sloped[s])
+				continue;
+			int si = s % nu;
+			int sj = s / nu;
+			vector sp = SamplePos(b, si, sj);
+			float ground = g_Game.SurfaceY(sp[0], sp[2]);
+			float above = b.m_H[s] - ground;
+			int root = UnionRoot(parent, s);
+			float low;
+			if (!lowest.Find(root, low) || above < low)
+				lowest.Set(root, above);
+		}
+		for (int c = 0; c < total; c++)
+		{
+			if (!sloped[c])
+				continue;
+			int rc = UnionRoot(parent, c);
+			float foot = lowest.Get(rc);
+			if (foot > STAIR_FOOT)
+				continue;
+			b.m_H[c] = NO_HIT;
+			b.m_Stair.Set(c, true);
+		}
+	}
+
 	//! the grid edges where a surface ends: between a sample on the building and one beside it, and at steps
 	//! (chimneys, dormers, walls rising above a roof, a lower roof), where both sides end. Edge index: the sample
 	//! index of its lower end twice, plus one along V. Cross key: the edge index twice, plus one when the surface is
@@ -679,24 +841,24 @@ class DS_RoofSnow
 		{
 			for (int i = 0; i < b.m_NU; i++)
 			{
-				float h = HAt(b, i, j);
-				int e = (j * b.m_NU + i) * 2;
+				int k = j * b.m_NU + i;
+				int e = k * 2;
 				if (i + 1 < b.m_NU)
-					AddEdge(b, e, h, HAt(b, i + 1, j));
+					AddEdge(b, e, k, k + 1);
 				if (j + 1 < b.m_NV)
-					AddEdge(b, e + 1, h, HAt(b, i, j + 1));
+					AddEdge(b, e + 1, k, k + b.m_NU);
 			}
 		}
 		b.m_EdgeCursor = 0;
 	}
 
-	protected void AddEdge(DS_RoofBuilding b, int e, float hLow, float hHigh)
+	protected void AddEdge(DS_RoofBuilding b, int e, int kLow, int kHigh)
 	{
-		if (Joined(b, hLow, hHigh))
+		if (JoinedK(b, kLow, kHigh))
 			return;
-		if (hLow != NO_HIT)
+		if (b.m_H[kLow] != NO_HIT)
 			b.m_EdgeKeys.Insert(e * 2);
-		if (hHigh != NO_HIT)
+		if (b.m_H[kHigh] != NO_HIT)
 			b.m_EdgeKeys.Insert(e * 2 + 1);
 	}
 
@@ -742,16 +904,35 @@ class DS_RoofSnow
 		float hs = HAt(b, si, sj);
 		// the slope towards the edge, from the sample behind the surface sample (when it lies on the same surface)
 		float slope = 0;
+		bool slopeKnown = false;
 		int ni = si - (xi - si);
 		int nj = sj - (xj - sj);
 		if (ni >= 0 && ni < b.m_NU && nj >= 0 && nj < b.m_NV)
 		{
-			float hn = HAt(b, ni, nj);
-			if (Joined(b, hs, hn))
+			if (JoinedK(b, sj * b.m_NU + si, nj * b.m_NU + ni))
+			{
+				float hn = HAt(b, ni, nj);
 				slope = (hs - hn) / step;
+				slopeKnown = true;
+			}
 		}
+		// next to stairs the surface ends where the rays leave its height, so the snow of a landing does not reach
+		// out over the top steps
+		float within = 0.25;
+		int kx = xj * b.m_NU + xi;
+		if (b.m_Stair.Contains(kx))
+			within = STEP_REFINE;
 		vector ps = SamplePos(b, si, sj);
 		vector px = SamplePos(b, xi, xj);
+		if (!slopeKnown && b.m_Kind == 0)
+		{
+			// no sample of this surface behind it: a short ray just inside measures its slope towards the edge, so
+			// the end found follows a sloping roof instead of a level line above it
+			vector pf = ps + (px - ps) * (EDGE_PROBE / step);
+			float hp = SampleNear(b, pf[0], pf[2], hs, 0.4, 0.4);
+			if (hp != NO_HIT && Math.AbsFloat(hp - hs) <= EDGE_PROBE * 1.5)
+				slope = (hp - hs) / EDGE_PROBE;
+		}
 		float lo = 0;
 		float up = 1;
 		for (int k = 0; k < EDGE_STEPS; k++)
@@ -761,7 +942,7 @@ class DS_RoofSnow
 			float expect = hs + slope * step * mid;
 			// a short ray around the expected height (an overhang up to 1.5 m above it still ends the surface)
 			float hm = SampleNear(b, pm[0], pm[2], expect, 1.5, 0.4);
-			if (hm != NO_HIT && Math.AbsFloat(hm - expect) <= 0.25)
+			if (hm != NO_HIT && Math.AbsFloat(hm - expect) <= within)
 				lo = mid;
 			else
 				up = mid;
@@ -855,7 +1036,7 @@ class DS_RoofSnow
 			{
 				int pf = (a + d - 1) % 4;
 				int cf = (a + d) % 4;
-				if (grp[cf] >= 0 || !Joined(b, h[pf], h[cf]))
+				if (grp[cf] >= 0 || !JoinedK(b, cj[pf] * nu + ci[pf], cj[cf] * nu + ci[cf]))
 					break;
 				grp[cf] = a;
 			}
@@ -863,7 +1044,7 @@ class DS_RoofSnow
 			{
 				int pb = (a - d2 + 5) % 4;
 				int cb = (a - d2 + 4) % 4;
-				if (grp[cb] >= 0 || !Joined(b, h[pb], h[cb]))
+				if (grp[cb] >= 0 || !JoinedK(b, cj[pb] * nu + ci[pb], cj[cb] * nu + ci[cb]))
 					break;
 				grp[cb] = a;
 			}
@@ -914,7 +1095,14 @@ class DS_RoofSnow
 			return false;
 		float lo = Math.Min(Math.Min(h00, h10), Math.Min(h11, h01));
 		float hi = Math.Max(Math.Max(h00, h10), Math.Max(h11, h01));
-		return hi - lo <= Math.Min(b.m_StepU, b.m_StepV) * 1.35;
+		if (hi - lo > Math.Min(b.m_StepU, b.m_StepV) * 1.35)
+			return false;
+		// all four sides on one surface: a cell across stair treads or a step between roofs is no full cell
+		int k00 = j * b.m_NU + i;
+		int k10 = k00 + 1;
+		int k01 = k00 + b.m_NU;
+		int k11 = k01 + 1;
+		return JoinedK(b, k00, k10) && JoinedK(b, k10, k11) && JoinedK(b, k11, k01) && JoinedK(b, k01, k00);
 	}
 
 	protected bool BlockFree(array<bool> used, int nu, int i, int j, int span)
@@ -1142,6 +1330,8 @@ class DS_RoofSnow
 		b.m_Job = null;
 		b.m_H.Clear();
 		b.m_NY.Clear();
+		b.m_Stair.Clear();
+		b.m_Cross2.Clear();
 		b.m_EdgeKeys.Clear();
 		b.m_Cross.Clear();
 		b.m_State = 2;
@@ -1690,7 +1880,7 @@ class DS_RoofSnow
 					if (ni < 0 || nj < 0 || ni >= nu || nj >= nv)
 						continue;
 					int nidx = nj * nu + ni;
-					if (grp[nidx] >= 0 || !Joined(b, b.m_H[cur], b.m_H[nidx]))
+					if (grp[nidx] >= 0 || !JoinedK(b, cur, nidx))
 						continue;
 					grp[nidx] = groups;
 					todo.Insert(nidx);
@@ -1764,10 +1954,17 @@ class DS_RoofSnow
 		else if (suu >= svv && suu > 0.0001)
 		{
 			gu = suh / suu;
+			gv = CrossSlope(b, cu, cv, h0, true);
 		}
 		else if (svv > 0.0001)
 		{
 			gv = svh / svv;
+			gu = CrossSlope(b, cu, cv, h0, false);
+		}
+		else
+		{
+			gu = CrossSlope(b, cu, cv, h0, false);
+			gv = CrossSlope(b, cu, cv, h0, true);
 		}
 		float worst = 0;
 		foreach (int q : list)
@@ -1777,6 +1974,41 @@ class DS_RoofSnow
 				worst = err;
 		}
 		return worst;
+	}
+
+	//! slope of a building's surface along one grid axis at a point (grid coordinates, metres), measured with a short
+	//! ray to either side: for surfaces sampled in one row only, whose samples do not tell it (0 when not found)
+	protected float CrossSlope(DS_RoofBuilding b, float u, float v, float h, bool alongV)
+	{
+		if (b.m_Kind != 0)
+			return 0;
+		int iu = Math.Round(u / b.m_StepU * 2.0);
+		int iv = Math.Round(v / b.m_StepV * 2.0);
+		int key = (iu * 4096 + iv) * 2;
+		if (alongV)
+			key++;
+		float known;
+		if (b.m_Cross2.Find(key, known))
+			return known;
+		vector axis = b.m_U;
+		if (alongV)
+			axis = b.m_V;
+		vector p = b.m_Origin + b.m_U * u + b.m_V * v;
+		vector pa = p + axis * CROSS_PROBE;
+		vector pb = p - axis * CROSS_PROBE;
+		float ha = SampleNear(b, pa[0], pa[2], h, 0.5, 0.5);
+		float hb = SampleNear(b, pb[0], pb[2], h, 0.5, 0.5);
+		float g = 0;
+		if (ha != NO_HIT && hb != NO_HIT)
+			g = (ha - hb) / (2.0 * CROSS_PROBE);
+		else if (ha != NO_HIT)
+			g = (ha - h) / CROSS_PROBE;
+		else if (hb != NO_HIT)
+			g = (h - hb) / CROSS_PROBE;
+		if (Math.AbsFloat(g) > 1.5)
+			g = 0;
+		b.m_Cross2.Set(key, g);
+		return g;
 	}
 
 	protected void AddRegion(array<int> list, map<int, int> regOf, array<ref map<int, bool>> sets, array<ref array<int>> lists, array<float> planes, float h0, float gu, float gv, float cu, float cv)
@@ -2114,7 +2346,7 @@ class DS_RoofSnow
 							pn = pc + nu;
 						else if (d2 == 3)
 							pn = pc - nu;
-						if (!looseSet.Contains(pn) || inPart.Contains(pn) || !Joined(b, b.m_H[pc], b.m_H[pn]))
+						if (!looseSet.Contains(pn) || inPart.Contains(pn) || !JoinedK(b, pc, pn))
 							continue;
 						inPart.Set(pn, true);
 						todo.Insert(pn);
