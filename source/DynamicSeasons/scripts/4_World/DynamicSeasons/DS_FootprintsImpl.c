@@ -17,6 +17,10 @@ class DS_Footprints
 	static const string MODEL_DIR = "DynamicSeasons\\data\\prints\\ds_print_";
 	//! height of the print's base plane above the snow cover (the cover floats a few centimetres over the terrain)
 	static const float ABOVE_COVER = 0.018;
+	//! snowfall fills a print: after FILL_HEAVY seconds at full snowfall, up to FILL_HEAVY + FILL_LIGHT in the lightest
+	//! snowfall (a print of a few centimetres takes most of an hour to fill in a steady snowfall)
+	static const float FILL_HEAVY = 600.0;
+	static const float FILL_LIGHT = 3000.0;
 
 	protected static ref array<ref DS_Print> s_Prints;
 	//! how far each print model reaches below its origin (binarising centres a model on its bounding box)
@@ -39,6 +43,9 @@ class DS_Footprints
 	static void OnStep(DayZPlayerImplement player, bool left)
 	{
 		if (!player || !DS_State.s_Valid)
+			return;
+		// sitting in a vehicle leaves no prints (they would push the prints of the walk out of the MAX_PRINTS kept)
+		if (player.IsInVehicle())
 			return;
 		if (!s_Prints)
 			s_Prints = new array<ref DS_Print>;
@@ -151,8 +158,8 @@ class DS_Footprints
 		float snowfall = g_Game.GetWeather().GetSnowfall().GetActual();
 		if (snowfall > 0.05)
 		{
-			// heavy snowfall covers a print within a few minutes, light snow takes much longer
-			float maxAge = 60.0 + 600.0 * (1.0 - Math.Clamp(snowfall, 0, 1));
+			// heavy snowfall covers a print within minutes, light snow takes most of an hour
+			float maxAge = FILL_HEAVY + FILL_LIGHT * (1.0 - Math.Clamp(snowfall, 0, 1));
 			while (s_Prints.Count() > 0 && s_Clock - s_Prints[0].m_Time > maxAge)
 				RemoveAt(0);
 		}

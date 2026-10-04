@@ -98,9 +98,14 @@ class DS_SnowCarpet
 	//! deep under a wide open roof (open sheds, canopies, fuel stations) no snow falls: the roof reaches this far
 	//! around the point in all four directions of the building (metres)
 	static const float WIDE_ROOF = 2.0;
-	//! level 0 cells: buildings whose centre lies this far beyond the cell are looked for as footprints (the probes
-	//! of a large triangle find the larger ones on their own)
-	static const float FOOT_REACH = 6.0;
+	//! a triangle over the footprint of a small building (up to FOOT_MAX across) is split even when its probes miss
+	//! it, down to FOOT_DEPTH (1.9 m triangles): the four probes of a smaller triangle cannot miss a building of 3 m
+	static const float FOOT_MAX = 8.0;
+	static const int FOOT_DEPTH = 2;
+	//! footprints are collected per tile of this size, from buildings whose centre lies up to FOOT_SEARCH beyond it
+	static const float FOOT_TILE = 40.0;
+	static const float FOOT_SEARCH = 30.0;
+	static const int FOOT_STRIDE = 8;
 	protected static DS_SnowCarpet s_Instance;
 	//! test harness: print every decision while building a cell
 	static bool s_DebugBuild;
@@ -169,9 +174,14 @@ class DS_SnowCarpet
 	// road rule in use: highest walkable surface the cover rises over, and whether it has to be wide
 	protected float m_RoadProbe;
 	protected bool m_RoadWide;
-	//! the level 0 cell being built: footprints of the buildings on it (centre x, z, unit axis x, z, half lengths
-	//! along the axis and across it), so a triangle over a small shed is split even when its four probes miss it
+	//! the level 0 cell being built: footprints of the roofed buildings reaching it (FOOT_STRIDE values each, see
+	//! FootTile). A triangle over a small shed is split even when its four probes miss it, and inside a footprint the
+	//! inside test falls back to the fire geometry where the view geometry has no roof
 	protected ref array<float> m_Foot;
+	//! the cell m_Foot was collected for
+	protected float m_FootX0 = -1000000;
+	protected float m_FootZ0 = -1000000;
+	protected ref map<int, ref array<float>> m_FootTiles;
 	//! objects known to have (true) or not to have a roof a metre or more above the ground, as the inside test needs
 	protected ref map<Object, bool> m_Roofed;
 
@@ -1189,7 +1199,8 @@ class DS_SnowCarpet
 		// the footprints of the cell the point lies in, as when the cell is built
 		float fx0 = Math.Floor(x / m_Cell) * m_Cell;
 		float fz0 = Math.Floor(z / m_Cell) * m_Cell;
-		CollectFootprints(fx0, fz0, m_Cell);
+		if (fx0 != m_FootX0 || fz0 != m_FootZ0)
+			CollectFootprints(fx0, fz0, m_Cell);
 		return ProbeBlocked(x, z);
 	}
 
@@ -1356,6 +1367,10 @@ class DS_SnowCarpet
 			Print(string.Format("[DSTest] build wall shape=%1 x0=%2 z0=%3 s=%4 corners=%5 %6 %7 inside=%8", shape, x0, z0, s, k[0], k[1], k[2], inside));
 		if (inside == 0)
 		{
+			// a room corner can reach into a triangle between its corners: when its middle lies inside a roofed
+			// building, most of it does, and it goes
+			if (FootOverlap(ax, az, bx, bz, cx, cz, false) && ProbeBlocked((ax + bx + cx) / 3.0, (az + bz + cz) / 3.0))
+				return;
 			cell.m_Tris.Insert(MakeTri(shape, x0, z0, s, h00, h10, h11, h01));
 			return;
 		}
@@ -1534,7 +1549,7 @@ class DS_SnowCarpet
 		{
 			TriCorners(shapeA, x0, z0, s, ax, az, bx, bz, cx, cz);
 			int blockedA = BlockedProbes(ax, az, bx, bz, cx, cz, centreA);
-			if (blockedA == 0 && FootOverlap(ax, az, bx, bz, cx, cz))
+			if (blockedA == 0 && depth < FOOT_DEPTH && FootOverlap(ax, az, bx, bz, cx, cz, true))
 				subdivide = true; // a building smaller than the triangle stands between its probes
 			else if (blockedA == 0)
 				addA = true;
@@ -1545,7 +1560,7 @@ class DS_SnowCarpet
 		{
 			TriCorners(shapeB, x0, z0, s, ax, az, bx, bz, cx, cz);
 			int blockedB = BlockedProbes(ax, az, bx, bz, cx, cz, centreB);
-			if (blockedB == 0 && FootOverlap(ax, az, bx, bz, cx, cz))
+			if (blockedB == 0 && depth < FOOT_DEPTH && FootOverlap(ax, az, bx, bz, cx, cz, true))
 				subdivide = true;
 			else if (blockedB == 0)
 				addB = true;
@@ -1573,18 +1588,60 @@ class DS_SnowCarpet
 			Print(string.Format("[DSTest] build keep x0=%1 z0=%2 s=%3 addA=%4 addB=%5", x0, z0, s, addA, addB));
 	}
 
-	//! the footprints of the buildings standing on a level 0 cell (as the inside test counts them: solid, at least
-	//! 3 x 3 x 2 m), see m_Foot
+	//! the footprints of the roofed buildings reaching a level 0 cell (see m_Foot), taken from the footprints of the
+	//! FOOT_TILE tiles it lies in
 	protected void CollectFootprints(float x0, float z0, float s)
 	{
 		if (!m_Foot)
 			m_Foot = new array<float>;
 		m_Foot.Clear();
-		vector c = Vector(x0 + s * 0.5, 0, z0 + s * 0.5);
+		m_FootX0 = x0;
+		m_FootZ0 = z0;
+		int tx0 = Math.Floor(x0 / FOOT_TILE);
+		int tz0 = Math.Floor(z0 / FOOT_TILE);
+		int tx1 = Math.Floor((x0 + s) / FOOT_TILE);
+		int tz1 = Math.Floor((z0 + s) / FOOT_TILE);
+		for (int tx = tx0; tx <= tx1; tx++)
+		{
+			for (int tz = tz0; tz <= tz1; tz++)
+			{
+				array<float> list = FootTile(tx, tz);
+				int n = list.Count() / FOOT_STRIDE;
+				for (int i = 0; i < n; i++)
+				{
+					int k = i * FOOT_STRIDE;
+					float reach = list[k + 7];
+					if (list[k] + reach < x0 || list[k] - reach > x0 + s || list[k + 1] + reach < z0 || list[k + 1] - reach > z0 + s)
+						continue;
+					for (int j = 0; j < FOOT_STRIDE; j++)
+						m_Foot.Insert(list[k + j]);
+				}
+			}
+		}
+	}
+
+	//! the footprints of the roofed buildings (as the inside test counts them: solid, at least 3 x 3 x 2 m) reaching a
+	//! FOOT_TILE tile: centre x, z, unit axis x, z, half lengths along the axis and across it, small (1 when it is
+	//! FOOT_MAX across or less), reach (half its diagonal). Collected once per tile
+	protected array<float> FootTile(int tx, int tz)
+	{
+		if (!m_FootTiles)
+			m_FootTiles = new map<int, ref array<float>>;
+		int key = tx * 65536 + tz;
+		array<float> list = m_FootTiles.Get(key);
+		if (list)
+			return list;
+		if (m_FootTiles.Count() > 4000)
+			m_FootTiles.Clear();
+		list = new array<float>;
+		m_FootTiles.Set(key, list);
+		float tileX0 = tx * FOOT_TILE;
+		float tileZ0 = tz * FOOT_TILE;
+		vector c = Vector(tileX0 + FOOT_TILE * 0.5, 0, tileZ0 + FOOT_TILE * 0.5);
 		c[1] = g_Game.SurfaceY(c[0], c[2]);
 		array<Object> objs = new array<Object>;
-		g_Game.GetObjectsAtPosition(c, s * 0.71 + FOOT_REACH, objs, null);
-		m_Cost += 0.02 + objs.Count() * 0.002;
+		g_Game.GetObjectsAtPosition(c, FOOT_TILE * 0.71 + FOOT_SEARCH, objs, null);
+		m_Cost += 0.2 + objs.Count() * 0.002;
 		foreach (Object o : objs)
 		{
 			if (!o || o.IsRock() || o.IsTree() || o.IsBush())
@@ -1598,8 +1655,6 @@ class DS_SnowCarpet
 				continue;
 			if (DS_Util.IsVegetation(o))
 				continue;
-			if (!Roofed(o))
-				continue;
 			vector mat[4];
 			o.GetTransform(mat);
 			vector au = Vector(mat[0][0], 0, mat[0][2]);
@@ -1609,13 +1664,26 @@ class DS_SnowCarpet
 			if (su < 0.01 || sv < 0.01)
 				continue;
 			vector centre = o.ModelToWorld((mm[0] + mm[1]) * 0.5);
-			m_Foot.Insert(centre[0]);
-			m_Foot.Insert(centre[2]);
-			m_Foot.Insert(au[0] / su);
-			m_Foot.Insert(au[2] / su);
-			m_Foot.Insert(size[0] * 0.5 * su);
-			m_Foot.Insert(size[2] * 0.5 * sv);
+			float hu = size[0] * 0.5 * su;
+			float hv = size[2] * 0.5 * sv;
+			float reach = Math.Sqrt(hu * hu + hv * hv);
+			if (centre[0] + reach < tileX0 || centre[0] - reach > tileX0 + FOOT_TILE || centre[2] + reach < tileZ0 || centre[2] - reach > tileZ0 + FOOT_TILE)
+				continue;
+			if (!Roofed(o))
+				continue;
+			float small = 0;
+			if (hu * 2.0 <= FOOT_MAX && hv * 2.0 <= FOOT_MAX)
+				small = 1;
+			list.Insert(centre[0]);
+			list.Insert(centre[2]);
+			list.Insert(au[0] / su);
+			list.Insert(au[2] / su);
+			list.Insert(hu);
+			list.Insert(hv);
+			list.Insert(small);
+			list.Insert(reach);
 		}
+		return list;
 	}
 
 	//! the object has a roof a metre or more above the ground somewhere over its box (roads, tracks, slabs and
@@ -1673,10 +1741,10 @@ class DS_SnowCarpet
 	{
 		if (!m_Foot)
 			return false;
-		int n = m_Foot.Count() / 6;
+		int n = m_Foot.Count() / FOOT_STRIDE;
 		for (int i = 0; i < n; i++)
 		{
-			int k = i * 6;
+			int k = i * FOOT_STRIDE;
 			float dx = x - m_Foot[k];
 			float dz = z - m_Foot[k + 1];
 			float u = dx * m_Foot[k + 2] + dz * m_Foot[k + 3];
@@ -1687,15 +1755,18 @@ class DS_SnowCarpet
 		return false;
 	}
 
-	//! a triangle and a footprint of m_Foot overlap (separating axes: the footprint's two and the triangle's three)
-	protected bool FootOverlap(float ax, float az, float bx, float bz, float cx, float cz)
+	//! a triangle and a footprint of m_Foot (of a small building only, when smallOnly) overlap (separating axes: the
+	//! footprint's two and the triangle's three)
+	protected bool FootOverlap(float ax, float az, float bx, float bz, float cx, float cz, bool smallOnly)
 	{
 		if (!m_Foot)
 			return false;
-		int n = m_Foot.Count() / 6;
+		int n = m_Foot.Count() / FOOT_STRIDE;
 		for (int i = 0; i < n; i++)
 		{
-			int k = i * 6;
+			int k = i * FOOT_STRIDE;
+			if (smallOnly && m_Foot[k + 6] < 0.5)
+				continue;
 			float fx = m_Foot[k];
 			float fz = m_Foot[k + 1];
 			float ux = m_Foot[k + 2];

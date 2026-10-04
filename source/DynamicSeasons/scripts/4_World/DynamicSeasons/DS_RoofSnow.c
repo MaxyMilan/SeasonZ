@@ -3787,11 +3787,11 @@ class DS_RoofSnow
 	}
 
 	//! test harness: the structures within a radius of a point whose snow is complete (sampled at the detail of
-	//! their distance, their stage placed); pending counts the others there, plus 1000 for every tile around the
-	//! point not scanned yet
-	void DebugReady(vector c, float radius, array<DS_RoofBuilding> ready, out int pending)
+	//! their distance, their stage placed), the others there (waiting), and the tiles around the point not scanned
+	//! yet
+	void DebugReady(vector c, float radius, array<DS_RoofBuilding> ready, array<DS_RoofBuilding> waiting, out int tiles)
 	{
-		pending = 0;
+		tiles = 0;
 		// tiles around the point that are not scanned yet hold structures nobody knows of so far
 		int tx0 = Math.Floor((c[0] - radius) / TILE);
 		int tx1 = Math.Floor((c[0] + radius) / TILE);
@@ -3803,7 +3803,7 @@ class DS_RoofSnow
 			{
 				DS_RoofTile st = m_Tiles.Get(tx * 65536 + tz);
 				if (!st || !st.m_Scanned)
-					pending += 1000;
+					tiles++;
 			}
 		}
 		for (int i = 0; i < m_Tiles.Count(); i++)
@@ -3826,7 +3826,7 @@ class DS_RoofSnow
 				if (done)
 					ready.Insert(b);
 				else
-					pending++;
+					waiting.Insert(b);
 			}
 		}
 	}
