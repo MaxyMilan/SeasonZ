@@ -1,4 +1,4 @@
-# SeasonZ (v0.4.0)
+# SeasonZ (v0.5.0)
 
 Seasons for DayZ Chernarus, driven by the real date or by an adjustable season clock, with a climate based on Kyiv.
 
