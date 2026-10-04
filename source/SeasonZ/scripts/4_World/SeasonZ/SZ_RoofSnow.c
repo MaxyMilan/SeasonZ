@@ -302,9 +302,13 @@ class SZ_RoofSnow
 	//! carry snow like buildings. Roads, lines, wires, poles, lamps and markings on the ground do not
 	static bool IsPlainStructure(string shape)
 	{
-		if (shape.IndexOf("\\structures\\") < 0)
+		// the Livonia objects placed on Chernarus (wrapped hay bales, wrecks, sheds, pipes) lie in structures_bliss
+		if (shape.IndexOf("\\structures\\") < 0 && shape.IndexOf("\\structures_bliss\\") < 0)
 			return false;
 		if (shape.IndexOf("\\roads\\bridges\\") >= 0)
+			return true;
+		// transformers carry snow on their housings and bases; the poles, wires and cables around them do not
+		if (shape.IndexOf("power_transformer") >= 0 && shape.IndexOf("cable") < 0)
 			return true;
 		array<string> skip = {"\\roads\\", "\\rail\\tracks\\", "rail_pole", "rail_signal", "rail_crossing_barrier", "rail_linebreak", "decal", "power_", "lamp_", "wire", "football", "garbage_ground", "_line", "cable", "antenna"};
 		foreach (string s : skip)
@@ -504,8 +508,9 @@ class SZ_RoofSnow
 			string shape = o.GetShapeName();
 			shape.ToLower();
 			// the long straw stack: its geometry lies inside the hay on top and sticks out of it at the ends, so its
-			// snow would be hidden on top and stand as white blocks at the ends
-			if (shape.IndexOf("farm_strawstack") >= 0)
+			// snow would be hidden on top and stand as white blocks at the ends. The stack of wrapped bales: its
+			// geometry runs as a slope from the lower bales to the upper ones, the snow would stand there as a plate
+			if (shape.IndexOf("farm_strawstack") >= 0 || shape.IndexOf("haybale_packed_stack") >= 0)
 				continue;
 			// walls keep the fine grid of thin tops, whatever their bounding box
 			bool wall = shape.IndexOf("\\walls\\") >= 0;
@@ -4472,6 +4477,55 @@ class SZ_RoofSnow
 					known.Set(b.m_Obj, true);
 			}
 		}
+	}
+
+	//! test harness: the structures the roof snow keeps within a radius of a point, and every other object there with
+	//! the reason it is not one of them
+	string DebugNear(float x, float z, float radius)
+	{
+		map<Object, bool> known = new map<Object, bool>;
+		string s = "";
+		for (int i = 0; i < m_Tiles.Count(); i++)
+		{
+			SZ_RoofTile t = m_Tiles.GetElement(i);
+			if (!t)
+				continue;
+			foreach (SZ_RoofBuilding b : t.m_Buildings)
+			{
+				if (!b.m_Obj)
+					continue;
+				vector p = b.m_Obj.GetPosition();
+				if ((p[0] - x) * (p[0] - x) + (p[2] - z) * (p[2] - z) > radius * radius)
+					continue;
+				known.Set(b.m_Obj, true);
+				s += string.Format(" [%1 kind=%2 small=%3 wall=%4 geo=%5 state=%6 tris=%7 objs=%8]", b.m_Obj.GetShapeName(), b.m_Kind, b.m_Small, b.m_Wall, b.m_Geo, b.m_State, b.m_Tris.Count(), b.m_Objects.Count());
+			}
+		}
+		array<Object> objs = new array<Object>;
+		g_Game.GetObjectsAtPosition(Vector(x, g_Game.SurfaceY(x, z), z), radius, objs, null);
+		foreach (Object o : objs)
+		{
+			if (!o || known.Contains(o) || SZ_Util.IsVegetation(o))
+				continue;
+			string shape = o.GetShapeName();
+			if (shape == "")
+				continue;
+			shape.ToLower();
+			vector mm[2];
+			o.ClippingInfo(mm);
+			vector size = mm[1] - mm[0];
+			vector op = o.GetPosition();
+			int tx = Math.Floor(op[0] / TILE);
+			int tz = Math.Floor(op[2] / TILE);
+			SZ_RoofTile ot = m_Tiles.Get(tx * 65536 + tz);
+			string tileState = "none";
+			if (ot && ot.m_Scanned)
+				tileState = "scanned";
+			else if (ot)
+				tileState = "unscanned";
+			s += string.Format(" {%1 size=%2 building=%3 plain=%4 movable=%5 path=%6 tile=%7}", shape, size, o.IsBuilding(), IsPlainStructure(shape), IsMovable(o), SZ_TreeSwap.IsPath(o), tileState);
+		}
+		return s;
 	}
 
 	//! test harness: samples the structure nearest to a point once more and prints its ray grid row by row: the hit

@@ -851,6 +851,49 @@ class SZ_SnowCarpet
 		return string.Format("cells=%1 built=%2 missing=%3 empty=%4 stage0=%5 partial=%6 retired=%7 scan=%8 objects=%9", m_WLevel.Count(), built, missing, empty, unstaged, partial, m_Retired.Count(), m_Scan, m_Objects) + " problems:" + list + " empty:" + emptyList;
 	}
 
+	//! test harness: objects of the cover per level; for level 0 also the cells split around buildings (more than two
+	//! triangles) and their objects by distance from the camera (0-50, 50-100, 100 m and more)
+	string DebugLevels()
+	{
+		string s = "";
+		array<int> near = {0, 0, 0};
+		for (int level = 0; level < LEVELS; level++)
+		{
+			int cells = 0;
+			int objs = 0;
+			int split = 0;
+			int splitObjs = 0;
+			map<int, ref SZ_SnowCell> lm = m_Cells[level];
+			float size = Size(level);
+			for (int i = 0; i < lm.Count(); i++)
+			{
+				SZ_SnowCell c = lm.GetElement(i);
+				if (!c)
+					continue;
+				cells++;
+				objs += c.m_Objects.Count();
+				if (level == 0 && c.m_Tris.Count() > 2)
+				{
+					split++;
+					splitObjs += c.m_Objects.Count();
+					float dx = (c.m_X + 0.5) * size - m_Camera[0];
+					float dz = (c.m_Z + 0.5) * size - m_Camera[2];
+					float d = Math.Sqrt(dx * dx + dz * dz);
+					int bin = 2;
+					if (d < 50.0)
+						bin = 0;
+					else if (d < 100.0)
+						bin = 1;
+					near[bin] = near[bin] + c.m_Objects.Count();
+				}
+			}
+			s += string.Format(" L%1 cells=%2 objects=%3", level, cells, objs);
+			if (level == 0)
+				s += string.Format(" split=%1 splitObjects=%2 (0-50m %3, 50-100m %4, 100m+ %5)", split, splitObjs, near[0], near[1], near[2]);
+		}
+		return s;
+	}
+
 	//! test harness: height of the built cover above the terrain at a point and the level drawn there (-1 = none)
 	float DebugCoverAt(float x, float z, out int level)
 	{
