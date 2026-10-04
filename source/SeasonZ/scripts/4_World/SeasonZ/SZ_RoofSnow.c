@@ -75,6 +75,8 @@ class SZ_RoofBuilding
 	bool m_Small;
 	//! a wall: a flat top becomes one strip of snow (its edges are found like those of the small structures)
 	bool m_Wall;
+	//! a rock or stone
+	bool m_Rock;
 	//! the geometry the rays look for: the fire geometry, or the collision geometry of a structure that has no fire
 	//! geometry (hay stacks, some pumps and racks)
 	int m_Geo;
@@ -214,6 +216,10 @@ class SZ_RoofSnow
 	//! across the row is measured with a short ray this far to either side, and a surface ends at an edge with no
 	//! sample of it behind: its slope towards the edge is measured this far in
 	static const float CROSS_PROBE = 0.25;
+	//! the probes of CrossSlope agree on a straight surface within this
+	static const float CROSS_AGREE = 0.05;
+	//! small structures: no snow piece below the lowest or above the highest point found on them by more than this
+	static const float RANGE_TOL = 0.25;
 	static const float EDGE_PROBE = 0.2;
 	//! surfaces lower than this above the ground are checked for a see-through roof over them (see SampleAt)
 	static const float SEE_THROUGH = 1.5;
@@ -236,6 +242,10 @@ class SZ_RoofSnow
 	static const float FRAME_MS = 4.0;
 	static const float URGENT_MS = 8.0;
 	static const float URGENT_DIST = 60.0;
+	//! structures looked at per frame once their snow is built: the update goes round all of them in turn (a town
+	//! has a few thousand within KEEP_RADIUS, a full round takes a few tenths of a second), instead of checking every
+	//! one of them every frame
+	static const int VISITS_PER_FRAME = 250;
 	//! the same in CPU ticks (0 until the tick length is known)
 	protected static int s_BudgetTicks;
 	protected static int s_UrgentTicks;
@@ -532,6 +542,7 @@ class SZ_RoofSnow
 			b.m_Kind = kind;
 			b.m_Small = small;
 			b.m_Wall = wall && kind == 1;
+			b.m_Rock = o.IsRock();
 			b.m_Ground = g_Game.SurfaceY(p[0], p[2]);
 			tile.m_Buildings.Insert(b);
 		}
@@ -780,10 +791,12 @@ class SZ_RoofSnow
 		BuildTris(b);
 	}
 
-	//! a sample on a thin part standing out of a roof (a mast, a pipe, a bracket) would fold the snow up to it in steep
-	//! flaps: where the roof, carried on from two samples on either side, runs below it by more than this in both
-	//! directions, the sample takes the roof's height. The snow lies on and the thin part stands out of it (a ridge, the
-	//! top of a hipped roof and a chimney wider than one sample are carried on to their own height and stay)
+	//! a sample on a thin part standing out of a roof (a mast foot, a pipe, a bracket, a vent) would fold the snow up to
+	//! it in steep flaps: where the roof, carried on from two samples beyond it, runs below it by more than this in both
+	//! directions, the sample takes the roof's height. The snow lies on and the thin part stands out of it. Near a roof
+	//! edge the roof is carried on from the side that has two samples. A part two samples wide is flattened as well when
+	//! it stands out less than a fold (a taller one, a chimney, keeps its own cap). A ridge, a hip, the top of a hipped
+	//! roof and a parapet are carried on to their own height and stay
 	static const float SPIKE = 0.25;
 
 	protected void FlattenSpikes(SZ_RoofBuilding b)
@@ -792,41 +805,105 @@ class SZ_RoofSnow
 			return;
 		int nu = b.m_NU;
 		int nv = b.m_NV;
+		float fold = Math.Min(b.m_StepU, b.m_StepV) * 1.35;
 		array<int> which = new array<int>;
 		array<float> level = new array<float>;
-		for (int j = 2; j < nv - 2; j++)
+		for (int j = 0; j < nv; j++)
 		{
-			for (int i = 2; i < nu - 2; i++)
+			for (int i = 0; i < nu; i++)
 			{
 				int k = j * nu + i;
-				float h = b.m_H[k];
-				if (h == NO_HIT)
+				if (b.m_H[k] == NO_HIT)
 					continue;
-				float eu = CarriedOn(b, k, 1);
-				if (eu == NO_HIT || h - eu < SPIKE)
+				float eu = SpikeBase(b, i, j, 1, 0, fold);
+				if (eu == NO_HIT)
 					continue;
-				float ev = CarriedOn(b, k, nu);
-				if (ev == NO_HIT || h - ev < SPIKE)
+				float ev = SpikeBase(b, i, j, 0, 1, fold);
+				if (ev == NO_HIT)
 					continue;
 				which.Insert(k);
-				level.Insert((eu + ev) * 0.5);
+				// the higher of the two: on a ridge the line along it keeps the ridge's height
+				level.Insert(Math.Max(eu, ev));
 			}
 		}
 		for (int n = 0; n < which.Count(); n++)
 			b.m_H[which[n]] = level[n];
 	}
 
-	//! the roof height at sample k carried on from the two samples on either side of it (step d: 1 along U, the row
-	//! length along V), the higher of the two; NO_HIT when one of them is missing
-	protected float CarriedOn(SZ_RoofBuilding b, int k, int d)
+	//! the height of grid sample (i, j); NO_HIT off the grid
+	protected float GridAt(SZ_RoofBuilding b, int i, int j)
 	{
-		float l1 = b.m_H[k - d];
-		float l2 = b.m_H[k - 2 * d];
-		float r1 = b.m_H[k + d];
-		float r2 = b.m_H[k + 2 * d];
-		if (l1 == NO_HIT || l2 == NO_HIT || r1 == NO_HIT || r2 == NO_HIT)
+		if (i < 0 || j < 0 || i >= b.m_NU || j >= b.m_NV)
 			return NO_HIT;
-		return Math.Max(l1 + (l1 - l2), r1 + (r1 - r2));
+		return b.m_H[j * b.m_NU + i];
+	}
+
+	//! the roof carried on to sample (i, j) along (di, dj) from the samples n and n + dn steps away (n the first step
+	//! beyond the part standing out, dist = |n|, dn -1 or 1); NO_HIT when one of the two is missing
+	protected float CarryFrom(SZ_RoofBuilding b, int i, int j, int di, int dj, int n, int dist, int dn)
+	{
+		float a1 = GridAt(b, i + n * di, j + n * dj);
+		if (a1 == NO_HIT)
+			return NO_HIT;
+		float a2 = GridAt(b, i + (n + dn) * di, j + (n + dn) * dj);
+		if (a2 == NO_HIT)
+			return NO_HIT;
+		return a1 + (a1 - a2) * dist;
+	}
+
+	//! the roof height under sample (i, j) when the sample stands out of the roof along (di, dj): alone, or together
+	//! with the next or the previous sample when both stand out less than a fold; NO_HIT when it does not. Whether it
+	//! stands out is judged on the roof carried on from beyond both ends, the higher one (NO_HIT is the lowest of all
+	//! heights, so a missing end counts for nothing): a ridge and a hip carry on to their own height
+	protected float SpikeBase(SZ_RoofBuilding b, int i, int j, int di, int dj, float fold)
+	{
+		float h = GridAt(b, i, j);
+		float lo = CarryFrom(b, i, j, di, dj, -1, 1, -1);
+		float hi = CarryFrom(b, i, j, di, dj, 1, 1, 1);
+		float e = Math.Max(lo, hi);
+		if (e == NO_HIT)
+			return NO_HIT;
+		if (h - e >= SPIKE)
+			return Across(b, i, j, di, dj, -1, 1, e);
+		// two samples wide: the low end stays, the high end moves past the next sample (or the other way round)
+		if (h - lo >= SPIKE)
+		{
+			float e2 = Math.Max(lo, CarryFrom(b, i, j, di, dj, 2, 2, 1));
+			if (e2 != NO_HIT && h - e2 >= SPIKE && h - e2 <= fold && PairOut(b, i + di, j + dj, di, dj, -1, fold))
+				return Across(b, i, j, di, dj, -1, 2, e2);
+		}
+		if (h - hi >= SPIKE)
+		{
+			float e3 = Math.Max(hi, CarryFrom(b, i, j, di, dj, -2, 2, -1));
+			if (e3 != NO_HIT && h - e3 >= SPIKE && h - e3 <= fold && PairOut(b, i - di, j - dj, di, dj, 1, fold))
+				return Across(b, i, j, di, dj, -2, 1, e3);
+		}
+		return NO_HIT;
+	}
+
+	//! the roof under a part standing out, from the samples s (below 0) and t (above 0) steps away beyond its ends: on
+	//! the straight line between them (exact on a plane, a little below a ridge), or the carried on height e where one
+	//! of them is missing
+	protected float Across(SZ_RoofBuilding b, int i, int j, int di, int dj, int s, int t, float e)
+	{
+		float a = GridAt(b, i + s * di, j + s * dj);
+		float c = GridAt(b, i + t * di, j + t * dj);
+		if (a == NO_HIT || c == NO_HIT)
+			return e;
+		float f = -s;
+		f = f / (t - s);
+		return a + (c - a) * f;
+	}
+
+	//! the other sample of a part two samples wide stands out as well: the part is this sample and the one at back
+	//! (-1 or 1 steps along (di, dj)), carried on from beyond both
+	protected bool PairOut(SZ_RoofBuilding b, int i, int j, int di, int dj, int back, float fold)
+	{
+		float h = GridAt(b, i, j);
+		if (h == NO_HIT)
+			return false;
+		float e = Math.Max(CarryFrom(b, i, j, di, dj, 2 * back, 2, back), CarryFrom(b, i, j, di, dj, -back, 1, -back));
+		return e != NO_HIT && h - e >= SPIKE && h - e <= fold;
 	}
 
 	//! two samples on one continuous surface: both on the object and no step between them
@@ -1065,10 +1142,13 @@ class SZ_RoofSnow
 			within = STEP_REFINE;
 		vector ps = SamplePos(b, si, sj);
 		vector px = SamplePos(b, xi, xj);
-		if (!slopeKnown && b.m_Kind == 0)
+		bool measured = b.m_Kind == 0 && SZ_State.s_DebugRoofCorner;
+		if ((!slopeKnown || measured) && b.m_Kind == 0)
 		{
 			// no sample of this surface behind it: a short ray just inside measures its slope towards the edge, so
-			// the end found follows a sloping roof instead of a level line above it
+			// the end found follows a sloping roof instead of a level line above it. Buildings measure it always: at
+			// a corner or the foot of a hip the sample behind lies on the level eave while the roof falls away
+			// towards the edge, and the snow would run on level as a shelf above the overhang
 			vector pf = ps + (px - ps) * (EDGE_PROBE / step);
 			float hp = SampleNear(b, pf[0], pf[2], hs, 0.4, 0.4);
 			if (hp != NO_HIT && Math.AbsFloat(hp - hs) <= EDGE_PROBE * 1.5)
@@ -1076,6 +1156,9 @@ class SZ_RoofSnow
 		}
 		float lo = 0;
 		float up = 1;
+		// the farthest point found on the surface and its height there
+		float tLo = 0;
+		float hLo = hs;
 		for (int k = 0; k < EDGE_STEPS; k++)
 		{
 			float mid = (lo + up) * 0.5;
@@ -1084,7 +1167,14 @@ class SZ_RoofSnow
 			// a short ray around the expected height (an overhang up to 1.5 m above it still ends the surface)
 			float hm = SampleNear(b, pm[0], pm[2], expect, 1.5, 0.4);
 			if (hm != NO_HIT && Math.AbsFloat(hm - expect) <= within)
+			{
 				lo = mid;
+				if (mid > tLo)
+				{
+					tLo = mid;
+					hLo = hm;
+				}
+			}
 			else
 				up = mid;
 		}
@@ -1093,6 +1183,9 @@ class SZ_RoofSnow
 		float t = up;
 		vector c = ps + (px - ps) * t;
 		c[1] = hs + slope * step * t;
+		// at the height the rays found the surface (carried on to the rim), not the one predicted
+		if (measured && tLo > 0.05)
+			c[1] = hs + (hLo - hs) * (t / tLo);
 		b.m_Cross.Set(key, c);
 	}
 
@@ -1444,8 +1537,18 @@ class SZ_RoofSnow
 			AddQuad(b, gi, gj, span, h00, h10, h11, h01);
 			return;
 		}
-		// the higher diagonal keeps the snow on top of ridges instead of inside them
-		if ((h00 + h11) >= (h10 + h01))
+		// the diagonal the roof runs straight along: a ridge, a hip or a valley across the square lies on it. Where
+		// that is unclear, the higher one keeps the snow on top of ridges instead of inside them (in a valley it would
+		// bridge it, a row of steps along the valley)
+		bool alongA = (h00 + h11) >= (h10 + h01);
+		if (SZ_State.s_DebugRoofFillDiag)
+		{
+			float bendA = Bend(b, gi, gj, span, span, h00, h11);
+			float bendB = Bend(b, gi + span, gj, -span, span, h10, h01);
+			if (bendA >= 0 && bendB >= 0 && Math.AbsFloat(bendA - bendB) > 0.05)
+				alongA = bendA < bendB;
+		}
+		if (alongA)
 		{
 			AddTri(b, 0, gi, gj, su, sv, h00, h10, h11, h01);
 			AddTri(b, 1, gi, gj, su, sv, h00, h10, h11, h01);
@@ -1455,6 +1558,30 @@ class SZ_RoofSnow
 			AddTri(b, 2, gi, gj, su, sv, h00, h10, h11, h01);
 			AddTri(b, 3, gi, gj, su, sv, h00, h10, h11, h01);
 		}
+	}
+
+	//! how much the roof bends along a diagonal of a grid square, from corner (i, j) in steps (di, dj) to the opposite
+	//! corner: the mean size of the second differences of the heights on the line through the two corners (h0, h1) and
+	//! the samples beyond them; -1 when both samples beyond are off the roof
+	protected float Bend(SZ_RoofBuilding b, int i, int j, int di, int dj, float h0, float h1)
+	{
+		float sum = 0;
+		int n = 0;
+		float before = GridAt(b, i - di, j - dj);
+		if (before != NO_HIT)
+		{
+			sum += Math.AbsFloat(before - 2.0 * h0 + h1);
+			n++;
+		}
+		float after = GridAt(b, i + 2 * di, j + 2 * dj);
+		if (after != NO_HIT)
+		{
+			sum += Math.AbsFloat(h0 - 2.0 * h1 + after);
+			n++;
+		}
+		if (n == 0)
+			return -1;
+		return sum / n;
 	}
 
 	//! one square of span x span grid cells on a plane (its corners within a few centimetres of one plane)
@@ -1553,6 +1680,8 @@ class SZ_RoofSnow
 		// pieces would bridge. Buildings keep theirs (eaves and overhangs often have no fire geometry)
 		if (b.m_Kind == 1 || b.m_Small)
 			DropUnsupported(b);
+		if (b.m_Small && SZ_State.s_DebugRoofCorner)
+			DropOutOfRange(b);
 		b.m_Job = null;
 		b.m_H.Clear();
 		b.m_NY.Clear();
@@ -1647,7 +1776,7 @@ class SZ_RoofSnow
 					continue;
 				int before = b.m_Tris.Count();
 				if (FullCell(b, i, j))
-					AddSquare(b, i, j, 1);
+					AddFillSquare(b, i, j);
 				else if (b.m_Cross.Count() > 0)
 					BuildEdgeCell(b, i, j, null, null);
 				// only the new pieces over one of the open points of the cell stay
@@ -1670,6 +1799,41 @@ class SZ_RoofSnow
 						b.m_Tris.RemoveOrdered(n);
 				}
 			}
+		}
+	}
+
+	//! the grid square of a cell filling a gap. Where a valley or a ridge runs across the cell its two diagonals give
+	//! different surfaces: AddSquare takes the higher one, which bridges a valley above the polygons on either side and
+	//! shows as a row of steps along it. A ray at the cell's centre finds the roof there; the diagonal that runs closest
+	//! to it is taken (the lower one when the ray finds nothing, so the piece stays under the polygons)
+	protected void AddFillSquare(SZ_RoofBuilding b, int i, int j)
+	{
+		float h00 = HAt(b, i, j);
+		float h10 = HAt(b, i + 1, j);
+		float h11 = HAt(b, i + 1, j + 1);
+		float h01 = HAt(b, i, j + 1);
+		float da = (h00 + h11) * 0.5;
+		float db = (h10 + h01) * 0.5;
+		float apart = Math.AbsFloat(da - db);
+		if (!SZ_State.s_DebugRoofFillDiag || apart < 0.03 || Planar(h00, h10, h11, h01))
+		{
+			AddSquare(b, i, j, 1);
+			return;
+		}
+		vector w = b.m_Origin + b.m_U * ((i + 0.5) * b.m_StepU) + b.m_V * ((j + 0.5) * b.m_StepV);
+		float hc = SampleNear(b, w[0], w[2], (da + db) * 0.5, apart + 0.3, apart + 0.3);
+		bool alongA = da <= db;
+		if (hc != NO_HIT)
+			alongA = Math.AbsFloat(hc - da) <= Math.AbsFloat(hc - db);
+		if (alongA)
+		{
+			AddTri(b, 0, i, j, b.m_StepU, b.m_StepV, h00, h10, h11, h01);
+			AddTri(b, 1, i, j, b.m_StepU, b.m_StepV, h00, h10, h11, h01);
+		}
+		else
+		{
+			AddTri(b, 2, i, j, b.m_StepU, b.m_StepV, h00, h10, h11, h01);
+			AddTri(b, 3, i, j, b.m_StepU, b.m_StepV, h00, h10, h11, h01);
 		}
 	}
 
@@ -1763,6 +1927,37 @@ class SZ_RoofSnow
 			}
 			if (bad >= 2)
 				b.m_Tris.Remove(i);
+		}
+	}
+
+	//! small structures: drops the pieces reaching well below the lowest or above the highest point the rays found
+	//! on the structure. They belong to a plane carried on past it: on a barrier basket the wire rim and the sand
+	//! inside it make a steep plane that runs down the basket's side
+	protected void DropOutOfRange(SZ_RoofBuilding b)
+	{
+		float lo = 1000000;
+		float hi = -1000000;
+		foreach (float h : b.m_H)
+		{
+			if (h == NO_HIT)
+				continue;
+			lo = Math.Min(lo, h);
+			hi = Math.Max(hi, h);
+		}
+		if (hi < lo)
+			return;
+		array<vector> cs = new array<vector>;
+		for (int i = b.m_Tris.Count() - 1; i >= 0; i--)
+		{
+			PieceCorners(b.m_Tris[i], cs);
+			foreach (vector c : cs)
+			{
+				if (c[1] < lo - RANGE_TOL || c[1] > hi + RANGE_TOL)
+				{
+					b.m_Tris.Remove(i);
+					break;
+				}
+			}
 		}
 	}
 
@@ -2421,12 +2616,37 @@ class SZ_RoofSnow
 		float ha = SampleNear(b, pa[0], pa[2], h, 0.5, 0.5);
 		float hb = SampleNear(b, pb[0], pb[2], h, 0.5, 0.5);
 		float g = 0;
-		if (ha != NO_HIT && hb != NO_HIT)
-			g = (ha - hb) / (2.0 * CROSS_PROBE);
-		else if (ha != NO_HIT)
-			g = (ha - h) / CROSS_PROBE;
-		else if (hb != NO_HIT)
-			g = (h - hb) / CROSS_PROBE;
+		if (!SZ_State.s_DebugRoofCorner)
+		{
+			if (ha != NO_HIT && hb != NO_HIT)
+				g = (ha - hb) / (2.0 * CROSS_PROBE);
+			else if (ha != NO_HIT)
+				g = (ha - h) / CROSS_PROBE;
+			else if (hb != NO_HIT)
+				g = (h - hb) / CROSS_PROBE;
+		}
+		else if (ha != NO_HIT && hb != NO_HIT)
+		{
+			// only a surface running on straight through the point: the two probes can land on different parts (the
+			// wire rim and the sand of a barrier basket), and a strip of snow tilted by their difference stands out
+			if (Math.AbsFloat((ha - h) - (h - hb)) <= CROSS_AGREE)
+				g = (ha - hb) / (2.0 * CROSS_PROBE);
+		}
+		else if (ha != NO_HIT || hb != NO_HIT)
+		{
+			// one side only (the edge of the surface): a second probe further out on that side has to agree
+			float side = 1.0;
+			float h1 = ha;
+			if (ha == NO_HIT)
+			{
+				side = -1.0;
+				h1 = hb;
+			}
+			vector p2 = p + axis * (2.0 * CROSS_PROBE * side);
+			float h2 = SampleNear(b, p2[0], p2[2], h1 + (h1 - h), 0.3, 0.3);
+			if (h2 != NO_HIT && Math.AbsFloat((h2 - h1) - (h1 - h)) <= CROSS_AGREE)
+				g = (h1 - h) / CROSS_PROBE * side;
+		}
 		if (Math.AbsFloat(g) > 1.5)
 			g = 0;
 		b.m_Cross2.Set(key, g);
@@ -2739,9 +2959,14 @@ class SZ_RoofSnow
 			map<int, bool> looseSet = new map<int, bool>;
 			foreach (int l0 : loose)
 				looseSet.Set(l0, true);
+			// an uneven part of a building's roof (a curved porch roof, a bulge) is left to the grid pieces: the planes
+			// around it become polygons, its cells are holes of the surface (see Covered) filled with grid squares.
+			// Other structures (stones) are drawn on the grid as a whole
+			bool keepUneven = SZ_State.s_DebugRoofUneven && b.m_Obj && b.m_Obj.IsBuilding();
+			map<int, bool> uneven = new map<int, bool>;
 			foreach (int l1 : loose)
 			{
-				if (regOf.Contains(l1))
+				if (regOf.Contains(l1) || uneven.Contains(l1))
 					continue;
 				array<int> part = new array<int>;
 				map<int, bool> inPart = new map<int, bool>;
@@ -2778,7 +3003,21 @@ class SZ_RoofSnow
 				{
 					if (SZ_State.s_DebugCapLog)
 						Print(string.Format("[DSTest] capsplit uneven part of %1 samples at %2", part.Count(), CapSample(b, part[0])));
-					return false;
+					if (!keepUneven)
+						return false;
+					foreach (int uk : part)
+						uneven.Set(uk, true);
+					continue;
+				}
+				// one or two samples at a building's roof edge or corner that do not lie on the planes beside them
+				// (a fascia, the foot of a hip) but join them: a flat polygon of their own would stand out of the roof
+				// as a shelf. The planes beside them reach to them and the grid pieces fill the rest (FillGaps). A
+				// chimney top is not joined to the roof and keeps its own cap
+				if (keepUneven && part.Count() <= 2 && JoinsPlane(b, part, regOf))
+				{
+					foreach (int jk : part)
+						uneven.Set(jk, true);
+					continue;
 				}
 				AddRegion(part, regOf, sets, lists, planes, h0, gu, gv, cu, cv);
 				if (SZ_State.s_DebugCapLog)
@@ -2797,6 +3036,38 @@ class SZ_RoofSnow
 			c = parent[c];
 		}
 		return c;
+	}
+
+	//! one of the samples of a part joins a neighbour that lies on a plane (no step between them)
+	protected bool JoinsPlane(SZ_RoofBuilding b, array<int> part, map<int, int> regOf)
+	{
+		int nu = b.m_NU;
+		int total = b.m_H.Count();
+		foreach (int k : part)
+		{
+			int ki = k % nu;
+			for (int d = 0; d < 4; d++)
+			{
+				int n = k + 1;
+				if (d == 0 && ki + 1 >= nu)
+					continue;
+				if (d == 1)
+				{
+					if (ki == 0)
+						continue;
+					n = k - 1;
+				}
+				else if (d == 2)
+					n = k + nu;
+				else if (d == 3)
+					n = k - nu;
+				if (n < 0 || n >= total)
+					continue;
+				if (regOf.Contains(n) && JoinedK(b, k, n))
+					return true;
+			}
+		}
+		return false;
 	}
 
 	//! where plane r ends between a sample on it and a neighbour off it, found with rays (a step: a chimney, the wall
@@ -3295,7 +3566,9 @@ class SZ_RoofSnow
 	protected float SlabFor(SZ_RoofBuilding b)
 	{
 		float depth = DepthFor(b);
-		if (b.m_Kind == 0)
+		// rocks: the snow lies on their flatter faces and ends where a face gets too steep, so the edge of a thick
+		// slab stands there as a white plate; they get the thin slab of walls
+		if (b.m_Kind == 0 && !(b.m_Rock && SZ_State.s_DebugRockThin))
 		{
 			float slab = Math.Clamp(depth * SLAB_PER_CM, SLAB_MIN, SLAB_MAX);
 			// from 5 cm the cover is closed: it hides the roofs whose drawn surface rises above their geometry
@@ -3682,8 +3955,9 @@ class SZ_RoofSnow
 
 		int count = m_Work.Count();
 		int visited = 0;
+		int looked = 0;
 		bool busy = false;
-		while (m_Cost < 20.0 && visited < count)
+		while (m_Cost < 20.0 && visited < count && looked < VISITS_PER_FRAME)
 		{
 			if (m_Cursor >= count)
 				m_Cursor = 0;
@@ -3720,6 +3994,7 @@ class SZ_RoofSnow
 			{
 				if (!b.m_Obj)
 					continue;
+				looked++;
 				vector bp = b.m_Obj.GetPosition();
 				float dx = bp[0] - camera[0];
 				float dz = bp[2] - camera[2];
@@ -4104,13 +4379,25 @@ class SZ_RoofSnow
 		}
 		if (!best)
 			return "none";
+		array<vector> dbgCs = new array<vector>;
 		for (int k = 0; k < best.m_Tris.Count(); k++)
 		{
 			SZ_RoofTri tr = best.m_Tris[k];
 			string objPos = "-";
 			if (k < best.m_Objects.Count() && best.m_Objects[k])
 				objPos = best.m_Objects[k].GetPosition().ToString();
-			Print(string.Format("[DSTest] rooftri %1 %2%3 centre=%4 u=%5 v=%6 ny=%7 drop=%8 obj=%9", k, ShapeName(tr.m_Shape), tr.m_Variant, tr.m_Center, tr.m_AxisU.Length(), tr.m_AxisV.Length(), tr.m_Normal[1], tr.m_Drop, objPos));
+			PieceCorners(tr, dbgCs);
+			string pts = "";
+			foreach (vector dc : dbgCs)
+				pts += string.Format(" (%1 %2 %3)", Math.Round(dc[0] * 100) / 100, Math.Round((dc[1] - best.m_Ground) * 100) / 100, Math.Round(dc[2] * 100) / 100);
+			string kindText = "grid";
+			if (tr.m_Free)
+				kindText = "free";
+			else if (tr.m_Quad)
+				kindText = "quad";
+			if (tr.m_Lower > 0)
+				kindText += "+fill";
+			Print(string.Format("[DSTest] rooftri %1 %2 ny=%3 pts%4", k, kindText, tr.m_Normal[1], pts));
 		}
 		return string.Format("%1 tris=%2 objects=%3 stage=%4 offset=%5 caps: %6", best.m_Obj.GetType(), best.m_Tris.Count(), best.m_Objects.Count(), best.m_Stage, best.m_Offset, best.m_CapInfo);
 	}

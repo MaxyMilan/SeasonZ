@@ -168,6 +168,14 @@ class SZ_State
 	// local test harness only: the grid of far buildings fitted to their box, and roof corners squared off in the grid
 	static bool s_DebugRoofFit = true;
 	static bool s_DebugRoofCorner = true;
+	// local test harness only: the grid pieces filling gaps between roof polygons follow a valley or a ridge
+	static bool s_DebugRoofFillDiag = true;
+	// local test harness only: an uneven part of a building's roof no longer turns the whole roof into grid pieces
+	// (off: tested on House_1W01/1W12, the polygons then leave a notch at the foot of a hip; the grid is cleaner)
+	static bool s_DebugRoofUneven = false;
+	// local test harness only: rocks carry the thin slab of walls (off: tested on rock_wallh2/rock_wallv, the rock
+	// then shows through the snow in many places)
+	static bool s_DebugRockThin = false;
 	// local test harness only: no roof snow at all (to measure its cost)
 	static bool s_DebugRoofOff = false;
 	// local test harness only: log how every surface of a structure becomes polygons or grid pieces
