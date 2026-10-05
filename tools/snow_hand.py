@@ -371,6 +371,74 @@ def resample_corners(L, smax, cmin, turn=0.6):
     return np.array(out)
 
 
+def pair_across(L2, maxd, tol):
+    """each rim point's partner straight across a narrow strip put into the rim (where none lies within tol): rows of
+    points across the strip, so that the rings run straight over its crest. maxd: the widest strip so paired (cells)"""
+    if not L2:
+        return L2
+    wts = (1.0, 2.0, 3.0, 2.0, 1.0)
+    P, NI = [], []
+    for L in L2:
+        tang = np.roll(L, -1, 0) - np.roll(L, 1, 0)
+        nx, nz = -tang[:, 1], tang[:, 0]
+        ln = np.maximum(np.hypot(nx, nz), 1e-12)
+        nx, nz = nx / ln, nz / ln
+        sx = sum(w_ * np.roll(nx, s) for w_, s in zip(wts, (-2, -1, 0, 1, 2)))
+        sz = sum(w_ * np.roll(nz, s) for w_, s in zip(wts, (-2, -1, 0, 1, 2)))
+        ln = np.maximum(np.hypot(sx, sz), 1e-12)
+        P.append(L)
+        NI.append(np.column_stack([sx / ln, sz / ln]))
+    P = np.vstack(P)
+    NI = np.vstack(NI)
+    A = np.vstack(L2)
+    Bn = np.vstack([np.roll(L, -1, 0) for L in L2])
+    owner = np.concatenate([np.full(len(L), k) for k, L in enumerate(L2)])
+    segi = np.concatenate([np.arange(len(L)) for L in L2])
+    E = Bn - A
+    ins = collections.defaultdict(list)
+    for k in range(0, len(P), 400):
+        p = P[k:k + 400, None, :]
+        d = NI[k:k + 400, None, :]
+        # p + s d = A + u E
+        den = d[..., 0] * E[None, :, 1] - d[..., 1] * E[None, :, 0]
+        ap = A[None] - p
+        ok = np.abs(den) > 1e-12
+        den_ = np.where(ok, den, 1.0)
+        s = (ap[..., 0] * E[None, :, 1] - ap[..., 1] * E[None, :, 0]) / den_
+        u = (ap[..., 0] * d[..., 1] - ap[..., 1] * d[..., 0]) / den_
+        ok &= (s > 0.6) & (s < maxd) & (u >= 0.0) & (u <= 1.0)
+        s = np.where(ok, s, np.inf)
+        j = np.argmin(s, axis=1)
+        sm = s[np.arange(len(j)), j]
+        for q in np.nonzero(np.isfinite(sm))[0]:
+            sg = int(j[q])
+            # (only straight across: the far side faces back)
+            if float(np.dot(NI[k + q], [-E[sg, 1], E[sg, 0]])) > 0.0:
+                continue
+            hit = P[k + q] + NI[k + q] * sm[q]
+            ins[sg].append((float(u[q, sg]), hit))
+    out = []
+    base = 0
+    for kl, L in enumerate(L2):
+        n = len(L)
+        pts = []
+        for i in range(n):
+            pts.append(L[i])
+            g_ = base + i
+            if g_ not in ins:
+                continue
+            a, b = L[i], L[(i + 1) % n]
+            last = a
+            for uu, h in sorted(ins[g_], key=lambda z: z[0]):
+                if np.hypot(*(h - last)) < tol or np.hypot(*(h - b)) < tol:
+                    continue
+                pts.append(h)
+                last = h
+        base += n
+        out.append(np.array(pts))
+    return out
+
+
 def loop_dist(P, loops):
     """the distance from each point of P (n, 2) to the nearest segment of the closed loops"""
     A = np.vstack(loops)
@@ -962,6 +1030,13 @@ class Model:
         DE = np.interp(Bm, tb, td) * g
         # the measure is full this far inside (the inside of a wide support); narrower than that a crest
         dfull = min(1.2 * rh_ref, 0.9 * float(td[-1]) * g)
+        # the half width of the support about each cell (the measure's crest nearby): on a strip narrower than two
+        # rounded edges the two edges become one round crest (a quarter ellipse each side from the tip to the
+        # crest, level there), no ridge where two rounded edges met
+        rl_hw = int(math.ceil(dfull / g)) + 1
+        HW = maxf(np.where(M, DE, -np.inf), rl_hw)
+        HW = np.where(np.isfinite(HW), HW, dfull)
+        HW = np.clip(blur(HW, np.ones(M.shape, bool), max(1, rl_hw // 2)), 0.5 * g, None)
         # ---------- the fields carried past the edge (over the overhang) ----------
         o_lo = max(0.008, 0.6 * g + 0.25 * rh_ref + 0.004) if not taper else 0.0
         o_hi = max(o_lo, float(over))
@@ -1016,6 +1091,13 @@ class Model:
             L2.append(resample_corners(L, slong / g, cmin))
         if not L2:
             return None
+        if not taper:
+            # (across a strip, a wall top, a plank up to 60 cm wide: its rim points in pairs, the rings across it
+            # in rows)
+            n_b0 = sum(len(L) for L in L2)
+            L2 = pair_across(L2, max(2.0 * (rh_ref + o_hi) / g + 2.0, 0.6 / g), max(0.75, min(2.0, 0.15 * slong / g)))
+            if os.environ.get('SZ_DEBUG'):
+                print('  pair: %d -> %d rim points (slong %.3f)' % (n_b0, sum(len(L) for L in L2), slong), flush=True)
         nb_pts = sum(len(L) for L in L2)
         Pb = np.vstack(L2)
         # each boundary point: at a wall or the open tip (taper: rough stone's thin edge); its outward direction
@@ -1056,7 +1138,7 @@ class Model:
         Rc = np.zeros((0, 2))
         tin = 0.012
         if not taper:
-            rhx = np.minimum(np.clip(shoulder * Hx, 0.0, 0.12), rh_ref)
+            rhx = np.minimum(np.minimum(np.clip(shoulder * Hx, 0.0, 0.12), rh_ref), HW)
             rr = float(np.median(rhx[M])) if M.any() else rh_ref
             oo = float(np.median(Ox[M])) if M.any() else o_lo
             # the rounded edge in even steps of its arc, from the tip (90 degrees) to the plateau (0), all rings
@@ -1237,7 +1319,7 @@ class Model:
             if taper:
                 return np.maximum(sxv, zs)
             rv = np.clip(shoulder * H, 0.0, 0.12)
-            rh = np.minimum(rv, rh_ref)
+            rh = np.minimum(np.minimum(rv, rh_ref), HW)
             s = np.clip((rh - de) / np.maximum(rh + o, 1e-6), 0.0, 1.0)
             return zs + H - rv + rv * np.sqrt(1.0 - s * s)
 
