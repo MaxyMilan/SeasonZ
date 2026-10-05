@@ -319,6 +319,27 @@ def resample_loop(L, smax):
     return np.array(out)
 
 
+def smooth_loop(L, r, cap):
+    """a closed loop with the steps of the raster taken out: resampled half a cell apart, averaged over r cells
+    either side (triangular weights), no point moved further than cap cells"""
+    if len(L) < 4:
+        return L
+    D = resample_loop(L, 0.5)
+    n = len(D)
+    k = max(1, int(round(2.0 * r)))
+    if n < 2 * k + 3:
+        return L
+    w = np.concatenate([np.arange(1, k + 2), np.arange(k, 0, -1)]).astype(np.float64)
+    w /= w.sum()
+    S = np.zeros_like(D)
+    for j, wj in enumerate(w):
+        S += wj * np.roll(D, k - j, 0)
+    d = S - D
+    ln = np.hypot(d[:, 0], d[:, 1])
+    f = np.minimum(1.0, cap / np.maximum(ln, 1e-12))
+    return D + d * f[:, None]
+
+
 def resample_corners(L, smax, cmin, turn=0.6):
     """a closed loop resampled at most smax apart, with points cmin and 2 cmin either side of each sharp turn (so
     the rims fan round a corner)"""
@@ -458,6 +479,7 @@ class Model:
         self._caps = []
         self._sel = np.zeros((self.nv, self.nu), bool)
         self._claimed = np.zeros((self.nv, self.nu), bool)
+        self._soft = np.zeros((self.nv, self.nu), bool)
 
     def _faces(self):
         V, T = self.V, self.T
@@ -777,6 +799,46 @@ class Model:
             dd = distance(M, int(math.ceil(1.0 / g)) + 2) * g
             wide = 2.0 * float(dd.max())
             over *= float(np.clip(wide / 2.0, 0.3, 1.0))
+        # soft edges: the snow thins out onto a support curving away under it (a round bale's side, a boulder's
+        # shoulder); a rounded edge bulging out into the air belongs at a hard edge only (a plank's, a tread's
+        # rounded nose before its riser, an eave, a chamfer). Soft where the edge leans and the surface goes on
+        # down beyond it for 3 cm. (A thin round log is too few cells across for this: its snow is swept along it,
+        # see log())
+        sfx = np.zeros(M.shape)
+        taper_s = None
+        if rim == 'round':
+            Zmv_s = np.nan_to_num(Zm, nan=-1e9)
+            G0w = self.G0[sl]
+            g0e = maxf(np.where(M, G0w, 0.0), 1)
+            band_s = dilate(M, 1) & ~M
+            lvl_s = np.where(M, Zs, -np.inf)
+            reach = M.copy()
+            ring_last = None
+            for k_ in range(int(round(0.03 / g))):
+                zn_ = maxf(np.where(reach, lvl_s, -np.inf), 1)
+                nb_ = dilate(reach, 1) & ~reach & np.isfinite(Zm) & np.isfinite(zn_)
+                drop_ = np.where(nb_, zn_ - Zmv_s, 1e9)
+                nb_ &= (drop_ >= -0.3 * g) & (drop_ <= 2.5 * g)
+                if not nb_.any():
+                    ring_last = None
+                    break
+                reach |= nb_
+                lvl_s = np.where(nb_, Zmv_s, lvl_s)
+                ring_last = nb_
+            seed_s = np.zeros(M.shape, bool)
+            if ring_last is not None and ring_last.any():
+                seed_s |= band_s & (g0e >= 0.45) & dilate(ring_last, int(round(0.03 / g)))
+            if os.environ.get('SZ_DEBUG'):
+                print('  soft: band %d seeds %d' % (int(band_s.sum()), int(seed_s.sum())), flush=True)
+            if seed_s.any():
+                sfx = np.clip(1.5 * gauss3(dilate(seed_s, 2).astype(np.float64), 2), 0.0, 1.0)
+                if (sfx[M] > 0.05).any():
+                    dist_s = distance(M, int(math.ceil(0.15 / g)) + 2) * g
+                    hw_ = np.where(M, maxf(np.where(M, dist_s, -np.inf), int(math.ceil(0.12 / g))), 0.0)
+                    tw_ = np.clip(np.minimum(1.5 * t, 0.7 * hw_), 2.0 * g, None)
+                    xs_ = np.clip(dist_s / tw_, 0.0, 1.0)
+                    taper_s = 1.0 - sfx + sfx * xs_ * xs_ * (3.0 - 2.0 * xs_)
+                    D = D * taper_s
         if rim == 'taper':
             # rough stone: the snow thins out to its edge
             if dist is None:
@@ -785,6 +847,9 @@ class Model:
             x = np.clip(dist / tw, 0.0, 1.0)
             D = D * (x * x * (3 - 2 * x))
         D = np.where(M, blur(D, M, max(1, int(round(0.08 / g)))), 0.0)
+        if taper_s is not None:
+            # (after the blur: averaged with the inside the thin edge would come back thick)
+            D = D * taper_s
         S = Zs + D
         rs = max(1, int(round((smooth if smooth is not None else max(0.04, 0.5 * t)) / g)))
         Sb = blur(S, M, rs)
@@ -797,7 +862,7 @@ class Model:
             own = np.isin(Pc, np.unique(Pc[M & (Pc >= 0)])) & np.isfinite(Zm) & ~(self._claimed[sl] & ~R[sl])
             Zmv0 = np.nan_to_num(Zm, nan=-1e9)
             for _ in range(int(round(0.025 / g))):
-                nb = dilate(M, 1) & own & ~M
+                nb = dilate(M, 1) & own & ~M & (sfx < 0.5)
                 zn = maxf(np.where(M, Zs, -np.inf), 1)
                 sn = maxf(np.where(M, S, -np.inf), 1)
                 nb &= (Zmv0 > zn - 0.03) & (Zmv0 < sn - 0.005)
@@ -915,6 +980,9 @@ class Model:
         if not taper:
             Ox = blur(minf(Ox, max(1, int(round(0.03 / g)))), np.ones(M.shape, bool), max(1, int(round(0.03 / g))))
             Ox = np.maximum(Ox, o_lo)
+            # (none at a soft edge, but for the edge cells' own half: the snow's edge lies on the surface going on
+            # down)
+            Ox = Ox * (1.0 - sfx) + sfx * 0.6 * g
         # ---------- the domain: out to the tip of the bulge, in to a wall ----------
         if taper:
             Fm = box(M.astype(np.float64), 1) / 9.0
@@ -938,7 +1006,8 @@ class Model:
         cmin = max(0.75, min(0.4 * spe, 0.5 * o_hi + 0.004) / g)
         L2 = []
         for L in loops:
-            L = simplify_loop(L, 0.25)
+            # (the raster's steps out: a strip of rings folded into a fan at every one)
+            L = simplify_loop(smooth_loop(L, 2.0, 0.6), 0.2)
             if len(L) < 3:
                 continue
             area = 0.5 * abs(float(np.sum(L[:, 0] * np.roll(L[:, 1], -1) - np.roll(L[:, 0], -1) * L[:, 1]))) * g * g
@@ -1181,17 +1250,70 @@ class Model:
             return zs - foot + (y1 + foot) * (1.0 - np.sqrt(1.0 - u * u))
 
         # the top on the grid, smoothed once over the domain (a rounded crest where the snow on an inclined board
-        # meets its rounded edge); never below the underside nor under a third of the snow on the support
+        # meets its rounded edge); at a soft edge its depth instead (heights averaged by the edge of a slope lift
+        # the thin edge to the level of what lies further up); never below the underside nor under a third of the
+        # snow on the support
         inR = (F > 0) | M
         Yr = ytop(Zx, Hx, DE, Ox, Sx)
         Ybr = ybot(Zx, Hx, DE, Ox, 0.004)
         if not taper:
             rs2 = max(1, int(round(0.5 * rh_ref / g)))
             Wr = inR.astype(np.float64)
-            Ys = gauss3(np.where(inR, Yr, 0.0), rs2) / np.maximum(gauss3(Wr, rs2), 1e-9)
+            nrm_ = np.maximum(gauss3(Wr, rs2), 1e-9)
+            Ys = gauss3(np.where(inR, Yr, 0.0), rs2) / nrm_
+            if sfx.any():
+                Yd = Zx + gauss3(np.where(inR, Yr - Zx, 0.0), rs2) / nrm_
+                Ys = Ys * (1.0 - sfx) + Yd * sfx
             Ys = np.where(M, np.maximum(Ys, Zx + 0.3 * Hx), Ys)
             Ys = np.maximum(Ys, Ybr + 0.002)
             Yr = np.where(inR, Ys, Yr)
+        # the facets hold to the top everywhere: where the triangulation's plane sags under the top or stands over
+        # it by more than a fraction of the depth (a chord across a round log's crown, a ridge between two rings, a
+        # dent where a point fell beside a hollow) a point goes in at the worst cell of its neighbourhood, and again
+        if not taper:
+            tol_c = np.maximum(0.0015, 0.12 * Hx)
+            inner_c = inR & (F > 0.6 * g)
+            # (over the rounded edge its rings carry the shape: a point put in there between two rings stood on the
+            # steep of the edge and scalloped it; there only a sag the model could come through counts)
+            rim_c = DE < 0.9 * np.minimum(np.clip(shoulder * Hx, 0.0, 0.12), rh_ref)
+            tol_r = np.maximum(0.004, 0.25 * Hx)
+            for _it in range(6):
+                Yv = bilinear(Yr, P2t[:, 0], P2t[:, 1])
+                Yi = np.full(Yr.shape, np.nan)
+                A_, B_, C_ = P2t[Trt[:, 0]], P2t[Trt[:, 1]], P2t[Trt[:, 2]]
+                ya, yb, yc = Yv[Trt[:, 0]], Yv[Trt[:, 1]], Yv[Trt[:, 2]]
+                xmn = np.ceil(np.minimum(np.minimum(A_[:, 0], B_[:, 0]), C_[:, 0])).astype(int)
+                xmx = np.floor(np.maximum(np.maximum(A_[:, 0], B_[:, 0]), C_[:, 0])).astype(int)
+                ymn = np.ceil(np.minimum(np.minimum(A_[:, 1], B_[:, 1]), C_[:, 1])).astype(int)
+                ymx = np.floor(np.maximum(np.maximum(A_[:, 1], B_[:, 1]), C_[:, 1])).astype(int)
+                for t_ in np.nonzero((xmx >= xmn) & (ymx >= ymn))[0]:
+                    ii_ = np.arange(max(0, xmn[t_]), min(Yr.shape[1] - 1, xmx[t_]) + 1)
+                    jj_ = np.arange(max(0, ymn[t_]), min(Yr.shape[0] - 1, ymx[t_]) + 1)
+                    if not len(ii_) or not len(jj_):
+                        continue
+                    X_, Y_ = np.meshgrid(ii_, jj_)
+                    a, b, c = A_[t_], B_[t_], C_[t_]
+                    dd = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+                    if abs(dd) < 1e-12:
+                        continue
+                    l1 = ((b[1] - c[1]) * (X_ - c[0]) + (c[0] - b[0]) * (Y_ - c[1])) / dd
+                    l2 = ((c[1] - a[1]) * (X_ - c[0]) + (a[0] - c[0]) * (Y_ - c[1])) / dd
+                    l3 = 1.0 - l1 - l2
+                    ms = (l1 >= -1e-6) & (l2 >= -1e-6) & (l3 >= -1e-6)
+                    Yi[Y_[ms], X_[ms]] = (l1 * ya[t_] + l2 * yb[t_] + l3 * yc[t_])[ms]
+                dif = np.where(inner_c & np.isfinite(Yi), Yr - np.nan_to_num(Yi, nan=0.0), 0.0)
+                err = np.where(rim_c, np.where(dif > tol_r, dif, -1.0), np.where(np.abs(dif) > tol_c, np.abs(dif), -1.0))
+                err = np.where(inner_c & np.isfinite(Yi), err, -1.0)
+                bad = (err > 0) & (err >= maxf(err, 2) - 1e-12)
+                if not bad.any():
+                    break
+                jb_, ib_ = np.nonzero(bad)
+                cand_t.append(np.column_stack([ib_, jb_]).astype(np.float64))
+                P2t, Trt, bmt = tri(cand_t, emin)
+                if len(Trt) == 0:
+                    return None
+            if os.environ.get('SZ_DEBUG'):
+                print('  refine: %d passes, points %d' % (_it + 1, len(P2t)), flush=True)
         zt, Ht, det, ot, st_ = fields(P2t)
         Yt = bilinear(Yr, P2t[:, 0], P2t[:, 1])
         Xw = lambda P2: (self.u0 + (P2[:, 0] + ia) * g, self.v0 + (P2[:, 1] + ja) * g)
@@ -1394,6 +1516,7 @@ class Model:
 
         self._caps.append({'V': Va, 'F': Fa, 'role': role_a, 'anchor': anch_a, 'foot': foot_a})
         self._sel[sl] |= M
+        self._soft[sl] |= sfx > 0.3
         return Va, Fa
 
     # ---------- the checks ----------
@@ -1482,6 +1605,8 @@ class Model:
         Zz = np.nan_to_num(self.Z, nan=-1e9)
         # (lower than the snow beside it: a part rising out of the snow is no short cap)
         short = nearsel & (Zz > zsel - 0.03) & (Zz < ytn - 0.02) & ~dilate(cov, k)
+        # (at a soft edge the snow thins out onto the surface going on down: it ends there by design)
+        short &= ~dilate(self._soft, kk)
         put('short', cells(short, self.Z))
         tops_ = np.isfinite(yt)
         ytv = np.nan_to_num(yt, nan=1e9)
@@ -1495,6 +1620,7 @@ class Model:
             badl[np.unique(labp[edge_])] = True
             pk &= ~badl[np.where(labp >= 0, labp, nlp)]
         thin = pk & (Za < ytv + 0.05)
+        self._masks = {'far': far, 'short': short, 'thin': thin, 'cov': cov, 'yt': yt, 'ys': ys, 'inv': inv_}
         put('poke_thin', cells(thin, self.Zall))
         put('poke_tall', cells(pk & ~thin, self.Zall))
         und, shd, thr, flo = [], [], [], []
