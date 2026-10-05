@@ -545,6 +545,12 @@ def fold_score(V, F, role):
     return float(ex.sum() + 10.0 * (ex > 0).sum())
 
 
+def _sky_dirs():
+    from mathutils import Vector
+    a = math.radians(20.0)
+    return [Vector((0.0, 1.0, 0.0))] + [Vector((math.sin(a) * cx, math.cos(a), math.sin(a) * cz)) for cx, cz in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+
+
 # ---------------- the model ----------------
 class Model:
     def __init__(self, name, path=None, g=None):
@@ -1843,10 +1849,12 @@ class Model:
         phis = np.radians(np.linspace(-theta, theta, k))
         bva = self.bvh_all
         own = int(part)
+        SKY_DIRS = _sky_dirs()
         top = np.zeros((n_st, k, 3))
         bot = np.zeros((n_st, k, 3))
         hh = np.zeros((n_st, k))
         RS = np.zeros((n_st, k))
+        H0 = np.zeros((n_st, k))
         PC = np.zeros((n_st, 3))
         DV = np.zeros((n_st, k, 3))
         for j, s in enumerate(S):
@@ -1871,33 +1879,70 @@ class Model:
                         rs_ = r_
                 sp_ = pc + dv * rs_
                 h_ = H * max(0.0, 1.0 - (ph / math.radians(theta)) ** 2) ** 0.6
+                H0[j, q] = h_
                 if not blocked:
                     # room above it along its direction and to the sky (another rail resting on it, a cap over it)
                     l2 = bva.ray_cast(Vec(tuple(sp_ + dv * 0.002)), Vec(tuple(dv)), h_ + clear + 0.05)
                     if l2[0] is not None:
                         h_ = min(h_, max(0.0, l2[3] - clear))
-                    l3 = bva.ray_cast(Vec(tuple(sp_ + dv * 0.003 + up * 0.002)), Vec((0.0, 1.0, 0.0)), sky)
-                    if l3[0] is not None:
-                        h_ = 0.0
+                    # open to the sky: snow comes down within about 20 degrees of the vertical, so a thin rail
+                    # 30 cm above shelters little of it, one just above a lot (the share of five such rays clear)
+                    o3 = Vec(tuple(sp_ + dv * 0.003 + up * 0.002))
+                    clear_n = 0
+                    for d3 in SKY_DIRS:
+                        if bva.ray_cast(o3, d3, sky)[0] is None:
+                            clear_n += 1
+                    h_ *= (clear_n / float(len(SKY_DIRS))) ** 0.7
                 else:
                     h_ = 0.0
                 hh[j, q] = h_
                 RS[j, q] = rs_
                 top[j, q] = sp_ + dv * lift
                 bot[j, q] = sp_ - dv * inset
-        # the depth along each line of the profile smoothed (no notch at a single station); runs of stations with
-        # snow make the pieces, each tapering round to nothing at its ends
-        hs = hh.copy()
+        # where something cuts the snow off (a rail over a brace, a post's cap, a line out of the open sky) it ends in
+        # a ramp, no step: the depth no steeper than about 35 degrees along the log and 40 round it (an envelope from
+        # below); runs of stations with snow make the pieces, each tapering round to nothing at its ends
+        # (the profile shrinks as a whole where its crest is cut off: no ragged diagonal end where a rail crosses
+        # over a brace; its flanks can be cut further on their own, a rail resting on it beside its crest)
+        cen = np.abs(phis) <= 0.5 * math.radians(theta) + 1e-9
+        okc = H0[:, cen] > 1e-6
+        fs = np.where(okc, hh[:, cen] / np.maximum(H0[:, cen], 1e-9), 1.0).min(1)
+        fs[~okc.any(1)] = 0.0
+        if os.environ.get('SZ_DEBUG'):
+            print('  log part %d: r %.3f H %.3f stations %d fs %s' % (own, rmed, H, n_st, np.round(fs, 2).tolist()), flush=True)
+            print('    rs/r per line (median) %s hh0 %s' % (np.round(np.median(RS / max(rmed, 1e-6), axis=0), 2).tolist(),
+                  np.round((hh > 0).mean(0), 2).tolist()), flush=True)
+        dsl = float(S[1] - S[0]) if n_st > 1 else 1.0
+        # (where shelter cuts it off the snow thins out evenly to nothing over about 12 cm: a ramp, no collar)
+        lc_s = max(3.0 * H, 0.12)
+        for _ in range(n_st):
+            f0_ = fs
+            fs = np.minimum(fs, np.minimum(np.append(fs[1:], 1e9), np.insert(fs[:-1], 0, 1e9)) + dsl / lc_s)
+            if np.allclose(f0_, fs):
+                break
+        if n_st >= 3:
+            for _ in range(2):
+                fs = np.minimum(fs, np.convolve(np.pad(fs, 1, mode='edge'), [0.25, 0.5, 0.25], 'valid'))
+        hs = np.minimum(hh, H0 * fs[:, None])
+        da = max(1e-3, rmed * float(phis[1] - phis[0])) if k > 1 else 1.0
+        for _ in range(n_st + k):
+            h0_ = hs
+            hs = np.minimum(hs, np.vstack([hs[1:], hs[-1:] + 1e9]) + 0.7 * dsl)
+            hs = np.minimum(hs, np.vstack([hs[:1] + 1e9, hs[:-1]]) + 0.7 * dsl)
+            hs = np.minimum(hs, np.hstack([hs[:, 1:], hs[:, -1:] + 1e9]) + 0.85 * da)
+            hs = np.minimum(hs, np.hstack([hs[:, :1] + 1e9, hs[:, :-1]]) + 0.85 * da)
+            if np.allclose(h0_, hs):
+                break
         if n_st >= 3:
             for q in range(k):
-                hs[:, q] = np.minimum(hh[:, q], np.convolve(np.pad(hh[:, q], 1, mode='edge'), [0.25, 0.5, 0.25], 'valid'))
+                hs[:, q] = np.minimum(hs[:, q], np.convolve(np.pad(hs[:, q], 1, mode='edge'), [0.25, 0.5, 0.25], 'valid'))
         has = hs.max(1) > 0.003
         # the top's distance from the centre line smoothed along the log and round it (the facets of a hewn log
         # come through as folds in the snow otherwise); never closer than the surface under it
         k3 = np.array([0.25, 0.5, 0.25])
 
         def smooth_top(rho):
-            for _ in range(2):
+            for _ in range(3):
                 if n_st >= 3:
                     rho = np.apply_along_axis(lambda a: np.convolve(np.pad(a, 1, mode='edge'), k3, 'valid'), 0, rho)
                 rho = np.apply_along_axis(lambda a: np.convolve(np.pad(a, 1, mode='edge'), k3, 'valid'), 1, rho)
@@ -1912,27 +1957,57 @@ class Model:
             while j < n_st and has[j]:
                 j += 1
             j1 = j - 1
-            if j1 - j0 < 1:
+            # (a piece cut off by shelter runs on to the sheltered station, its snow at nothing there)
+            ja = j0 - 1 if j0 > 0 else j0
+            jb = j1 + 1 if j1 < n_st - 1 else j1
+            if jb - ja < 1 or S[j1] - S[j0] < 0.02:
                 continue
+            j0, j1 = ja, jb
             Ls = S[j1] - S[j0]
             le = min(max(1.5 * H, 0.03), 0.4 * Ls)
-            fac = np.ones(j1 - j0 + 1)
-            if ends or j0 > 0:
-                fac = np.minimum(fac, np.clip((S[j0:j1 + 1] - S[j0]) / le, 0.0, 1.0))
-            if ends or j1 < n_st - 1:
-                fac = np.minimum(fac, np.clip((S[j1] - S[j0:j1 + 1]) / le, 0.0, 1.0))
-            fac = np.sqrt(fac * (2.0 - fac))
+            le0 = le1 = le
+            # the stations of this piece, four more in each of the log's own ends (the snow rounds off over it in
+            # even steps, no fold)
+            Sp = S[j0:j1 + 1]
+            te0 = ends and j0 == 0
+            te1 = ends and j1 == n_st - 1
+            extra = []
+            for f_ in (0.04, 0.15, 0.33, 0.6):
+                if te0:
+                    extra.append(S[j0] + f_ * le0)
+                if te1:
+                    extra.append(S[j1] - f_ * le1)
+            Sp = np.unique(np.concatenate([Sp, np.array(extra)]))
+            Sp = Sp[(Sp >= S[j0]) & (Sp <= S[j1])]
+            sj = S[j0:j1 + 1]
+            ip1 = lambda A: np.stack([np.interp(Sp, sj, A[j0:j1 + 1, q]) for q in range(A.shape[1])], 1)
+            RSp, hsp, PCp = ip1(RS), ip1(hs), ip1(PC)
+            DVp = np.stack([ip1(DV[:, :, c]) for c in range(3)], 2)
+            DVp /= np.maximum(np.linalg.norm(DVp, axis=2), 1e-12)[:, :, None]
+            fac = np.ones(len(Sp))
+            rnd = lambda u: np.sqrt(u * (2.0 - u))
+            smo = lambda u: u * u * (3.0 - 2.0 * u)
+            if te0:
+                u0 = np.clip((Sp - S[j0]) / le0, 0.0, 1.0)
+                fac = np.minimum(fac, rnd(u0))
+            if te1:
+                u1 = np.clip((S[j1] - Sp) / le1, 0.0, 1.0)
+                fac = np.minimum(fac, rnd(u1))
+            if not te0:
+                fac[0] = 0.0
+            if not te1:
+                fac[-1] = 0.0
             # an open shell: its two long edges (the profile's outer lines, no depth there) and its ends (all of it at
             # nothing) lie just inside the log, hidden; no underside to draw
             lf = np.clip(3.0 * fac, 0.0, 1.0)
-            base = RS[j0:j1 + 1] - inset + (lift + inset) * lf[:, None]
-            base[:, 0] = RS[j0:j1 + 1, 0] - inset
-            base[:, -1] = RS[j0:j1 + 1, -1] - inset
-            rho = np.maximum(smooth_top(base + hs[j0:j1 + 1] * fac[:, None]), base)
+            base = RSp - inset + (lift + inset) * lf[:, None]
+            base[:, 0] = RSp[:, 0] - inset
+            base[:, -1] = RSp[:, -1] - inset
+            rho = np.maximum(smooth_top(base + hsp * fac[:, None]), base)
             rho[:, 0], rho[:, -1] = base[:, 0], base[:, -1]
             rho = np.where(fac[:, None] <= 0.0, base, rho)
-            nj = j1 - j0 + 1
-            Va = (PC[j0:j1 + 1, None, :] + DV[j0:j1 + 1] * rho[:, :, None]).reshape(-1, 3)
+            nj = len(Sp)
+            Va = (PCp[:, None, :] + DVp * rho[:, :, None]).reshape(-1, 3)
             idx = np.arange(nj * k).reshape(nj, k)
             F = []
             for a_ in range(nj - 1):
@@ -2323,6 +2398,12 @@ class Model:
         # (on the top proper: the round of a nose or a rim turns sharply by design)
         upf = (fn[fa, 1] > 0.75) & (fn[fb, 1] > 0.75)
         cr = upf & (((cosang < math.cos(math.radians(35)))) | (valley & (cosang < math.cos(math.radians(25)))))
+        # (a fold within a few millimetres of the model is the model's own edge under a skin of snow thinning out
+        # over it: a hewn log's facet at the end of its crescent)
+        for q in np.nonzero(cr)[0]:
+            mp = (V[Es[q, 0]] + V[Es[q, 1]]) / 2.0
+            if mb.find_nearest(Vec(tuple(mp)), 0.005)[0] is not None:
+                cr[q] = False
         ci = np.nonzero(cr)[0]
         ci = ci[np.argsort(cosang[ci])]
         put('crease', (V[Es[ci, 0]] + V[Es[ci, 1]]) / 2.0)
