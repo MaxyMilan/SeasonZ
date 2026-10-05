@@ -1152,7 +1152,8 @@ class Model:
         L2 = []
         for L in loops:
             # (the raster's steps out: a strip of rings folded into a fan at every one)
-            L = simplify_loop(smooth_loop(L, 2.0, 0.6), 0.2)
+            # (a small top, a post's end: its corners rounded off in plan too, a cushion)
+            L = simplify_loop(smooth_loop(L, 4.0, 1.5) if small else smooth_loop(L, 2.0, 0.6), 0.2)
             if len(L) < 3:
                 continue
             area = 0.5 * abs(float(np.sum(L[:, 0] * np.roll(L[:, 1], -1) - np.roll(L[:, 0], -1) * L[:, 1]))) * g * g
