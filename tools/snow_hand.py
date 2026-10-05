@@ -1519,6 +1519,204 @@ class Model:
         self._soft[sl] |= sfx > 0.3
         return Va, Fa
 
+    # ---------- a round log ----------
+    def log(self, part, variant, depth=1.0, theta=55.0, step=0.07, k=11, inset=0.004, lift=0.002, clear=0.008,
+            sky=1.5, ends=True):
+        """the snow swept along a round log, pole, pipe or rail (part): a crescent over its crown, thickest on top and
+        thinning to nothing theta degrees either side, its underside just inside the log; held to the log's own
+        surface (a hewn log is no cylinder: each point of the profile cast onto it), no deeper than a narrow support
+        holds, thinner as the log leans, none where something stands over it (another rail resting on it, a post's
+        cap) or beside it within clear, a rounded taper at its ends and at every such gap. (V, F) or None."""
+        from mathutils import Vector as Vec
+        g = self.g
+        t = self.thick(variant) * depth
+        P = self._part_verts(part)
+        if len(P) < 8:
+            return None
+        c0 = P.mean(0)
+        _, _, Vt = np.linalg.svd(P - c0, full_matrices=False)
+        ax = Vt[0] / np.linalg.norm(Vt[0])
+        up = np.array([0.0, 1.0, 0.0])
+        uu = up - np.dot(up, ax) * ax
+        if np.linalg.norm(uu) < 0.4:
+            return None
+        s_all = (P - c0) @ ax
+        s0, s1 = float(s_all.min()), float(s_all.max())
+        Ln = s1 - s0
+        if Ln < 0.15:
+            return None
+        # the centre line and radius: a circle fitted in each stretch of about 10 cm across the log
+        e1 = np.cross(ax, up)
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(ax, e1)
+        nb_ = max(2, int(round(Ln / 0.1)))
+        edges_ = np.linspace(s0, s1, nb_ + 1)
+        cs, cc, rr = [], [], []
+        for b in range(nb_):
+            sel = (s_all >= edges_[b] - 0.02) & (s_all <= edges_[b + 1] + 0.02)
+            Q = P[sel] - c0
+            if len(Q) < 6:
+                continue
+            x_, y_ = Q @ e1, Q @ e2
+            A_ = np.column_stack([x_, y_, np.ones(len(x_))])
+            sol, *_ = np.linalg.lstsq(A_, -(x_ * x_ + y_ * y_), rcond=None)
+            cx_, cy_ = -sol[0] / 2.0, -sol[1] / 2.0
+            r2 = cx_ * cx_ + cy_ * cy_ - sol[2]
+            if r2 <= 0:
+                continue
+            cs.append(0.5 * (edges_[b] + edges_[b + 1]))
+            cc.append((cx_, cy_))
+            rr.append(math.sqrt(r2))
+        if len(cs) < 1:
+            return None
+        cs, cc, rr = np.array(cs), np.array(cc), np.array(rr)
+        if len(cs) >= 3:
+            ker = np.array([0.25, 0.5, 0.25])
+            cc = np.column_stack([np.convolve(np.pad(cc[:, i], 1, mode='edge'), ker, 'valid') for i in range(2)])
+            rr = np.convolve(np.pad(rr, 1, mode='edge'), ker, 'valid')
+        rmed = float(np.median(rr))
+        # the depth: a narrow support holds about as much as it is wide; a leaning log less (the slope the snow
+        # feels along it)
+        ny_ax = float(np.linalg.norm(uu))
+        wl = float(SC.slope_w(self.scls, variant, np.array([ny_ax]), self.skind)[0])
+        H = min(t * wl, 0.8 * 2.0 * rmed * math.sin(math.radians(theta)) + 0.02)
+        if H < 0.004:
+            return None
+        n_st = max(3, int(math.ceil(Ln / step)) + 1)
+        S = np.linspace(s0, s1, n_st)
+        uu /= np.linalg.norm(uu)
+        ww = np.cross(ax, uu)
+        phis = np.radians(np.linspace(-theta, theta, k))
+        bva = self.bvh_all
+        own = int(part)
+        top = np.zeros((n_st, k, 3))
+        bot = np.zeros((n_st, k, 3))
+        hh = np.zeros((n_st, k))
+        RS = np.zeros((n_st, k))
+        PC = np.zeros((n_st, 3))
+        DV = np.zeros((n_st, k, 3))
+        for j, s in enumerate(S):
+            cx_, cy_ = float(np.interp(s, cs, cc[:, 0])), float(np.interp(s, cs, cc[:, 1]))
+            r_ = float(np.interp(s, cs, rr))
+            pc = c0 + s * ax + cx_ * e1 + cy_ * e2
+            PC[j] = pc
+            for q, ph in enumerate(phis):
+                dv = math.cos(ph) * uu + math.sin(ph) * ww
+                DV[j, q] = dv
+                # the log's surface along this direction (cast in from outside); something else first: blocked
+                o = Vec(tuple(pc + dv * (2.5 * r_ + 0.05)))
+                loc, nr_, idx, dd = bva.ray_cast(o, Vec(tuple(-dv)), 2.5 * r_ + 0.05)
+                if loc is None:
+                    rs_ = r_
+                    blocked = False
+                else:
+                    hit_own = int(self.part_t[self._all_t[idx]]) == own
+                    rs_ = float(np.dot(np.array(loc) - pc, dv))
+                    blocked = not hit_own or rs_ > 1.4 * r_ + 0.01
+                    if blocked:
+                        rs_ = r_
+                sp_ = pc + dv * rs_
+                h_ = H * max(0.0, 1.0 - (ph / math.radians(theta)) ** 2) ** 0.6
+                if not blocked:
+                    # room above it along its direction and to the sky (another rail resting on it, a cap over it)
+                    l2 = bva.ray_cast(Vec(tuple(sp_ + dv * 0.002)), Vec(tuple(dv)), h_ + clear + 0.05)
+                    if l2[0] is not None:
+                        h_ = min(h_, max(0.0, l2[3] - clear))
+                    l3 = bva.ray_cast(Vec(tuple(sp_ + dv * 0.003 + up * 0.002)), Vec((0.0, 1.0, 0.0)), sky)
+                    if l3[0] is not None:
+                        h_ = 0.0
+                else:
+                    h_ = 0.0
+                hh[j, q] = h_
+                RS[j, q] = rs_
+                top[j, q] = sp_ + dv * lift
+                bot[j, q] = sp_ - dv * inset
+        # the depth along each line of the profile smoothed (no notch at a single station); runs of stations with
+        # snow make the pieces, each tapering round to nothing at its ends
+        hs = hh.copy()
+        if n_st >= 3:
+            for q in range(k):
+                hs[:, q] = np.minimum(hh[:, q], np.convolve(np.pad(hh[:, q], 1, mode='edge'), [0.25, 0.5, 0.25], 'valid'))
+        has = hs.max(1) > 0.003
+        # the top's distance from the centre line smoothed along the log and round it (the facets of a hewn log
+        # come through as folds in the snow otherwise); never closer than the surface under it
+        k3 = np.array([0.25, 0.5, 0.25])
+
+        def smooth_top(rho):
+            for _ in range(2):
+                if n_st >= 3:
+                    rho = np.apply_along_axis(lambda a: np.convolve(np.pad(a, 1, mode='edge'), k3, 'valid'), 0, rho)
+                rho = np.apply_along_axis(lambda a: np.convolve(np.pad(a, 1, mode='edge'), k3, 'valid'), 1, rho)
+            return rho
+        out = []
+        j = 0
+        while j < n_st:
+            if not has[j]:
+                j += 1
+                continue
+            j0 = j
+            while j < n_st and has[j]:
+                j += 1
+            j1 = j - 1
+            if j1 - j0 < 1:
+                continue
+            Ls = S[j1] - S[j0]
+            le = min(max(1.5 * H, 0.03), 0.4 * Ls)
+            fac = np.ones(j1 - j0 + 1)
+            if ends or j0 > 0:
+                fac = np.minimum(fac, np.clip((S[j0:j1 + 1] - S[j0]) / le, 0.0, 1.0))
+            if ends or j1 < n_st - 1:
+                fac = np.minimum(fac, np.clip((S[j1] - S[j0:j1 + 1]) / le, 0.0, 1.0))
+            fac = np.sqrt(fac * (2.0 - fac))
+            # an open shell: its two long edges (the profile's outer lines, no depth there) and its ends (all of it at
+            # nothing) lie just inside the log, hidden; no underside to draw
+            lf = np.clip(3.0 * fac, 0.0, 1.0)
+            base = RS[j0:j1 + 1] - inset + (lift + inset) * lf[:, None]
+            base[:, 0] = RS[j0:j1 + 1, 0] - inset
+            base[:, -1] = RS[j0:j1 + 1, -1] - inset
+            rho = np.maximum(smooth_top(base + hs[j0:j1 + 1] * fac[:, None]), base)
+            rho[:, 0], rho[:, -1] = base[:, 0], base[:, -1]
+            rho = np.where(fac[:, None] <= 0.0, base, rho)
+            nj = j1 - j0 + 1
+            Va = (PC[j0:j1 + 1, None, :] + DV[j0:j1 + 1] * rho[:, :, None]).reshape(-1, 3)
+            idx = np.arange(nj * k).reshape(nj, k)
+            F = []
+            for a_ in range(nj - 1):
+                for q in range(k - 1):
+                    F.append((idx[a_, q], idx[a_ + 1, q], idx[a_ + 1, q + 1]))
+                    F.append((idx[a_, q], idx[a_ + 1, q + 1], idx[a_, q + 1]))
+            Fa = np.array(F, dtype=np.int64)
+            nrm = np.cross(Va[Fa[:, 1]] - Va[Fa[:, 0]], Va[Fa[:, 2]] - Va[Fa[:, 0]])
+            if float(nrm[:, 1].sum()) < 0:
+                Fa = Fa[:, [0, 2, 1]]
+            Fa = Fa[np.linalg.norm(nrm, axis=1) > 1e-12]
+            foot = np.zeros(len(Va), bool)
+            foot[idx[:, 0]] = True
+            foot[idx[:, -1]] = True
+            if fac[0] <= 0.0:
+                foot[idx[0]] = True
+            if fac[-1] <= 0.0:
+                foot[idx[-1]] = True
+            role = np.where(foot, 3, 0)
+            self._caps.append({'V': Va, 'F': Fa, 'role': role, 'anchor': np.full(len(Va), -1), 'foot': foot})
+            out.append((Va, Fa))
+        # its part's cells are claimed (no blanket of its own over it); those within theta of its crown, open to
+        # the sky, held (the check's cells meant to have snow)
+        if out:
+            sel = (self.PART == own) & np.isfinite(self.Z)
+            self._claimed |= sel
+            # (its flanks past theta are bare by design: a crescent thins out onto them)
+            self._soft |= sel
+            held = sel & (self.NYF >= math.cos(math.radians(theta - 15.0)))
+            jj_, ii_ = np.nonzero(held)
+            for j_, i_ in zip(jj_.tolist(), ii_.tolist()):
+                x_, z_ = self.xz(i_, j_)
+                if bva.ray_cast(Vec((float(x_), float(self.Z[j_, i_]) + 0.004, float(z_))), Vec((0.0, 1.0, 0.0)), sky)[0] is not None:
+                    held[j_, i_] = False
+            # (and not where a piece ends in its taper)
+            self._sel |= held & ~dilate(~held, 1)
+        return join(out)
+
     # ---------- the checks ----------
     def check(self, V, F):
         """the precision checks of this model's snow in one depth (V, F: all of it; the blankets of the last build
