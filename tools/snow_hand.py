@@ -1779,6 +1779,52 @@ class Model:
         self._soft[sl] |= sfx > 0.3
         return Va, Fa
 
+    def is_log(self, p):
+        """part p is a round log, pole, pipe or rail (snow swept along it with log()): long and thin, round in
+        section (its sides face many ways round its axis, not four), leaning less than about 50 degrees"""
+        if not hasattr(self, '_log_cache'):
+            self._log_cache = {}
+        if p in self._log_cache:
+            return self._log_cache[p]
+        res = False
+        sel = np.nonzero(self.part_t == p)[0]
+        P = self._part_verts(p)
+        if len(sel) >= 10 and len(P) >= 10:
+            c0 = P.mean(0)
+            _, sv, Vt = np.linalg.svd(P - c0, full_matrices=False)
+            ax = Vt[0]
+            pr = (P - c0) @ Vt.T
+            ext = np.ptp(pr, axis=0)
+            if ext[0] >= 0.3 and ext[1] <= 0.3 and ext[2] <= 0.3 and ext[0] >= 4.0 * ext[1] and \
+                    0.55 <= ext[2] / max(ext[1], 1e-9) <= 1.8 and abs(ax[1]) < 0.77:
+                A_, B_, C_ = self.V[self.T[sel, 0]], self.V[self.T[sel, 1]], self.V[self.T[sel, 2]]
+                n = np.cross(B_ - A_, C_ - A_)
+                ar = np.linalg.norm(n, axis=1)
+                n = n / np.maximum(ar, 1e-12)[:, None]
+                side = np.abs(n @ ax) < 0.5
+                if side.sum() >= 8:
+                    e1 = Vt[1]
+                    e2 = Vt[2]
+                    ang = np.arctan2(n[side] @ e2, n[side] @ e1)
+                    h, _ = np.histogram(ang, bins=24, range=(-math.pi, math.pi), weights=ar[side])
+                    occ = (h > 0.015 * h.sum()).sum()
+                    # (a square beam with chamfered edges faces eight ways too, but four of them hold most of it)
+                    top4 = float(np.sort(h)[-4:].sum() / max(h.sum(), 1e-12))
+                    # (and round: its corners about as far from its centre line all round, stretch by stretch; a
+                    # board with rounded edges is not)
+                    s_ = pr[:, 0]
+                    cvs = []
+                    nseg = int(np.clip(np.ptp(s_) / 0.12, 3, 40))
+                    for b0 in np.linspace(s_.min(), s_.max(), nseg + 1)[:-1]:
+                        sb = (s_ >= b0) & (s_ < b0 + np.ptp(s_) / nseg + 1e-9)
+                        if sb.sum() >= 5:
+                            q2 = pr[sb][:, 1:3]
+                            rad = np.hypot(*(q2 - q2.mean(0)).T)
+                            cvs.append(float(rad.std() / max(rad.mean(), 1e-9)))
+                    res = bool(occ >= 5 and top4 < 0.8 and cvs and float(np.median(cvs)) < 0.25)
+        self._log_cache[p] = res
+        return res
+
     # ---------- a round log ----------
     def log(self, part, variant, depth=1.0, theta=55.0, step=0.07, k=11, inset=0.004, lift=0.002, clear=0.008,
             sky=1.5, ends=True):
@@ -2454,7 +2500,10 @@ def join(meshes):
 
 def auto(m, variant, **style):
     """the plain recipe: every surface the snow reaches, each region its blanket"""
-    return m.cover(variant, m.tops(variant), **style)
+    logs = [p for p in range(int(m.part_t.max()) + 1) if m.is_log(p)]
+    out = [m.log(p, variant) for p in logs]
+    out.append(m.cover(variant, m.tops(variant, exclude=logs or None), **style))
+    return join(out)
 
 
 def recipe(name):
