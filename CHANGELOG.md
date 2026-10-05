@@ -6,7 +6,37 @@ The mod is now called SeasonZ everywhere (mod folder `@SeasonZ`, key `SeasonZ.bi
 `SeasonZ`). A server that ran the mod under its old name keeps its settings and its season: `config.json` and
 `state.json` are taken over once from the old profile folder. Replace the old key with `SeasonZ.bikey`.
 
-Snow on buildings and objects
+Snow caps made for every model (new)
+- The snow on 912 Chernarus models is now a cap made for that model from its own visible geometry, in seven
+  depths from a light dusting to 25 cm and more. The cap follows the real surface: it covers ridge tiles, fills
+  valleys and the grooves of corrugated sheet, gives chimneys, dormers, porch roofs, window sills, battlements and
+  tower ledges their own snow, ends at the eaves with a rounded edge (a small cornice in deep snow) and tucks
+  under walls and chimneys rising out of a roof. Rocks get a cap that thins out into the stone and grows over
+  steeper faces as the snow deepens; walls and fences a small cap per post, picket and plank. Heaps, sandbags,
+  HESCO barriers, camouflage nets, rubble and graves get a cap that thins out like on a rock and bridges the gaps
+  between their parts.
+- No floating plates, white boards on round tanks or flat lids on barriers any more: snow lies only where the model
+  is.
+- Clean edges: the snow ends along ledges, eaves and broken wall tops in one rounded edge, without teeth, notches,
+  flaps or a dotted line of pits along the joints of roof sheets.
+- One object per model instead of hundreds of sampled snow pieces. Together with the lighter ground snow below:
+  Chernogorsk 27.7 to 45-47 fps in the test scene (+65%, no more frames over 8 ms from the roof snow),
+  Elektrozavodsk 41.4 to 55 fps (+33%), a village 40.2 to 42 fps (+4%).
+- A new snow depth reaches all baked caps around the player within a few seconds (it took up to a minute while
+  other roofs were being built).
+- 405 models carry no snow on purpose (road signs, ropes, decals, thin railings, models made of proxies only), and
+  the manure heap stays bare (it is warm).
+- Models standing tilted more than 12 degrees, or under another object, keep the sampled roof snow.
+
+Ground snow at a distance
+- Level 0 snow cover more than 70 m from the camera is cut around buildings with 1.9 m triangles instead of 0.94 m
+  (still along the walls): a third fewer ground snow objects in a town (Chernogorsk 41,900 to 26,900), +23% frame
+  rate there, without a visible difference.
+
+Names
+- All assets and code use the SeasonZ name (sz_ instead of ds_ for models, materials and textures).
+
+Snow on buildings and objects (sampled roof snow, still used for tilted and covered models)
 - Roof snow reaches the corners of roofs, the valleys between roof planes and the junctions of two roofs.
 - Snow reaches up to chimneys and masts that stand out of a roof.
 - No folded flaps or pyramids where a mast foot, a vent or a lightning rod stands on a roof, also close to the

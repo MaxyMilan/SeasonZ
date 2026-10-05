@@ -201,7 +201,7 @@ class SZ_ClientController
 
 		if (index <= 0)
 			return "dz\\data\\lighting\\lighting_" + baseName + ".txt";
-		return SZ_Const.DATA + "lighting\\ds_" + baseName + "_" + SZ_Util.Pad2(index) + ".txt";
+		return SZ_Const.DATA + "lighting\\sz_" + baseName + "_" + SZ_Util.Pad2(index) + ".txt";
 	}
 
 	protected void UpdateLighting(float cover)

@@ -477,9 +477,9 @@ class SZ_PondIce
 		while (b.m_Objects.Count() < b.m_PX.Count() && m_Cost < BUDGET)
 		{
 			int i = b.m_Objects.Count();
-			string model = SZ_Const.DATA + "ice\\ds_icet" + b.m_PM[i];
+			string model = SZ_Const.DATA + "ice\\sz_icet" + b.m_PM[i];
 			if (b.m_Thick)
-				model = SZ_Const.DATA + "ice\\ds_ice" + b.m_PM[i];
+				model = SZ_Const.DATA + "ice\\sz_ice" + b.m_PM[i];
 			Object o = g_Game.CreateStaticObjectUsingP3D(model, Vector(b.m_PX[i], b.m_Y + LIFT, b.m_PZ[i]), "0 0 0", 1.0, true);
 			b.m_Objects.Insert(o);
 			if (o)

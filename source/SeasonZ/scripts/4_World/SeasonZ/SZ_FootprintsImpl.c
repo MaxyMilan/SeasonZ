@@ -14,7 +14,7 @@ class SZ_Footprints
 	static const int MAX_PRINTS = 320;
 	static const float MIN_CM = 2.0;
 	static const float DEEP_CM = 9.0;
-	static const string MODEL_DIR = "SeasonZ\\data\\prints\\ds_print_";
+	static const string MODEL_DIR = "SeasonZ\\data\\prints\\sz_print_";
 	//! height of the print's base plane above the snow cover (the cover floats a few centimetres over the terrain)
 	static const float ABOVE_COVER = 0.018;
 	//! snowfall fills a print: after FILL_HEAVY seconds at full snowfall, up to FILL_HEAVY + FILL_LIGHT in the lightest

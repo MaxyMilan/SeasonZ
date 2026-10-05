@@ -2,12 +2,12 @@
 """Asset generator for the SeasonZ DayZ mod.
 
 Creates (all original, procedural):
-  data/snow/ds_snow_s{1..4}_ca.png   albedo + coverage alpha per snow stage (converted to .paa)
-  data/snow/ds_snow_nohq.png         normal map
-  data/snow/ds_snow_smdi.png         specular/gloss map
-  data/snow/ds_snow_s{1..4}.rvmat    Super shader materials (alpha tested)
-  data/snow/ds_tri_{a,b,c,d}_s{1..4}.p3d   unit-cell terrain triangles (MLOD, binarized by AddonBuilder)
-  data/lighting/ds_{base}_{01..10}.txt     lighting blends between the server lighting and snowy (Sakhal) lighting
+  data/snow/sz_snow_s{1..4}_ca.png   albedo + coverage alpha per snow stage (converted to .paa)
+  data/snow/sz_snow_nohq.png         normal map
+  data/snow/sz_snow_smdi.png         specular/gloss map
+  data/snow/sz_snow_s{1..4}.rvmat    Super shader materials (alpha tested)
+  data/snow/sz_tri_{a,b,c,d}_s{1..4}.p3d   unit-cell terrain triangles (MLOD, binarized by AddonBuilder)
+  data/lighting/sz_{base}_{01..10}.txt     lighting blends between the server lighting and snowy (Sakhal) lighting
 """
 import os, re, struct, sys, subprocess
 import numpy as np
@@ -68,7 +68,7 @@ def make_textures():
         else:
             alpha = np.clip((c - coverage_field) * 8.0 + 0.125, 0.0, 1.0)
         rgba = np.dstack([albedo, alpha])
-        save_png(os.path.join(SNOW, 'ds_snow_s%d_ca.png' % (i + 1)), rgba, 'RGBA')
+        save_png(os.path.join(SNOW, 'sz_snow_s%d_ca.png' % (i + 1)), rgba, 'RGBA')
     # normal map from a height field in metres. The map repeats every 7.5 m (1024 px, 7.3 mm per pixel): soft wind
     # undulations of about a centimetre, small ripples of a millimetre and a faint crystal grain, together about
     # 4 degrees of tilt. Real snow tilts only a few degrees at these scales; stronger maps read as crumpled paper.
@@ -83,14 +83,14 @@ def make_textures():
     nz = np.ones_like(gx)
     ln = np.sqrt(gx * gx + gy * gy + nz * nz)
     nrm = np.dstack([-gx / ln, -gy / ln, nz / ln]) * 0.5 + 0.5
-    save_png(os.path.join(SNOW, 'ds_snow_nohq.png'), nrm, 'RGB')
+    save_png(os.path.join(SNOW, 'sz_snow_nohq.png'), nrm, 'RGB')
     # specular: soft base with sparse small sparkles (ice crystals catching the sun)
     m = 512
     spark = rng.random((m, m)) > 0.9990
     spec = np.full((m, m), 0.12) + spark * 0.3
     gloss = np.full((m, m), 0.55)
     smdi = np.dstack([np.ones((m, m)), spec, gloss])
-    save_png(os.path.join(SNOW, 'ds_snow_smdi.png'), smdi, 'RGB')
+    save_png(os.path.join(SNOW, 'sz_snow_smdi.png'), smdi, 'RGB')
     # detail map: fine grain for close-up views. The engine reads detail textures (*_dt) from the ALPHA channel
     # only (TexConvert swizzles R, G and B from A) and fades the lower mipmaps to 0.5. The grain therefore goes into
     # the alpha channel with an average of exactly 0.5, so every mipmap has the same brightness: without alpha the
@@ -102,9 +102,40 @@ def make_textures():
     detail = np.clip(0.5 + grain * 0.022, 0.0, 1.0)
     detail += 0.5 - detail.mean()
     print('detail map: mean %.4f, std %.4f' % (detail.mean(), detail.std()))
-    save_png(os.path.join(SNOW, 'ds_snow_detail_dt.png'), np.dstack([detail, detail, detail, detail]), 'RGBA')
+    save_png(os.path.join(SNOW, 'sz_snow_detail_dt.png'), np.dstack([detail, detail, detail, detail]), 'RGBA')
 
 COVER_MAP = os.path.join(SRC, 'scripts', '4_World', 'SeasonZ', 'SZ_CoverMap.c')
+
+# baked snow on roofs, rocks and structures in its open stages (1-3): a finer pattern than on the ground, so a light
+# cover reads as a dusting with small patches of roof showing through instead of metre wide blotches
+ROOF_COVERAGE = [0.38, 0.64, 0.86]
+
+def make_roof_textures():
+    n = 1024
+    low = tileable_noise(n, 3.2, 11)
+    mid = tileable_noise(n, 2.2, 12)
+    fine = tileable_noise(n, 1.2, 13)
+    height = 0.55 * low + 0.3 * mid + 0.15 * fine
+    shade = (height - height.mean())
+    base = np.array([0.93, 0.945, 0.965])
+    cool = np.array([-0.035, -0.02, 0.005])
+    albedo = base[None, None, :] + shade[:, :, None] * 0.05 + (fine[:, :, None] - 0.5) * 0.03 + np.clip(-shade, 0, 1)[:, :, None] * cool * 2.0
+    albedo = np.clip(albedo, 0, 1)
+    field = equalize(0.4 * tileable_noise(n, 2.4, 51) + 0.6 * tileable_noise(n, 1.1, 52))
+    pngs = []
+    for i, c in enumerate(ROOF_COVERAGE):
+        alpha = np.clip((c - field) * 10.0 + 0.125, 0.0, 1.0)
+        png = os.path.join(SNOW, 'sz_roofsnow_s%d_ca.png' % (i + 1))
+        save_png(png, np.dstack([albedo, alpha]), 'RGBA')
+        pngs.append(png)
+        body = RVMAT % {'flags': 'renderFlags[]={"AlphaTest32"};\n', 'tex': '%s\\data\\snow\\sz_roofsnow_s%d_ca.paa' % (PREFIX, i + 1), 'prefix': PREFIX}
+        with open(os.path.join(SNOW, 'sz_roofsnow_s%d.rvmat' % (i + 1)), 'w', newline='\r\n') as fh:
+            fh.write(body)
+    for png in pngs:
+        subprocess.run([IMG2PAA, png, png[:-4] + '.paa'], check=True, capture_output=True)
+        if not os.path.exists(png[:-4] + '.paa'):
+            raise SystemExit('ImageToPAA failed for ' + png)
+        os.remove(png)
 COVER_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+/'
 
 def make_cover_map(n=1024, size=128):
@@ -224,12 +255,12 @@ class Stage0
 };
 class Stage1
 {
-	texture="%(prefix)s\\data\\snow\\ds_snow_nohq.paa";
+	texture="%(prefix)s\\data\\snow\\sz_snow_nohq.paa";
 	texGen="1";
 };
 class Stage2
 {
-	texture="%(prefix)s\\data\\snow\\ds_snow_detail_dt.paa";
+	texture="%(prefix)s\\data\\snow\\sz_snow_detail_dt.paa";
 	texGen="2";
 };
 class Stage3
@@ -244,7 +275,7 @@ class Stage4
 };
 class Stage5
 {
-	texture="%(prefix)s\\data\\snow\\ds_snow_smdi.paa";
+	texture="%(prefix)s\\data\\snow\\sz_snow_smdi.paa";
 	texGen="1";
 };
 class Stage6
@@ -260,13 +291,13 @@ class Stage7
 '''
 
 def tex_path(stage):
-    return '%s\\data\\snow\\ds_snow_s%d_ca.paa' % (PREFIX, stage)
+    return '%s\\data\\snow\\sz_snow_s%d_ca.paa' % (PREFIX, stage)
 
 def make_rvmats():
     for s in range(1, 5):
         flags = '' if STAGE_COVERAGE[s - 1] >= 1.0 else 'renderFlags[]={"AlphaTest32"};\n'
         body = RVMAT % {'flags': flags, 'tex': tex_path(s), 'prefix': PREFIX}
-        with open(os.path.join(SNOW, 'ds_snow_s%d.rvmat' % s), 'w', newline='\r\n') as fh:
+        with open(os.path.join(SNOW, 'sz_snow_s%d.rvmat' % s), 'w', newline='\r\n') as fh:
             fh.write(body)
 
 # test only: a flat white material without any texture detail, for telling geometry from texture effects
@@ -321,20 +352,20 @@ def make_debug():
     # s8 = real material with a uniform brighter detail texture file
     flat_dt = '#(argb,8,8,3)color(0.5,0.5,0.5,1,DT)'
     real = RVMAT % {'flags': '', 'tex': tex_path(4), 'prefix': PREFIX}
-    dt = '%s\\data\\snow\\ds_snow_detail_dt.paa' % PREFIX
-    for name, value in (('ds_test_flat_dt', 0.5), ('ds_test_bright_dt', 0.6)):
+    dt = '%s\\data\\snow\\sz_snow_detail_dt.paa' % PREFIX
+    for name, value in (('sz_test_flat_dt', 0.5), ('sz_test_bright_dt', 0.6)):
         png = os.path.join(SNOW, name + '.png')
         save_png(png, np.full((64, 64, 3), value), 'RGB')
         subprocess.run([IMG2PAA, png, png[:-4] + '.paa'], check=True, capture_output=True)
         os.remove(png)
     boosted = real.replace(dt, flat_dt).replace('ambient[]={1,1,1,1};', 'ambient[]={1.4,1.4,1.4,1};').replace('diffuse[]={1,1,1,1};', 'diffuse[]={1.4,1.4,1.4,1};')
     variants = {
-        6: (tex_path(4), real.replace(dt, '%s\\data\\snow\\ds_test_flat_dt.paa' % PREFIX)),
+        6: (tex_path(4), real.replace(dt, '%s\\data\\snow\\sz_test_flat_dt.paa' % PREFIX)),
         7: (tex_path(4), boosted),
-        8: (tex_path(4), real.replace(dt, '%s\\data\\snow\\ds_test_bright_dt.paa' % PREFIX)),
+        8: (tex_path(4), real.replace(dt, '%s\\data\\snow\\sz_test_bright_dt.paa' % PREFIX)),
     }
     for s, (tex, body) in variants.items():
-        with open(os.path.join(SNOW, 'ds_snow_dbg%d.rvmat' % s), 'w', newline='\r\n') as fh:
+        with open(os.path.join(SNOW, 'sz_snow_dbg%d.rvmat' % s), 'w', newline='\r\n') as fh:
             fh.write(body)
     for key, corners in SHAPES.items():
         top = [(CORNERS[c][0], 0.0, CORNERS[c][1]) for c in corners]
@@ -342,9 +373,9 @@ def make_debug():
             if len(name) != 2 or not name.isdigit():
                 continue
             for s, (tex, body) in variants.items():
-                mat = '%s\\data\\snow\\ds_snow_dbg%d.rvmat' % (PREFIX, s)
+                mat = '%s\\data\\snow\\sz_snow_dbg%d.rvmat' % (PREFIX, s)
                 lod = ground_lod(top, cells, scale, a, b, depth, tex, mat)
-                write_mlod(os.path.join(SNOW, 'dsk_%s%s_s%d.p3d' % (key, name, s)), [lod])
+                write_mlod(os.path.join(SNOW, 'szk_%s%s_s%d.p3d' % (key, name, s)), [lod])
 
 def ground_lod(top, cells, scale, a, b, depth, tex, mat):
     size = GROUND_CELL * cells
@@ -472,11 +503,11 @@ def make_models():
             uvs = [((a + 0.5 + p[0]) * scale, 4.0 - (b + 0.5 + p[2]) * scale) for p in top]
             for s in range(1, 5):
                 tex = tex_path(s)
-                mat = '%s\\data\\snow\\ds_snow_s%d.rvmat' % (PREFIX, s)
+                mat = '%s\\data\\snow\\sz_snow_s%d.rvmat' % (PREFIX, s)
                 # single sided, front face up (corner order as listed in SHAPES)
                 face = {'verts': [(i, 0, uvs[i][0], uvs[i][1]) for i in range(3)], 'texture': tex, 'material': mat}
                 lod = mlod_lod(top, [face], 1.0, props=(('lodnoshadow', '1'),))
-                write_mlod(os.path.join(SNOW, 'ds_%s%s_s%d.p3d' % (key, name, s)), [lod])
+                write_mlod(os.path.join(SNOW, 'sz_%s%s_s%d.p3d' % (key, name, s)), [lod])
         # ground cover. Skirts: a strip under each edge, drawn from both sides and lit like the snow surface, so a
         # crack or a small step between neighbouring triangles shows snow instead of the ground. Their top corners
         # sample the texture exactly like the surface edge above them (shifted by whole repeats, so they never share
@@ -491,7 +522,7 @@ def make_models():
             period = GROUND_CELL * 4.0
             for s in range(1, 5):
                 tex = tex_path(s)
-                mat = '%s\\data\\snow\\ds_snow_s%d.rvmat' % (PREFIX, s)
+                mat = '%s\\data\\snow\\sz_snow_s%d.rvmat' % (PREFIX, s)
                 faces = [{'verts': [(i, 0, uvs[i][0], uvs[i][1]) for i in range(3)], 'texture': tex, 'material': mat}]
                 for i, j in ((0, 1), (1, 2), (2, 0)):
                     a_top = (i, 0, uvs[i][0] + 8.0, uvs[i][1])
@@ -503,7 +534,7 @@ def make_models():
                     faces.append({'verts': [b_top, a_top, a_bot], 'texture': tex, 'material': mat})
                     faces.append({'verts': [b_top, a_bot, b_bot], 'texture': tex, 'material': mat})
                 lod = mlod_lod(pts, faces, 1.0, props=(('lodnoshadow', '1'),))
-                write_mlod(os.path.join(SNOW, 'dsk_%s%s_s%d.p3d' % (key, name, s)), [lod])
+                write_mlod(os.path.join(SNOW, 'szk_%s%s_s%d.p3d' % (key, name, s)), [lod])
 
 # ---------------- lighting blends ----------------
 NUM = re.compile(r'-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?')
@@ -512,7 +543,7 @@ NUM = re.compile(r'-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?')
 # skirt to the thickness of the snow, so the snow on roofs, walls and wrecks lies as a slab with snowy sides.
 def make_roof_models():
     for fn in os.listdir(SNOW):
-        if (fn.startswith('dsr_') or fn.startswith('dsq') or fn.startswith('dsf')) and fn.endswith('.p3d'):
+        if (fn.startswith('szr_') or fn.startswith('szq') or fn.startswith('szf')) and fn.endswith('.p3d'):
             os.remove(os.path.join(SNOW, fn))
     count = 0
     for key, corners in SHAPES.items():
@@ -522,7 +553,7 @@ def make_roof_models():
             uvs = [((a + 0.5 + p[0]) * scale, 4.0 - (b + 0.5 + p[2]) * scale) for p in top]
             for s in range(1, 5):
                 tex = tex_path(s)
-                mat = '%s\\data\\snow\\ds_snow_s%d.rvmat' % (PREFIX, s)
+                mat = '%s\\data\\snow\\sz_snow_s%d.rvmat' % (PREFIX, s)
                 faces = [{'verts': [(i, 0, uvs[i][0], uvs[i][1]) for i in range(3)], 'texture': tex, 'material': mat}]
                 for i, j in ((0, 1), (1, 2), (2, 0)):
                     a_top = (i, 0, uvs[i][0] + 8.0, uvs[i][1])
@@ -534,7 +565,7 @@ def make_roof_models():
                     faces.append({'verts': [b_top, a_top, a_bot], 'texture': tex, 'material': mat})
                     faces.append({'verts': [b_top, a_bot, b_bot], 'texture': tex, 'material': mat})
                 lod = mlod_lod(pts, faces, 1.0, props=(('lodnoshadow', '1'),))
-                write_mlod(os.path.join(SNOW, 'dsr_%s%s_s%d.p3d' % (key, name, s)), [lod])
+                write_mlod(os.path.join(SNOW, 'szr_%s%s_s%d.p3d' % (key, name, s)), [lod])
                 count += 1
     # squares of 1, 2, 4 and 8 grid cells: one object for a square instead of two triangles. Their texture keeps
     # the scale of the single cells (a square of span cells covers span quarters of the texture), and the variant
@@ -547,7 +578,7 @@ def make_roof_models():
                 uvs = [((a + span * (0.5 + p[0])) * 0.25, 4.0 - (b + span * (0.5 + p[2])) * 0.25) for p in quad]
                 for s in range(1, 5):
                     tex = tex_path(s)
-                    mat = '%s\\data\\snow\\ds_snow_s%d.rvmat' % (PREFIX, s)
+                    mat = '%s\\data\\snow\\sz_snow_s%d.rvmat' % (PREFIX, s)
                     faces = [{'verts': [(i, 0, uvs[i][0], uvs[i][1]) for i in range(4)], 'texture': tex, 'material': mat}]
                     for i, j in ((0, 1), (1, 2), (2, 3), (3, 0)):
                         a_top = (i, 0, uvs[i][0] + 8.0, uvs[i][1])
@@ -559,7 +590,7 @@ def make_roof_models():
                         faces.append({'verts': [b_top, a_top, a_bot], 'texture': tex, 'material': mat})
                         faces.append({'verts': [b_top, a_bot, b_bot], 'texture': tex, 'material': mat})
                     lod = mlod_lod(qpts, faces, 1.0, props=(('lodnoshadow', '1'),))
-                    write_mlod(os.path.join(SNOW, 'dsq%d%d%d_s%d.p3d' % (span, a, b, s)), [lod])
+                    write_mlod(os.path.join(SNOW, 'szq%d%d%d_s%d.p3d' % (span, a, b, s)), [lod])
                     count += 1
     # free pieces at the edges of roof planes: the c triangle with the texture of 2, 4 or 8 cells, so a large piece
     # shows the snow at about the scale of the cells around it instead of magnified
@@ -569,7 +600,7 @@ def make_roof_models():
         uvs = [((span * (0.5 + p[0])) * 0.25, 4.0 - (span * (0.5 + p[2])) * 0.25) for p in top]
         for s in range(1, 5):
             tex = tex_path(s)
-            mat = '%s\\data\\snow\\ds_snow_s%d.rvmat' % (PREFIX, s)
+            mat = '%s\\data\\snow\\sz_snow_s%d.rvmat' % (PREFIX, s)
             faces = [{'verts': [(i, 0, uvs[i][0], uvs[i][1]) for i in range(3)], 'texture': tex, 'material': mat}]
             for i, j in ((0, 1), (1, 2), (2, 0)):
                 a_top = (i, 0, uvs[i][0] + 8.0, uvs[i][1])
@@ -581,7 +612,7 @@ def make_roof_models():
                 faces.append({'verts': [b_top, a_top, a_bot], 'texture': tex, 'material': mat})
                 faces.append({'verts': [b_top, a_bot, b_bot], 'texture': tex, 'material': mat})
             lod = mlod_lod(fpts, faces, 1.0, props=(('lodnoshadow', '1'),))
-            write_mlod(os.path.join(SNOW, 'dsf%d_s%d.p3d' % (span, s)), [lod])
+            write_mlod(os.path.join(SNOW, 'szf%d_s%d.p3d' % (span, s)), [lod])
             count += 1
     print('roof models', count)
 
@@ -627,8 +658,8 @@ def blend_lighting(base_path, target_path, out_prefix):
 def make_lighting():
     os.makedirs(LIGHT, exist_ok=True)
     sakhal = os.path.join(LIGHT_SRC, 'worlds_sakhal_data', 'lighting', 'lighting_sakhal.txt')
-    blend_lighting(os.path.join(LIGHT_SRC, 'dz', 'lighting', 'lighting_default.txt'), sakhal, 'ds_default')
-    blend_lighting(os.path.join(LIGHT_SRC, 'dz', 'lighting', 'lighting_darknight.txt'), sakhal, 'ds_darknight')
+    blend_lighting(os.path.join(LIGHT_SRC, 'dz', 'lighting', 'lighting_default.txt'), sakhal, 'sz_default')
+    blend_lighting(os.path.join(LIGHT_SRC, 'dz', 'lighting', 'lighting_darknight.txt'), sakhal, 'sz_darknight')
 
 # ---------------- footprints ----------------
 PRINTS = os.path.join(SRC, 'data', 'prints')
@@ -814,7 +845,7 @@ def make_prints(test=False):
         os.remove(os.path.join(PRINTS, fn))
     sdf, X, Y = print_field()
     smdi = np.dstack([np.ones((64, 64)), np.full((64, 64), 0.12), np.full((64, 64), 0.55)])
-    save_png(os.path.join(PRINTS, 'ds_print_smdi.png'), smdi, 'RGB'); paa(os.path.join(PRINTS, 'ds_print_smdi.png'))
+    save_png(os.path.join(PRINTS, 'sz_print_smdi.png'), smdi, 'RGB'); paa(os.path.join(PRINTS, 'sz_print_smdi.png'))
     base = np.array([0.93, 0.945, 0.965])
     for n_kind, kind in enumerate(PRINT_KINDS):
         h, fade = print_height(kind, sdf, X, Y, 70 + n_kind)
@@ -824,32 +855,32 @@ def make_prints(test=False):
         col = base[None, None, :] * (1.0 - 0.05 * depth01[..., None]) + np.array([-0.02, -0.01, 0.0])[None, None, :] * depth01[..., None]
         # the print ends where its relief has faded out; the colour there equals the snow cover's
         alpha = (fade > 0.35).astype(float)
-        save_png(os.path.join(PRINTS, 'ds_print_%s_ca.png' % kind), np.dstack([np.clip(col, 0, 1), alpha]), 'RGBA')
-        paa(os.path.join(PRINTS, 'ds_print_%s_ca.png' % kind))
-        save_png(os.path.join(PRINTS, 'ds_print_%s_as.png' % kind), np.dstack([ao, ao, ao]), 'RGB')
-        paa(os.path.join(PRINTS, 'ds_print_%s_as.png' % kind))
+        save_png(os.path.join(PRINTS, 'sz_print_%s_ca.png' % kind), np.dstack([np.clip(col, 0, 1), alpha]), 'RGBA')
+        paa(os.path.join(PRINTS, 'sz_print_%s_ca.png' % kind))
+        save_png(os.path.join(PRINTS, 'sz_print_%s_as.png' % kind), np.dstack([ao, ao, ao]), 'RGB')
+        paa(os.path.join(PRINTS, 'sz_print_%s_as.png' % kind))
         variants = [('', True)]
         if test and kind == 'deep':
             variants = [('', True), ('_gl', False)]
         for suffix, green_down in variants:
-            save_png(os.path.join(PRINTS, 'ds_print_%s%s_nohq.png' % (kind, suffix)), normal_map(h, green_down), 'RGB')
-            paa(os.path.join(PRINTS, 'ds_print_%s%s_nohq.png' % (kind, suffix)))
-            mat_name = 'ds_print_%s%s.rvmat' % (kind, suffix)
+            save_png(os.path.join(PRINTS, 'sz_print_%s%s_nohq.png' % (kind, suffix)), normal_map(h, green_down), 'RGB')
+            paa(os.path.join(PRINTS, 'sz_print_%s%s_nohq.png' % (kind, suffix)))
+            mat_name = 'sz_print_%s%s.rvmat' % (kind, suffix)
             with open(os.path.join(PRINTS, mat_name), 'w', newline='\r\n') as fh:
                 fh.write(PRINT_RVMAT % {
-                    'nohq': '%s\\data\\prints\\ds_print_%s%s_nohq.paa' % (PREFIX, kind, suffix),
-                    'ao': '%s\\data\\prints\\ds_print_%s_as.paa' % (PREFIX, kind),
-                    'smdi': '%s\\data\\prints\\ds_print_smdi.paa' % PREFIX})
-        tex = '%s\\data\\prints\\ds_print_%s_ca.paa' % (PREFIX, kind)
-        mat = '%s\\data\\prints\\ds_print_%s.rvmat' % (PREFIX, kind)
+                    'nohq': '%s\\data\\prints\\sz_print_%s%s_nohq.paa' % (PREFIX, kind, suffix),
+                    'ao': '%s\\data\\prints\\sz_print_%s_as.paa' % (PREFIX, kind),
+                    'smdi': '%s\\data\\prints\\sz_print_smdi.paa' % PREFIX})
+        tex = '%s\\data\\prints\\sz_print_%s_ca.paa' % (PREFIX, kind)
+        mat = '%s\\data\\prints\\sz_print_%s.rvmat' % (PREFIX, kind)
         pts_l, quads = print_mesh(kind, h, False)
         pts_r, _ = print_mesh(kind, h, True)
-        write_print_model(os.path.join(PRINTS, 'ds_print_%s_l.p3d' % kind), pts_l, quads, tex, mat, False)
-        write_print_model(os.path.join(PRINTS, 'ds_print_%s_r.p3d' % kind), pts_r, quads, tex, mat, True)
+        write_print_model(os.path.join(PRINTS, 'sz_print_%s_l.p3d' % kind), pts_l, quads, tex, mat, False)
+        write_print_model(os.path.join(PRINTS, 'sz_print_%s_r.p3d' % kind), pts_r, quads, tex, mat, True)
         if test and kind == 'deep':
-            gl = '%s\\data\\prints\\ds_print_deep_gl.rvmat' % PREFIX
-            write_print_model(os.path.join(PRINTS, 'ds_ptest_gl_l.p3d'), pts_l, quads, tex, gl, False)
-            write_print_model(os.path.join(PRINTS, 'ds_ptest_gl_r.p3d'), pts_r, quads, tex, gl, True)
+            gl = '%s\\data\\prints\\sz_print_deep_gl.rvmat' % PREFIX
+            write_print_model(os.path.join(PRINTS, 'sz_ptest_gl_l.p3d'), pts_l, quads, tex, gl, False)
+            write_print_model(os.path.join(PRINTS, 'sz_ptest_gl_r.p3d'), pts_r, quads, tex, gl, True)
         print(kind, 'depth %.3f rim max %.4f ao min %.2f' % (PRINT_KINDS[kind]['depth'], h.max(), ao.min()))
 
 # ---------------- tyre tracks ----------------
@@ -973,17 +1004,17 @@ def make_tracks():
         col = base[None, None, :] * (1.0 - 0.14 * depth01[..., None]) + np.array([-0.035, -0.02, 0.0])[None, None, :] * depth01[..., None]
         # cut where the relief has flattened out, so the outer slope of the ridge does not end in a hard line
         alpha = (fade > 0.04).astype(float)
-        stem = os.path.join(TRACKS, 'ds_track_%s' % kind)
+        stem = os.path.join(TRACKS, 'sz_track_%s' % kind)
         save_png(stem + '_ca.png', np.dstack([np.clip(col, 0, 1), alpha]), 'RGBA'); paa(stem + '_ca.png')
         save_png(stem + '_as.png', np.dstack([ao, ao, ao]), 'RGB'); paa(stem + '_as.png')
         save_png(stem + '_nohq.png', track_normal_map(h), 'RGB'); paa(stem + '_nohq.png')
         with open(stem + '.rvmat', 'w', newline='\r\n') as fh:
             fh.write(PRINT_RVMAT % {
-                'nohq': '%s\\data\\tracks\\ds_track_%s_nohq.paa' % (PREFIX, kind),
-                'ao': '%s\\data\\tracks\\ds_track_%s_as.paa' % (PREFIX, kind),
-                'smdi': '%s\\data\\prints\\ds_print_smdi.paa' % PREFIX})
+                'nohq': '%s\\data\\tracks\\sz_track_%s_nohq.paa' % (PREFIX, kind),
+                'ao': '%s\\data\\tracks\\sz_track_%s_as.paa' % (PREFIX, kind),
+                'smdi': '%s\\data\\prints\\sz_print_smdi.paa' % PREFIX})
         pts, quads = track_mesh(kind, h)
-        write_track_model(stem + '.p3d', pts, quads, '%s\\data\\tracks\\ds_track_%s_ca.paa' % (PREFIX, kind), '%s\\data\\tracks\\ds_track_%s.rvmat' % (PREFIX, kind))
+        write_track_model(stem + '.p3d', pts, quads, '%s\\data\\tracks\\sz_track_%s_ca.paa' % (PREFIX, kind), '%s\\data\\tracks\\sz_track_%s.rvmat' % (PREFIX, kind))
         print('track', kind, 'depth %.3f rim max %.4f ao min %.2f verts %d' % (TRACK_KINDS[kind]['depth'], h.max(), ao.min(), len(pts)))
 
 # ---------------- pond ice ----------------
@@ -991,10 +1022,10 @@ ICE = os.path.join(SRC, 'data', 'ice')
 ICE_SIZES = [2, 4, 8, 16]
 # opaque glossy ice: milky pale ice once it is thick, dark clear ice while it is thin (freezing up, rotting in
 # spring); procedural colour textures, the crack pattern of the frozen lakes of Sakhal (Frostline) as normal map
-ICE_MAT = PREFIX + '\\data\\ice\\ds_ice.rvmat'
-ICE_MAT_THIN = PREFIX + '\\data\\ice\\ds_ice_thin.rvmat'
-ICE_TEX = PREFIX + '\\data\\ice\\ds_ice_co.paa'
-ICE_TEX_THIN = PREFIX + '\\data\\ice\\ds_icet_co.paa'
+ICE_MAT = PREFIX + '\\data\\ice\\sz_ice.rvmat'
+ICE_MAT_THIN = PREFIX + '\\data\\ice\\sz_ice_thin.rvmat'
+ICE_TEX = PREFIX + '\\data\\ice\\sz_ice_co.paa'
+ICE_TEX_THIN = PREFIX + '\\data\\ice\\sz_icet_co.paa'
 # thick ice carries people: its plates have a roadway with the frozen lake surface of Sakhal (ice footsteps and
 # hits); thin ice has none, so a player breaks through it into the water
 ICE_ROAD_TEX = 'dz\\surfaces_sakhal\\data\\terrain\\sakhal_ice_lake_ca.paa'
@@ -1019,7 +1050,7 @@ ICE_PERIOD = 16
 
 def make_ice():
     """flat square ice plates (one quad, facing up) for the frozen ponds, 2 to 16 m, one model per place in the
-    16 m texture period (ds_ice_<size>_<ix><iz>, ix = x0 / size mod period / size; ds_icet_* for thin ice)"""
+    16 m texture period (sz_ice_<size>_<ix><iz>, ix = x0 / size mod period / size; sz_icet_* for thin ice)"""
     os.makedirs(ICE, exist_ok=True)
     for fn in os.listdir(ICE):
         if fn.endswith('.p3d'):
@@ -1034,13 +1065,13 @@ def make_ice():
             for iz in range(k):
                 uv = [((ix * s + p[0] + h) / ICE_PERIOD, -(iz * s + p[2] + h) / ICE_PERIOD) for p in pts]
                 # two triangles, front faces up (same winding as the snow cover triangles)
-                for prefix, mat, tex in (('ds_ice', ICE_MAT, ICE_TEX), ('ds_icet', ICE_MAT_THIN, ICE_TEX_THIN)):
+                for prefix, mat, tex in (('sz_ice', ICE_MAT, ICE_TEX), ('sz_icet', ICE_MAT_THIN, ICE_TEX_THIN)):
                     faces = []
                     for tri in ((0, 1, 2), (0, 2, 3)):
                         faces.append({'verts': [(i, 0, uv[i][0], uv[i][1]) for i in tri], 'texture': tex, 'material': mat})
                     lod = mlod_lod(pts, faces, 1.0, props=(('lodnoshadow', '1'),))
                     lods = [lod]
-                    if prefix == 'ds_ice':
+                    if prefix == 'sz_ice':
                         lods.append(ice_geometry_lod(s))
                         road = []
                         for tri in ((0, 1, 2), (0, 2, 3)):
@@ -1220,12 +1251,12 @@ def make_ice_textures():
     tbase = np.array([0.085, 0.10, 0.12])
     for c in range(3):
         thin[:, :, c] = tbase[c] + 0.012 * cloud + 0.05 * lines + 0.35 * bubbles
-    save_png(os.path.join(ICE, 'ds_ice_co.png'), np.clip(thick, 0, 1), 'RGB')
-    save_png(os.path.join(ICE, 'ds_icet_co.png'), np.clip(thin, 0, 1), 'RGB')
-    for name in ('ds_ice_co.png', 'ds_icet_co.png'):
+    save_png(os.path.join(ICE, 'sz_ice_co.png'), np.clip(thick, 0, 1), 'RGB')
+    save_png(os.path.join(ICE, 'sz_icet_co.png'), np.clip(thin, 0, 1), 'RGB')
+    for name in ('sz_ice_co.png', 'sz_icet_co.png'):
         paa(os.path.join(ICE, name))
-    mats = {'ds_ice.rvmat': dict(co=ICE_TEX, spec='0.5', power='80', smdi_g='0.45', smdi_b='0.55', fresnel='0.9,0.2'),
-            'ds_ice_thin.rvmat': dict(co=ICE_TEX_THIN, spec='0.7', power='160', smdi_g='0.7', smdi_b='0.85', fresnel='1.2,0.25')}
+    mats = {'sz_ice.rvmat': dict(co=ICE_TEX, spec='0.5', power='80', smdi_g='0.45', smdi_b='0.55', fresnel='0.9,0.2'),
+            'sz_ice_thin.rvmat': dict(co=ICE_TEX_THIN, spec='0.7', power='160', smdi_g='0.7', smdi_b='0.85', fresnel='1.2,0.25')}
     for name, v in mats.items():
         with open(os.path.join(ICE, name), 'w', newline='\n') as fh:
             fh.write(ICE_RVMAT % v)
@@ -1234,6 +1265,8 @@ if __name__ == '__main__':
     what = sys.argv[1:] or ['textures', 'rvmats', 'models', 'lighting']
     if 'textures' in what:
         make_textures(); convert_paa()
+    if 'rooftex' in what:
+        make_roof_textures()
     if 'rvmats' in what:
         make_rvmats()
     if 'models' in what:

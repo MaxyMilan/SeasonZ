@@ -33,6 +33,7 @@ class SZ_SnowCell
 	float m_Avg;
 	int m_Epoch; // forced re-placement generation (test harness lighting and height changes)
 	int m_BuildGen; // pond ice generation the triangles were built for
+	int m_Detail; // level 0: how many times the cell was split around buildings (see DetailFor)
 	float m_RetiredAt;
 	ref array<ref SZ_SnowTri> m_Tris;
 	ref array<Object> m_Objects;
@@ -84,6 +85,12 @@ class SZ_SnowCarpet
 	static const float ICE_TOP = 0.03;
 	//! level 0 cells are split this many times around buildings (7.5 m cells: 0.94 m triangles at the walls)
 	static const int EXACT_DEPTH = 3;
+	//! level 0 cells further than this from the camera are split one step less around buildings (1.9 m triangles at
+	//! the walls, still cut along them): the finer cut is not seen at that distance, and it makes most of the objects
+	//! of the cover in a town
+	static const float DETAIL_NEAR = 70.0;
+	//! a cell built fine goes back to the coarser split only this much further out, so it is not rebuilt back and forth
+	static const float DETAIL_HYST = 15.0;
 	//! the smallest triangles at a wall are cut along it: each edge crossing is found by halving the edge this often
 	//! (a 0.94 m edge to 3 cm)
 	static const int CLIP_STEPS = 5;
@@ -129,6 +136,8 @@ class SZ_SnowCarpet
 	protected ref array<ref map<int, float>> m_Lift;
 	// per level: stitching signatures of the cells of the current work list
 	protected ref array<ref map<int, int>> m_Sig;
+	// the split depth of the level 0 cell being built (DetailFor)
+	protected int m_ExactDepth = EXACT_DEPTH;
 	// per level: the cells of the work list being built
 	protected ref array<ref map<int, bool>> m_Keep;
 	protected ref array<int> m_WLevel;
@@ -1632,7 +1641,7 @@ class SZ_SnowCarpet
 			shapeB = 1;
 		}
 
-		if (depth >= EXACT_DEPTH)
+		if (depth >= m_ExactDepth)
 		{
 			BuildWallTri(cell, shapeA, x0, z0, s, h00, h10, h11, h01);
 			BuildWallTri(cell, shapeB, x0, z0, s, h00, h10, h11, h01);
@@ -2203,6 +2212,17 @@ class SZ_SnowCarpet
 			cell.m_Tris.Insert(MakeTri(shapeB, x0, z0, s, h00, h10, h11, h01));
 	}
 
+	//! how many times a level 0 cell at this distance is split around buildings; current: what it was built with
+	//! (-1 for a new cell)
+	protected int DetailFor(float dist, int current)
+	{
+		if (!SZ_State.s_CarpetFarDetail || dist < DETAIL_NEAR)
+			return EXACT_DEPTH;
+		if (current == EXACT_DEPTH && dist < DETAIL_NEAR + DETAIL_HYST)
+			return EXACT_DEPTH;
+		return EXACT_DEPTH - 1;
+	}
+
 	protected SZ_SnowCell CreateCell(int level, int x, int z)
 	{
 		SZ_SnowCell cell = new SZ_SnowCell();
@@ -2219,6 +2239,8 @@ class SZ_SnowCarpet
 
 		if (level == 0)
 		{
+			m_ExactDepth = DetailFor(DistXZ(x0 + size * 0.5, z0 + size * 0.5), -1);
+			cell.m_Detail = m_ExactDepth;
 			// the diagonal of the terrain's own triangles, also where the cover lies on pond ice: with the ice height
 			// on some corners and the bank on others, the other diagonal leaves the terrain's crease poking through
 			float h00 = g_Game.SurfaceY(x0, z0);
@@ -2452,7 +2474,7 @@ class SZ_SnowCarpet
 			string shapeName = ShapeName(t.m_Shape);
 			if (t.m_Free)
 				shapeName = "c";
-			string p3d = SZ_Const.DATA + "snow\\dsk_" + shapeName + t.m_Variant + suffix;
+			string p3d = SZ_Const.DATA + "snow\\szk_" + shapeName + t.m_Variant + suffix;
 			Object o = g_Game.CreateStaticObjectUsingP3D(p3d, Vector(t.m_CX, t.m_YC, t.m_CZ), "0 0 0", 1.0, true);
 			if (!o)
 				continue;
@@ -2759,6 +2781,21 @@ class SZ_SnowCarpet
 		}
 		if (cell && cell.m_Sig != sig)
 			Restitch(cell, sig); // the border moved: same triangles, new edge heights
+		if (cell && level == 0 && cell.m_Detail != DetailFor(dist, cell.m_Detail))
+		{
+			// came nearer (or went further out): built again with the split of its distance, the new triangles first
+			SZ_SnowCell redone = CreateCell(level, x, z);
+			redone.m_Sig = sig;
+			if (anySnow)
+			{
+				int redoneStage = DesiredStage(redone, dist);
+				if (redoneStage > 0)
+					ApplyStage(redone, redoneStage, dist);
+			}
+			DeleteObjects(cell);
+			cells.Set(key, redone);
+			return;
+		}
 		if (!cell)
 		{
 			m_Cost += 0.005;

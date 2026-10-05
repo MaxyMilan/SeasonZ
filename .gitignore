@@ -16,3 +16,9 @@ trailer/
 # Python caches
 __pycache__/
 *.pyc
+
+# Local tools (headless Blender, the DZOB model reader (GPL, not shipped), their config and temp files)
+tools/ext/
+
+# Generated snow caps (5.4 GB of MLOD source models): made again with tools/craft_all.py from the game's models
+source/SeasonZ/data/baked/

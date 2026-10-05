@@ -1,6 +1,6 @@
 """Offline model of the Kyiv climate in DayZ: weather process (vanilla Chernarus logic with the monthly Kyiv odds), the
 game's temperature curve, a synoptic temperature anomaly and the snow pack. Used to calibrate and check the mod's
-constants against Kyiv observations before they go into DS_Climate / DS_ServerController."""
+constants against Kyiv observations before they go into SZ_Climate / SZ_ServerController."""
 import math
 import random
 import sys
@@ -112,7 +112,7 @@ def negative_mean(tmin, tmax):
     return positive_mean(-tmax, -tmin)
 
 
-# ice on ponds and lakes (see DS_Climate): the open water follows the daily mean air temperature within POND_TAU
+# ice on ponds and lakes (see SZ_Climate): the open water follows the daily mean air temperature within POND_TAU
 # days and cannot cool below freezing; at freezing the cold grows ice by Stefan's law, h^2 grows by alpha^2 per
 # freezing degree-day (alpha lower under snow), and positive degree-days and the spring sun melt it.
 ICE = dict(tau=5.0, alpha=2.2, snow_half=12.0, melt=0.45,

@@ -178,6 +178,11 @@ class SZ_State
 	static bool s_DebugRockThin = false;
 	// local test harness only: no roof snow at all (to measure its cost)
 	static bool s_DebugRoofOff = false;
+	// local test harness only: the models with snow baked per model draw it as one object (off: sampled like the rest)
+	static bool s_DebugBaked = true;
+	// level 0 snow cover further than SZ_SnowCarpet.DETAIL_NEAR is split one step less around buildings (local test
+	// harness: off = the full split everywhere, to measure it)
+	static bool s_CarpetFarDetail = true;
 	// local test harness only: log how every surface of a structure becomes polygons or grid pieces
 	static bool s_DebugCapLog = false;
 	// local test harness only: how far walls, fences and wrecks carry snow (metres, -1 = the default)

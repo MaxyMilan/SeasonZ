@@ -13,7 +13,7 @@ class SZ_RoofTri
 	vector m_P0;
 	vector m_P1;
 	vector m_P2;
-	//! a square of m_Span grid cells on one plane, drawn as one object (the dsq models)
+	//! a square of m_Span grid cells on one plane, drawn as one object (the szq models)
 	bool m_Quad;
 	int m_Span;
 	//! how much the piece grows around its centre so it overlaps its neighbours (1.03 = 3 percent)
@@ -77,6 +77,11 @@ class SZ_RoofBuilding
 	bool m_Wall;
 	//! a rock or stone
 	bool m_Rock;
+	//! the snow baked for this model (see SZ_BakedSnow): the name of its models, "" when it has none or when something
+	//! else stands over it here (its snow is sampled like that of the other structures then)
+	string m_Baked;
+	//! baked snow: how far it is raised above the roof (grows with the distance, like the offset of the pieces)
+	float m_Lift;
 	//! the geometry the rays look for: the fire geometry, or the collision geometry of a structure that has no fire
 	//! geometry (hay stacks, some pumps and racks)
 	int m_Geo;
@@ -114,6 +119,9 @@ class SZ_RoofBuilding
 	int m_PendStage;
 	float m_PendSlab;
 	float m_PendOffset;
+	//! baked snow: in the quick round that follows the snow depth (see UpdateBakedRing); dropped once its tile is
+	bool m_InRing;
+	bool m_Dropped;
 	//! test harness: how the surfaces became polygons or grid pieces
 	string m_CapInfo;
 	// movable entities: where it stood, for how long, and the ground snow when it came to rest (-1 = it stood there
@@ -220,6 +228,18 @@ class SZ_RoofSnow
 	static const float CROSS_AGREE = 0.05;
 	//! small structures: no snow piece below the lowest or above the highest point found on them by more than this
 	static const float RANGE_TOL = 0.25;
+	//! rocks and stones: no snow on faces steeper than about 41 degrees (it does not stay there; on a rock the piece
+	//! stood out as a white plate on the flank)
+	static const float ROCK_NY = 0.75;
+	//! baked snow: the snow depth (cm) from which each of the seven models is drawn (the first three follow the stages
+	//! of the roof snow, the others a closed cover growing deeper), and the change of the lift (m) for which it is
+	//! placed again
+	static const ref array<float> BAKED_DEPTHS = {0.5, 2.0, 5.0, 10.0, 14.0, 19.0, 25.0};
+	static const float BAKED_LIFT_STEP = 0.01;
+	//! baked snow: placements tilted more than about 12 degrees are sampled instead
+	static const float BAKED_UPRIGHT = 0.978;
+	//! baking: a point of a piece counts as resting on the structure when the structure lies at most this far under it
+	static const float BAKE_SUPPORT = 0.1;
 	static const float EDGE_PROBE = 0.2;
 	//! surfaces lower than this above the ground are checked for a see-through roof over them (see SampleAt)
 	static const float SEE_THROUGH = 1.5;
@@ -249,6 +269,19 @@ class SZ_RoofSnow
 	//! the same in CPU ticks (0 until the tick length is known)
 	protected static int s_BudgetTicks;
 	protected static int s_UrgentTicks;
+	//! baking (test harness): the height of the ground under the copy being sampled (the rules near the ground use it
+	//! instead of the terrain; NO_HIT = the terrain) and how much finer than at close range its grid is
+	protected static float s_BakeGround = -100000.0;
+	protected static float s_BakeRefine = 1.0;
+	protected static bool s_Baking;
+
+	//! the ground under a point: the terrain, or the ground of the copy being baked
+	protected static float GroundAt(float x, float z)
+	{
+		if (s_BakeGround != NO_HIT)
+			return s_BakeGround;
+		return g_Game.SurfaceY(x, z);
+	}
 
 	static bool IsMovable(Object o)
 	{
@@ -277,7 +310,7 @@ class SZ_RoofSnow
 		for (int i = 0; i < n; i++)
 		{
 			int st = 1 + i % 4;
-			last = SZ_Const.DATA + "snow\\dsr_" + ShapeName(t.m_Shape) + t.m_Variant + "_s" + st.ToString() + ".p3d";
+			last = SZ_Const.DATA + "snow\\szr_" + ShapeName(t.m_Shape) + t.m_Variant + "_s" + st.ToString() + ".p3d";
 		}
 		int t1 = TickCount(0);
 		array<Object> objs = new array<Object>;
@@ -351,6 +384,19 @@ class SZ_RoofSnow
 	//! does not stall a frame
 	protected ref array<Object> m_Trash;
 	protected int m_Cursor;
+	//! the structures with baked snow around the camera, checked a few hundred per frame for a change of their
+	//! model: the main round waits on structures still sampled or placing pieces, so a new depth reached them late
+	protected ref array<SZ_RoofBuilding> m_BakedRing;
+	protected int m_BakedCursor;
+	//! a round runs only after the snow depth changed (by a quarter centimetre at any of the three heights): at rest
+	//! it costs nothing
+	protected bool m_RingActive;
+	protected int m_RingLeft;
+	protected float m_RingS0 = -1;
+	protected float m_RingS1 = -1;
+	protected float m_RingS2 = -1;
+	static const int BAKED_RING_PER_FRAME = 200;
+	static const float BAKED_RING_STEP = 0.25;
 	protected int m_AnchorX;
 	protected int m_AnchorZ;
 	protected float m_Cell;
@@ -474,7 +520,10 @@ class SZ_RoofSnow
 			if (t)
 			{
 				foreach (SZ_RoofBuilding b : t.m_Buildings)
+				{
+					b.m_Dropped = true;
 					TrashAll(b);
+				}
 			}
 			m_Tiles.Remove(k);
 		}
@@ -500,57 +549,73 @@ class SZ_RoofSnow
 			vector p = o.GetPosition();
 			if (Math.Floor(p[0] / TILE) != tx || Math.Floor(p[2] / TILE) != tz)
 				continue;
-			vector mm[2];
-			o.ClippingInfo(mm);
-			vector size = mm[1] - mm[0];
-			int kind = -1;
-			bool small = false;
-			string shape = o.GetShapeName();
-			shape.ToLower();
-			// the long straw stack: its geometry lies inside the hay on top and sticks out of it at the ends, so its
-			// snow would be hidden on top and stand as white blocks at the ends. The stack of wrapped bales: its
-			// geometry runs as a slope from the lower bales to the upper ones, the snow would stand there as a plate
-			if (shape.IndexOf("farm_strawstack") >= 0 || shape.IndexOf("haybale_packed_stack") >= 0)
-				continue;
-			// walls keep the fine grid of thin tops, whatever their bounding box
-			bool wall = shape.IndexOf("\\walls\\") >= 0;
-			bool plain = !o.IsBuilding() && !o.IsRock() && SZ_State.s_DebugRoofPlain > 0 && IsPlainStructure(shape);
-			// small buildings (outhouses, coops, kennels, kiosks) and loose stones: like the small plain structures.
-			// Poles, lamps and wires stay without snow (see IsPlainStructure)
-			bool smallBody = plain || o.IsRock() || (o.IsBuilding() && IsPlainStructure(shape));
-			if (!wall && (o.IsBuilding() || o.IsRock() || plain) && size[0] >= 2.5 && size[2] >= 2.5 && size[1] >= 2.0)
-			{
-				kind = 0;
-			}
-			else if (smallBody && !wall && SZ_State.s_DebugRoofPlain == 3 && size[0] >= SMALL_MIN && size[2] >= SMALL_MIN && size[1] >= 0.5)
-			{
-				// smaller structures (blocks, barriers, boxes, benches, bins, hay bales, small buildings, stones): a
-				// grid sized to them, and flat tops drawn as single polygons
-				kind = 0;
-				small = true;
-			}
-			else
-			{
-				// walls, fences, car wrecks and smaller plain structures (barriers, pipes, wood piles): narrow tops
-				// that hold a strip of snow; the short corner and post pieces of walls too
-				bool thin = (plain && SZ_State.s_DebugRoofPlain > 1) || wall || shape.IndexOf("\\wrecks\\") >= 0;
-				float minLength = 1.2;
-				if (wall)
-					minLength = 0.5;
-				if (thin && Math.Max(size[0], size[2]) >= minLength && size[1] >= 0.4)
-					kind = 1;
-			}
-			if (kind < 0)
-				continue;
-			SZ_RoofBuilding b = new SZ_RoofBuilding();
-			b.m_Obj = o;
-			b.m_Kind = kind;
-			b.m_Small = small;
-			b.m_Wall = wall && kind == 1;
-			b.m_Rock = o.IsRock();
-			b.m_Ground = g_Game.SurfaceY(p[0], p[2]);
-			tile.m_Buildings.Insert(b);
+			SZ_RoofBuilding b = Classify(o);
+			if (b)
+				tile.m_Buildings.Insert(b);
 		}
+	}
+
+	//! the snow record of a map object that carries snow, null for the others
+	protected SZ_RoofBuilding Classify(Object o)
+	{
+		vector mm[2];
+		o.ClippingInfo(mm);
+		vector size = mm[1] - mm[0];
+		int kind = -1;
+		bool small = false;
+		string shape = o.GetShapeName();
+		shape.ToLower();
+		// the long straw stack: its geometry lies inside the hay on top and sticks out of it at the ends, so its
+		// snow would be hidden on top and stand as white blocks at the ends. The stack of wrapped bales: its
+		// geometry runs as a slope from the lower bales to the upper ones, the snow would stand there as a plate
+		if (shape.IndexOf("farm_strawstack") >= 0 || shape.IndexOf("haybale_packed_stack") >= 0)
+			return null;
+		// walls keep the fine grid of thin tops, whatever their bounding box
+		bool wall = shape.IndexOf("\\walls\\") >= 0;
+		bool plain = !o.IsBuilding() && !o.IsRock() && SZ_State.s_DebugRoofPlain > 0 && IsPlainStructure(shape);
+		// small buildings (outhouses, coops, kennels, kiosks) and loose stones: like the small plain structures.
+		// Poles, lamps and wires stay without snow (see IsPlainStructure)
+		bool smallBody = plain || o.IsRock() || (o.IsBuilding() && IsPlainStructure(shape));
+		if (!wall && (o.IsBuilding() || o.IsRock() || plain) && size[0] >= 2.5 && size[2] >= 2.5 && size[1] >= 2.0)
+		{
+			kind = 0;
+		}
+		else if (smallBody && !wall && SZ_State.s_DebugRoofPlain == 3 && size[0] >= SMALL_MIN && size[2] >= SMALL_MIN && size[1] >= 0.5)
+		{
+			// smaller structures (blocks, barriers, boxes, benches, bins, hay bales, small buildings, stones): a
+			// grid sized to them, and flat tops drawn as single polygons
+			kind = 0;
+			small = true;
+		}
+		else
+		{
+			// walls, fences, car wrecks and smaller plain structures (barriers, pipes, wood piles): narrow tops
+			// that hold a strip of snow; the short corner and post pieces of walls too
+			bool thin = (plain && SZ_State.s_DebugRoofPlain > 1) || wall || shape.IndexOf("\\wrecks\\") >= 0;
+			float minLength = 1.2;
+			if (wall)
+				minLength = 0.5;
+			if (thin && Math.Max(size[0], size[2]) >= minLength && size[1] >= 0.4)
+				kind = 1;
+		}
+		if (kind < 0)
+			return null;
+		SZ_RoofBuilding b = new SZ_RoofBuilding();
+		b.m_Obj = o;
+		b.m_Kind = kind;
+		b.m_Small = small;
+		b.m_Wall = wall && kind == 1;
+		b.m_Rock = o.IsRock();
+		vector p = o.GetPosition();
+		b.m_Ground = g_Game.SurfaceY(p[0], p[2]);
+		if (SZ_State.s_DebugBaked && !s_Baking)
+		{
+			b.m_Baked = SZ_BakedSnow.Find(shape);
+			// baked and found to carry no snow (signs, wire fences): nothing to sample
+			if (b.m_Baked == "-")
+				return null;
+		}
+		return b;
 	}
 
 	//! sets up the ray grid in the object's own horizontal axes. Buildings use square cells; walls, wrecks and
@@ -598,14 +663,15 @@ class SZ_RoofSnow
 			float step = m_Cell * 0.25;
 			if (fine)
 				step = m_Cell * 0.125;
+			step = step / s_BakeRefine;
 			if (b.m_Small)
 			{
 				// small structures: three samples across their narrow side
 				float side = Math.Min(u1 - u0, v1 - v0) - 2.0 * pad;
-				step = Math.Clamp(side / 3.0, 0.15, step);
+				step = Math.Clamp(side / (3.0 * s_BakeRefine), 0.15 / s_BakeRefine, step);
 			}
 			// very large buildings get a coarser grid
-			while ((u1 - u0) / step > 44 || (v1 - v0) / step > 44)
+			while ((u1 - u0) / step > 44 * s_BakeRefine || (v1 - v0) / step > 44 * s_BakeRefine)
 				step *= 2.0;
 			b.m_StepU = step;
 			b.m_StepV = step;
@@ -667,7 +733,7 @@ class SZ_RoofSnow
 	//! ground (the terrain cover handles those)
 	protected float SampleAt(SZ_RoofBuilding b, float x, float z)
 	{
-		float groundHere = g_Game.SurfaceY(x, z);
+		float groundHere = GroundAt(x, z);
 		RaycastRVParams rp = new RaycastRVParams(Vector(x, b.m_Top, z), Vector(x, b.m_Bottom, z), null, 0);
 		rp.type = b.m_Geo;
 		rp.flags = CollisionFlags.ALLOBJECTS;
@@ -1034,7 +1100,7 @@ class SZ_RoofSnow
 			int si = s % nu;
 			int sj = s / nu;
 			vector sp = SamplePos(b, si, sj);
-			float ground = g_Game.SurfaceY(sp[0], sp[2]);
+			float ground = GroundAt(sp[0], sp[2]);
 			float above = b.m_H[s] - ground;
 			int root = UnionRoot(parent, s);
 			float low;
@@ -1629,7 +1695,9 @@ class SZ_RoofSnow
 		b.m_Tris.Clear();
 		b.m_CapInfo = "";
 		b.m_Job = null;
-		if (b.m_Cross.Count() > 0 && (SZ_State.s_DebugRoofCaps >= 2 || (SZ_State.s_DebugRoofCaps == 1 && (b.m_Small || b.m_Wall))))
+		// rocks keep the grid: the planes of a curved rock become plates standing off its flanks (their snow is baked;
+		// this is the snow of the tilted ones)
+		if (b.m_Cross.Count() > 0 && !b.m_Rock && (SZ_State.s_DebugRoofCaps >= 2 || (SZ_State.s_DebugRoofCaps == 1 && (b.m_Small || b.m_Wall))))
 		{
 			SZ_CapJob job = new SZ_CapJob();
 			job.m_Groups = GroupSurfaces(b, job.m_Grp);
@@ -1687,6 +1755,8 @@ class SZ_RoofSnow
 			DropUnsupported(b);
 		if (b.m_Small && SZ_State.s_DebugRoofCorner)
 			DropOutOfRange(b);
+		if (b.m_Rock && SZ_State.s_DebugRoofCorner)
+			DropSteep(b, ROCK_NY);
 		b.m_Job = null;
 		b.m_H.Clear();
 		b.m_NY.Clear();
@@ -1931,6 +2001,16 @@ class SZ_RoofSnow
 					bad++;
 			}
 			if (bad >= 2)
+				b.m_Tris.Remove(i);
+		}
+	}
+
+	//! drops the pieces steeper than a slope (normal y below ny)
+	protected void DropSteep(SZ_RoofBuilding b, float ny)
+	{
+		for (int i = b.m_Tris.Count() - 1; i >= 0; i--)
+		{
+			if (b.m_Tris[i].m_Normal[1] < ny)
 				b.m_Tris.Remove(i);
 		}
 	}
@@ -3554,6 +3634,8 @@ class SZ_RoofSnow
 
 	protected int StageFor(SZ_RoofBuilding b)
 	{
+		if (b.m_Baked != "")
+			return BakedVariant(b);
 		if (b.m_Tris.Count() == 0)
 			return 0;
 		return StageForDepth(DepthFor(b));
@@ -3595,6 +3677,139 @@ class SZ_RoofSnow
 		if (depth >= 0.5)
 			return 1;
 		return 0;
+	}
+
+	//! baked snow: the model for the snow depth on the structure (0 = none, see BAKED_DEPTHS)
+	protected int BakedVariant(SZ_RoofBuilding b)
+	{
+		float depth = DepthFor(b);
+		int variant = 0;
+		while (variant < BAKED_DEPTHS.Count() && depth >= BAKED_DEPTHS[variant])
+			variant++;
+		return variant;
+	}
+
+	//! baked snow: how far it is raised above the roof at its distance (the part of OffsetFor that grows with the
+	//! distance; the models hold the rest)
+	protected float BakedLift(SZ_RoofBuilding b)
+	{
+		float lift = 0.0003 * b.m_Dist;
+		if (b.m_Kind == 1)
+			lift = 0.0002 * b.m_Dist;
+		return lift + SZ_State.s_DebugRoofOffset;
+	}
+
+	//! a structure with baked snow: one object for all of it, replaced when the snow changes and raised a little as the
+	//! camera moves away. False when something stands over it here: it is sampled like the other structures then
+	protected bool UpdateBaked(SZ_RoofBuilding b, bool anySnow)
+	{
+		if (b.m_State == 0)
+		{
+			if (!anySnow)
+				return true;
+			// the baked snow lies on the model's own top: a placement tilted far from upright (a rock on its side) or
+			// one under something else is sampled instead
+			vector up = b.m_Obj.GetTransformAxis(1).Normalized();
+			if (up[1] < BAKED_UPRIGHT || BakedCovered(b))
+			{
+				b.m_Baked = "";
+				return false;
+			}
+			b.m_State = 2;
+			b.m_Fine = true;
+		}
+		int want = BakedVariant(b);
+		float lift = BakedLift(b);
+		if (want != b.m_Stage)
+		{
+			Trash(b);
+			b.m_Stage = want;
+			if (want > 0)
+			{
+				Object o = MakeBaked(b, want, lift);
+				if (o)
+					b.m_Objects.Insert(o);
+			}
+		}
+		else if (want > 0 && b.m_Objects.Count() > 0 && b.m_Objects[0] && Math.AbsFloat(lift - b.m_Lift) >= BAKED_LIFT_STEP)
+		{
+			PlaceBaked(b, b.m_Objects[0], lift);
+		}
+		return true;
+	}
+
+	protected Object MakeBaked(SZ_RoofBuilding b, int variant, float lift)
+	{
+		string p3d = SZ_Const.DATA + "baked\\" + b.m_Baked + "_v" + variant.ToString() + ".p3d";
+		Object o = g_Game.CreateStaticObjectUsingP3D(p3d, b.m_Obj.GetPosition(), "0 0 0", 1.0, true);
+		if (!o)
+			return null;
+		PlaceBaked(b, o, lift);
+		m_Objects++;
+		m_Cost += 0.05;
+		return o;
+	}
+
+	//! the baked model lies in the structure's own space: it takes the structure's transform (the binarised model is
+	//! centred on its bounding box, which is put back), raised by the lift
+	protected void PlaceBaked(SZ_RoofBuilding b, Object o, float lift)
+	{
+		vector mat[4];
+		b.m_Obj.GetTransform(mat);
+		vector centre = o.GetBoundingCenter();
+		mat[3] = mat[3] + mat[0] * centre[0] + mat[1] * centre[1] + mat[2] * centre[2];
+		mat[3][1] = mat[3][1] + lift;
+		o.SetTransform(mat);
+		b.m_Lift = lift;
+	}
+
+	//! something solid other than vegetation stands over a structure here (a shed roof over a wreck, a shelter over a
+	//! bench): its baked snow would lie under it. Five rays: the middle of its box and halfway to each corner
+	protected bool BakedCovered(SZ_RoofBuilding b)
+	{
+		vector mat[4];
+		b.m_Obj.GetTransform(mat);
+		vector mm[2];
+		b.m_Obj.ClippingInfo(mm);
+		vector mid = (mm[0] + mm[1]) * 0.5;
+		vector half = (mm[1] - mm[0]) * 0.25;
+		float boxTop = mat[3][1] + mm[1][1] * mat[1][1];
+		float bottom = mat[3][1] + mm[0][1] * mat[1][1] - 0.5;
+		array<float> fu = {0.0, -1.0, 1.0, 1.0, -1.0};
+		array<float> fv = {0.0, -1.0, -1.0, 1.0, 1.0};
+		for (int k = 0; k < 5; k++)
+		{
+			vector p = mat[3] + mat[0] * (mid[0] + half[0] * fu[k]) + mat[2] * (mid[2] + half[2] * fv[k]);
+			RaycastRVParams rp = new RaycastRVParams(Vector(p[0], boxTop + 20.0, p[2]), Vector(p[0], bottom, p[2]), null, 0);
+			rp.type = ObjIntersectFire;
+			rp.flags = CollisionFlags.ALLOBJECTS;
+			rp.sorted = false;
+			array<ref RaycastRVResult> results = new array<ref RaycastRVResult>;
+			m_Rays++;
+			m_Cost += 0.035;
+			if (!DayZPhysics.RaycastRVProxy(rp, results))
+				continue;
+			float own = NO_HIT;
+			float other = NO_HIT;
+			foreach (RaycastRVResult res : results)
+			{
+				Object hit = res.obj;
+				if (res.parent)
+					hit = res.parent;
+				if (!hit)
+					continue;
+				if (hit == b.m_Obj)
+					own = Math.Max(own, res.pos[1]);
+				else if (!SZ_Util.IsVegetation(hit) && !hit.IsInherited(Man) && !hit.IsInherited(DayZCreature))
+					other = Math.Max(other, res.pos[1]);
+			}
+			float under = own;
+			if (under == NO_HIT)
+				under = boxTop;
+			if (other != NO_HIT && other > under + 0.3)
+				return true;
+		}
+		return false;
 	}
 
 	protected void DeleteObjects(SZ_RoofBuilding b)
@@ -3737,11 +3952,11 @@ class SZ_RoofSnow
 			return null;
 		string p3d;
 		if (t.m_Quad)
-			p3d = SZ_Const.DATA + "snow\\dsq" + t.m_Span.ToString() + t.m_Variant + "_s" + st.ToString() + ".p3d";
+			p3d = SZ_Const.DATA + "snow\\szq" + t.m_Span.ToString() + t.m_Variant + "_s" + st.ToString() + ".p3d";
 		else if (t.m_Free && t.m_Span > 1)
-			p3d = SZ_Const.DATA + "snow\\dsf" + t.m_Span.ToString() + "_s" + st.ToString() + ".p3d";
+			p3d = SZ_Const.DATA + "snow\\szf" + t.m_Span.ToString() + "_s" + st.ToString() + ".p3d";
 		else
-			p3d = SZ_Const.DATA + "snow\\dsr_" + ShapeName(t.m_Shape) + t.m_Variant + "_s" + st.ToString() + ".p3d";
+			p3d = SZ_Const.DATA + "snow\\szr_" + ShapeName(t.m_Shape) + t.m_Variant + "_s" + st.ToString() + ".p3d";
 		Object o = g_Game.CreateStaticObjectUsingP3D(p3d, t.m_Center, "0 0 0", 1.0, true);
 		if (!o)
 			return null;
@@ -3892,6 +4107,67 @@ class SZ_RoofSnow
 
 	void Update(float timeslice, vector camera, float s0, float s1, float s2)
 	{
+		UpdateFrame(timeslice, camera, s0, s1, s2);
+	}
+
+	//! the quick round over the structures with baked snow: each takes the model of the depth now (a few hundred
+	//! per frame, a town of a few thousand in a few seconds). Those that went out of range are left to the main round
+	protected void UpdateBakedRing(vector camera, bool anySnow)
+	{
+		if (!m_BakedRing || m_BakedRing.Count() == 0)
+			return;
+		if (!m_RingActive)
+		{
+			if (Math.AbsFloat(m_S0 - m_RingS0) < BAKED_RING_STEP && Math.AbsFloat(m_S1 - m_RingS1) < BAKED_RING_STEP && Math.AbsFloat(m_S2 - m_RingS2) < BAKED_RING_STEP)
+				return;
+			m_RingS0 = m_S0;
+			m_RingS1 = m_S1;
+			m_RingS2 = m_S2;
+			m_RingActive = true;
+			m_RingLeft = m_BakedRing.Count();
+		}
+		int n = Math.Min(BAKED_RING_PER_FRAME, m_RingLeft);
+		m_RingLeft -= n;
+		if (m_RingLeft <= 0)
+			m_RingActive = false;
+		for (int k = 0; k < n; k++)
+		{
+			if (m_BakedCursor >= m_BakedRing.Count())
+				m_BakedCursor = 0;
+			if (m_BakedRing.Count() == 0)
+				return;
+			SZ_RoofBuilding b = m_BakedRing[m_BakedCursor];
+			if (!b || !b.m_Obj || b.m_Dropped || b.m_Baked == "" || b.m_State != 2)
+			{
+				if (b)
+					b.m_InRing = false;
+				m_BakedRing.Remove(m_BakedCursor);
+				continue;
+			}
+			m_BakedCursor++;
+			vector bp = b.m_Obj.GetPosition();
+			float dx = bp[0] - camera[0];
+			float dz = bp[2] - camera[2];
+			float dist = Math.Sqrt(dx * dx + dz * dz);
+			if (b.m_Small && dist > SMALL_RADIUS)
+				continue;
+			if (b.m_Kind == 1)
+			{
+				float wallRadius = WALL_RADIUS;
+				if (b.m_Reach > 0)
+					wallRadius = b.m_Reach;
+				if (SZ_State.s_DebugWallRadius > 0)
+					wallRadius = SZ_State.s_DebugWallRadius;
+				if (dist > wallRadius)
+					continue;
+			}
+			b.m_Dist = dist;
+			UpdateBaked(b, anySnow);
+		}
+	}
+
+	protected void UpdateFrame(float timeslice, vector camera, float s0, float s1, float s2)
+	{
 		// the length of a CPU tick, measured over whole frames
 		if (s_FrameTick != 0 && timeslice > 0.002 && timeslice < 0.5)
 		{
@@ -3962,6 +4238,9 @@ class SZ_RoofSnow
 		int visited = 0;
 		int looked = 0;
 		bool busy = false;
+		tk = TickCount(0);
+		UpdateBakedRing(camera, anySnow);
+		StatTicks(4, tk);
 		while (m_Cost < 20.0 && visited < count && looked < VISITS_PER_FRAME)
 		{
 			if (m_Cursor >= count)
@@ -4039,6 +4318,23 @@ class SZ_RoofSnow
 						break;
 					}
 					continue;
+				}
+				if (b.m_Baked != "")
+				{
+					tk = TickCount(0);
+					bool baked = UpdateBaked(b, anySnow);
+					StatTicks(4, tk);
+					if (baked)
+					{
+						if (!b.m_InRing && b.m_State == 2)
+						{
+							if (!m_BakedRing)
+								m_BakedRing = new array<SZ_RoofBuilding>;
+							m_BakedRing.Insert(b);
+							b.m_InRing = true;
+						}
+						continue;
+					}
 				}
 				if (b.m_State == 0)
 				{
@@ -4198,6 +4494,17 @@ class SZ_RoofSnow
 				TrashAll(b);
 		}
 		m_Tiles.Clear();
+		if (m_BakedRing)
+		{
+			foreach (SZ_RoofBuilding rb : m_BakedRing)
+			{
+				if (rb)
+					rb.m_InRing = false;
+			}
+			m_BakedRing.Clear();
+		}
+		m_BakedCursor = 0;
+		m_RingActive = false;
 		if (m_Movable)
 		{
 			for (int m = 0; m < m_Movable.Count(); m++)
@@ -4253,7 +4560,10 @@ class SZ_RoofSnow
 				if (!kt)
 					continue;
 				foreach (SZ_RoofBuilding kb : kt.m_Buildings)
+				{
+					kb.m_Dropped = true;
 					DeleteObjects(kb);
+				}
 			}
 			m_Tiles.Clear();
 			m_Cursor = 0;
@@ -4359,6 +4669,259 @@ class SZ_RoofSnow
 		return best.m_Obj.GetType() + " " + best.m_CapInfo + " tris=" + best.m_Tris.Count().ToString();
 	}
 
+	//! test harness (baking): samples the snow of a map object at full detail on a copy of it standing alone (no other
+	//! object over it, a flat ground at the given height under it) and writes its pieces to a file in the model's own
+	//! space, in millimetres: per piece its kind (g grid, q square, f free), the stages it loses, how much lower it
+	//! lies, its normal (x1000) and its corners on the roof. Rocks add their heights on a fine grid. Returns a summary
+	string BakeObject(Object world, Object copy, float ground, string path, float refine)
+	{
+		s_Baking = true;
+		SZ_RoofBuilding b = Classify(world);
+		s_Baking = false;
+		if (!b)
+			return "none";
+		b.m_Obj = copy;
+		b.m_Ground = ground;
+		b.m_Dist = 0;
+		b.m_Baked = "";
+		s_BakeGround = ground;
+		s_BakeRefine = refine;
+		BeginScan(b, true);
+		int guard = 0;
+		while ((b.m_State == 1 || b.m_State == 3 || b.m_State == 4) && guard < 500000)
+		{
+			guard++;
+			if (b.m_State == 1)
+				CastRow(b);
+			else if (b.m_State == 3)
+				RefineEdge(b);
+			else if (CapStep(b))
+				FinishTris(b);
+		}
+		// a structure without fire geometry: a copy made from its model is not hit on its collision geometry, so it
+		// is sampled where it stands (on the terrain there, with what stands around it)
+		Object frame = copy;
+		if (b.m_Tris.Count() == 0 && b.m_Geo == ObjIntersectGeom)
+		{
+			frame = world;
+			b.m_Obj = world;
+			vector wp = world.GetPosition();
+			b.m_Ground = g_Game.SurfaceY(wp[0], wp[2]);
+			s_BakeGround = NO_HIT;
+			BeginScan(b, true);
+			guard = 0;
+			while ((b.m_State == 1 || b.m_State == 3 || b.m_State == 4) && guard < 500000)
+			{
+				guard++;
+				if (b.m_State == 1)
+					CastRow(b);
+				else if (b.m_State == 3)
+					RefineEdge(b);
+				else if (CapStep(b))
+					FinishTris(b);
+			}
+			ground = b.m_Ground;
+		}
+		vector mat[4];
+		frame.GetTransform(mat);
+		FileHandle fh = OpenFile(path, FileMode.WRITE);
+		if (fh == 0)
+		{
+			s_BakeGround = NO_HIT;
+			s_BakeRefine = 1.0;
+			return "nofile";
+		}
+		string shape = world.GetShapeName();
+		shape.ToLower();
+		FPrintln(fh, string.Format("model %1 kind %2 small %3 wall %4 rock %5 geo %6 state %7 ground %8 inplace %9", shape, b.m_Kind, b.m_Small, b.m_Wall, b.m_Rock, b.m_Geo, b.m_State, MM(ground - mat[3][1]), frame == world));
+		FPrintln(fh, string.Format("axes %1 %2 %3 step %4 %5 grid %6 %7", mat[0], mat[1], mat[2], MM(b.m_StepU), MM(b.m_StepV), b.m_NU, b.m_NV));
+		FPrintln(fh, "caps " + b.m_CapInfo);
+		array<vector> cs = new array<vector>;
+		foreach (SZ_RoofTri t : b.m_Tris)
+		{
+			PieceCorners(t, cs);
+			string kindText = "g";
+			if (t.m_Free)
+				kindText = "f";
+			else if (t.m_Quad)
+				kindText = "q";
+			vector ln = frame.VectorToLocal(t.m_Normal).Normalized();
+			string line = string.Format("t %1 %2 %3 %4 %5 %6 %7", kindText, t.m_Drop, MM(t.m_Lower), Math.Round(ln[0] * 1000), Math.Round(ln[1] * 1000), Math.Round(ln[2] * 1000), cs.Count());
+			foreach (vector c : cs)
+			{
+				vector lc = frame.CoordToLocal(c);
+				line += " " + MM(lc[0]).ToString() + " " + MM(lc[1]).ToString() + " " + MM(lc[2]).ToString();
+			}
+			line += " s " + BakeSupport(b, cs).ToString();
+			FPrintln(fh, line);
+		}
+		if (frame == copy)
+		{
+			// every model: its height on a fine grid over its box (x = no hit), from 5 cm (small models) to 30 cm (the
+			// largest), at most about 350 samples along a side. The generator checks the pieces against it and draws
+			// curved and rough tops (rocks, tanks, wrecks, barriers) from it. "e" lines: where a surface ends between
+			// two samples, found with a few more rays
+			vector mm[2];
+			copy.ClippingInfo(mm);
+			float side = Math.Max(mm[1][0] - mm[0][0], mm[1][2] - mm[0][2]);
+			float gs = Math.Clamp(side / 150.0, 0.05, 0.3);
+			gs = Math.Round(gs * 200.0) / 200.0;
+			if (side / gs > 350.0)
+				gs = Math.Ceil(side / 350.0 * 200.0) / 200.0;
+			int gnu = Math.Ceil((mm[1][0] - mm[0][0]) / gs) + 1;
+			int gnv = Math.Ceil((mm[1][2] - mm[0][2]) / gs) + 1;
+			FPrintln(fh, string.Format("grid %1 %2 %3 %4 %5", gnu, gnv, MM(gs), MM(mm[0][0]), MM(mm[0][2])));
+			b.m_Top = mat[3][1] + mm[1][1] + 1.5;
+			b.m_Bottom = ground - 0.5;
+			float ox = mat[3][0] + mm[0][0];
+			float oz = mat[3][2] + mm[0][2];
+			array<float> hs = new array<float>;
+			int gi;
+			int gj;
+			for (gj = 0; gj < gnv; gj++)
+			{
+				string row = "r";
+				for (gi = 0; gi < gnu; gi++)
+				{
+					float gh = SampleAt(b, ox + gi * gs, oz + gj * gs);
+					hs.Insert(gh);
+					if (gh == NO_HIT)
+						row += " x";
+					else
+						row += " " + MM(gh - mat[3][1]).ToString();
+				}
+				FPrintln(fh, row);
+			}
+			for (gj = 0; gj < gnv; gj++)
+			{
+				for (gi = 0; gi < gnu; gi++)
+				{
+					float ha = hs[gj * gnu + gi];
+					if (gi + 1 < gnu)
+						BakeEdgeLine(fh, b, ox, oz, gs, gi, gj, 0, ha, hs[gj * gnu + gi + 1]);
+					if (gj + 1 < gnv)
+						BakeEdgeLine(fh, b, ox, oz, gs, gi, gj, 1, ha, hs[(gj + 1) * gnu + gi]);
+				}
+			}
+		}
+		CloseFile(fh);
+		s_BakeGround = NO_HIT;
+		s_BakeRefine = 1.0;
+		return string.Format("kind=%1 small=%2 wall=%3 rock=%4 tris=%5 step=%6 caps: %7", b.m_Kind, b.m_Small, b.m_Wall, b.m_Rock, b.m_Tris.Count(), b.m_StepU, b.m_CapInfo);
+	}
+
+	protected static int MM(float metres)
+	{
+		return Math.Round(metres * 1000.0);
+	}
+
+	//! baking: where the surface at one of two neighbouring grid samples ends when the other has nothing or a surface
+	//! much higher or lower: "e <i> <j> <dir> <t>" for the samples (i, j) and the next along u (dir 0) or v (dir 1), t
+	//! (0-1000) measured from (i, j). The end found is that of the surface hit, or of the higher one
+	protected void BakeEdgeLine(FileHandle fh, SZ_RoofBuilding b, float ox, float oz, float gs, int i, int j, int dir, float ha, float hc)
+	{
+		if (ha == NO_HIT && hc == NO_HIT)
+			return;
+		float thr = Math.Max(0.3, 2.75 * gs);
+		if (ha != NO_HIT && hc != NO_HIT && Math.AbsFloat(ha - hc) <= thr)
+			return;
+		bool fromA = hc == NO_HIT || (ha != NO_HIT && ha > hc);
+		float ax = ox + i * gs;
+		float az = oz + j * gs;
+		float cx = ax;
+		float cz = az;
+		if (dir == 0)
+			cx = cx + gs;
+		else
+			cz = cz + gs;
+		float sx = ax;
+		float sz = az;
+		float ex = cx;
+		float ez = cz;
+		float hsurf = ha;
+		float hother = hc;
+		if (!fromA)
+		{
+			sx = cx;
+			sz = cz;
+			ex = ax;
+			ez = az;
+			hsurf = hc;
+			hother = ha;
+		}
+		float lo = 0.0;
+		float hi = 1.0;
+		for (int it = 0; it < 5; it++)
+		{
+			float mid = (lo + hi) * 0.5;
+			float h = SampleAt(b, sx + (ex - sx) * mid, sz + (ez - sz) * mid);
+			bool same = false;
+			if (h != NO_HIT)
+			{
+				if (hother == NO_HIT)
+					same = Math.AbsFloat(h - hsurf) <= mid * gs * 1.8 + 0.05;
+				else
+					same = Math.AbsFloat(h - hsurf) < Math.AbsFloat(h - hother);
+			}
+			if (same)
+				lo = mid;
+			else
+				hi = mid;
+		}
+		float t = (lo + hi) * 0.5;
+		if (!fromA)
+			t = 1.0 - t;
+		FPrintln(fh, string.Format("e %1 %2 %3 %4", i, j, dir, Math.Round(t * 1000.0)));
+	}
+
+	//! baking: at how many of five points of a piece (its middle and four points 70% out to its corners) the structure
+	//! itself lies just under it, in any of its geometries (fire, view, collision). A piece over air (a plane carried on
+	//! past a cab roof, over a flight of open stairs) is found here and left out of the baked snow
+	protected int BakeSupport(SZ_RoofBuilding b, array<vector> cs)
+	{
+		int n = cs.Count();
+		if (n < 3)
+			return 0;
+		vector g = "0 0 0";
+		foreach (vector c : cs)
+			g = g + c;
+		g = g * (1.0 / n);
+		int count = 0;
+		for (int q = -1; q < n && q < 4; q++)
+		{
+			vector p = g;
+			if (q >= 0)
+				p = g + (cs[q] - g) * 0.7;
+			if (BakeSupported(b, p))
+				count++;
+		}
+		return count;
+	}
+
+	protected bool BakeSupported(SZ_RoofBuilding b, vector p)
+	{
+		array<int> geos = {ObjIntersectFire, ObjIntersectView, ObjIntersectGeom};
+		foreach (int geo : geos)
+		{
+			RaycastRVParams rp = new RaycastRVParams(p + Vector(0, 0.3, 0), p - Vector(0, 0.6, 0), null, 0);
+			rp.type = geo;
+			rp.flags = CollisionFlags.ALLOBJECTS;
+			rp.sorted = false;
+			array<ref RaycastRVResult> results = new array<ref RaycastRVResult>;
+			if (!DayZPhysics.RaycastRVProxy(rp, results))
+				continue;
+			foreach (RaycastRVResult res : results)
+			{
+				Object hit = res.obj;
+				if (res.parent)
+					hit = res.parent;
+				if (hit == b.m_Obj && res.pos[1] >= p[1] - BAKE_SUPPORT && res.pos[1] <= p[1] + 0.3)
+					return true;
+			}
+		}
+		return false;
+	}
+
 	//! test harness: the snow triangles of the structure nearest to a point
 	string DebugTris(float x, float z)
 	{
@@ -4410,6 +4973,33 @@ class SZ_RoofSnow
 	//! test harness: the structures within a radius of a point whose snow is complete (sampled at the detail of
 	//! their distance, their stage placed), the others there (waiting), and the tiles around the point not scanned
 	//! yet
+	void DebugBaked(float x, float z, float radius)
+	{
+		for (int i = 0; i < m_Tiles.Count(); i++)
+		{
+			SZ_RoofTile t = m_Tiles.GetElement(i);
+			if (!t)
+				continue;
+			foreach (SZ_RoofBuilding b : t.m_Buildings)
+			{
+				if (!b.m_Obj || b.m_Objects.Count() == 0)
+					continue;
+				vector p = b.m_Obj.GetPosition();
+				if ((p[0] - x) * (p[0] - x) + (p[2] - z) * (p[2] - z) > radius * radius)
+					continue;
+				Object o = b.m_Objects[0];
+				vector box[2];
+				string extent = "-";
+				if (o)
+				{
+					o.ClippingInfo(box);
+					extent = (box[1] - box[0]).ToString() + " at " + o.GetPosition().ToString();
+				}
+				Print(string.Format("[DSTest] bakednear %1 baked=%2 pieces=%3 scale=%4 pos=%5 snow=%6", b.m_Obj.GetShapeName(), b.m_Baked, b.m_Objects.Count(), b.m_Obj.GetScale(), p, extent));
+			}
+		}
+	}
+
 	void DebugReady(vector c, float radius, array<SZ_RoofBuilding> ready, array<SZ_RoofBuilding> waiting, out int tiles)
 	{
 		tiles = 0;
@@ -4498,7 +5088,9 @@ class SZ_RoofSnow
 				if ((p[0] - x) * (p[0] - x) + (p[2] - z) * (p[2] - z) > radius * radius)
 					continue;
 				known.Set(b.m_Obj, true);
-				s += string.Format(" [%1 kind=%2 small=%3 wall=%4 geo=%5 state=%6 tris=%7 objs=%8]", b.m_Obj.GetShapeName(), b.m_Kind, b.m_Small, b.m_Wall, b.m_Geo, b.m_State, b.m_Tris.Count(), b.m_Objects.Count());
+				vector dbgUp = b.m_Obj.GetTransformAxis(1).Normalized();
+				s += string.Format(" [%1 kind=%2 small=%3 wall=%4 geo=%5 state=%6 tris=%7 objs=%8 baked=%9", b.m_Obj.GetShapeName(), b.m_Kind, b.m_Small, b.m_Wall, b.m_Geo, b.m_State, b.m_Tris.Count(), b.m_Objects.Count(), b.m_Baked);
+				s += string.Format(" up=%1 stage=%2]", dbgUp[1], b.m_Stage);
 			}
 		}
 		array<Object> objs = new array<Object>;

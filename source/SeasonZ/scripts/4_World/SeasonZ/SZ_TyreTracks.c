@@ -35,7 +35,7 @@ class SZ_TyreTracks
 	//! a wheel more than this above the snow cover rolls on something else (a bridge, a floor)
 	static const float ABOVE_LIMIT = 0.6;
 	static const float ABOVE_COVER = 0.016;
-	static const string MODEL_DIR = "SeasonZ\\data\\tracks\\ds_track_";
+	static const string MODEL_DIR = "SeasonZ\\data\\tracks\\sz_track_";
 
 	protected static ref array<ref SZ_TrackCar> s_Cars;
 	protected static ref array<ref SZ_Print> s_Segments;
