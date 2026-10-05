@@ -984,8 +984,14 @@ class Model:
             D = D * taper_s
         S = Zs + D
         rs = max(1, int(round((smooth if smooth is not None else max(0.04, 0.5 * t)) / g)))
+        # (a small top, a post's sawn end, a pillar's cap: the snow lies on it as one smooth dome over its
+        # unevenness, deeper in a dip of it)
+        hw_r = float((distance(M, int(math.ceil(0.2 / g)) + 2) * g).max()) if M.any() else 0.0
+        small = smooth is None and hw_r < 0.15
+        if small:
+            rs = max(rs, int(round(0.7 * hw_r / g)))
         Sb = blur(S, M, rs)
-        S = np.where(M, np.clip(Sb, Zs + 0.8 * D, Zs + 1.15 * D + 0.005), 0.0)
+        S = np.where(M, np.clip(Sb, Zs + (0.5 if small else 0.8) * D, Zs + (1.6 if small else 1.15) * D + 0.005), 0.0)
         if rim == 'round':
             # the bevels and rounded edges of its own parts (left out as too steep to hold snow of their own): the
             # snow runs over them to the support's true edge, its top on level (else a cap stopped 2 cm short of a
@@ -1896,6 +1902,7 @@ class Model:
         bva = self.bvh_all
         own = int(part)
         SKY_DIRS = _sky_dirs()
+        deep_c = np.zeros((self.nv, self.nu), bool)
         top = np.zeros((n_st, k, 3))
         bot = np.zeros((n_st, k, 3))
         hh = np.zeros((n_st, k))
@@ -2018,7 +2025,7 @@ class Model:
             te0 = ends and j0 == 0
             te1 = ends and j1 == n_st - 1
             extra = []
-            for f_ in (0.04, 0.15, 0.33, 0.6):
+            for f_ in (0.02, 0.07, 0.15, 0.26, 0.4, 0.57, 0.77):
                 if te0:
                     extra.append(S[j0] + f_ * le0)
                 if te1:
@@ -2049,7 +2056,20 @@ class Model:
             base = RSp - inset + (lift + inset) * lf[:, None]
             base[:, 0] = RSp[:, 0] - inset
             base[:, -1] = RSp[:, -1] - inset
-            rho = np.maximum(smooth_top(base + hsp * fac[:, None]), base)
+            # (smoothed, then where the log's own surface stands above that (a bend in a hewn log, a knot) the
+            # snow thickens round it on a gentle cone and is smoothed again: the snow rounds over the bend)
+            S1 = smooth_top(base + hsp * fac[:, None])
+            rd = np.maximum(base - S1, 0.0)
+            if rd.max() > 1e-5:
+                ds_ = np.diff(Sp)
+                cum = np.concatenate([[0.0], np.cumsum(ds_)])
+                arc = rmed * (np.arange(k) - (k - 1) / 2.0) * float(phis[1] - phis[0]) if k > 1 else np.zeros(1)
+                bump = np.zeros_like(rd)
+                for jj, qq in zip(*np.nonzero(rd > 1e-5)):
+                    dd_ = 0.3 * np.hypot((cum - cum[jj])[:, None], (arc - arc[qq])[None, :])
+                    bump = np.maximum(bump, rd[jj, qq] - dd_)
+                S1 = smooth_top(S1 + bump)
+            rho = np.maximum(S1, base)
             rho[:, 0], rho[:, -1] = base[:, 0], base[:, -1]
             rho = np.where(fac[:, None] <= 0.0, base, rho)
             nj = len(Sp)
@@ -2075,6 +2095,13 @@ class Model:
             role = np.where(foot, 3, 0)
             self._caps.append({'V': Va, 'F': Fa, 'role': role, 'anchor': np.full(len(Va), -1), 'foot': foot})
             out.append((Va, Fa))
+            # (the cells under snow of some depth: the check's cells meant to have snow are no more than these)
+            dep = (rho - base).ravel()
+            iu, jv = self.ij(Va[:, 0], Va[:, 2])
+            okd = dep > 0.004
+            iu_ = np.clip(np.round(iu[okd]).astype(int), 0, self.nu - 1)
+            jv_ = np.clip(np.round(jv[okd]).astype(int), 0, self.nv - 1)
+            deep_c[jv_, iu_] = True
         # its part's cells are claimed (no blanket of its own over it); those within theta of its crown, open to
         # the sky, held (the check's cells meant to have snow)
         if out:
@@ -2089,7 +2116,7 @@ class Model:
                 if bva.ray_cast(Vec((float(x_), float(self.Z[j_, i_]) + 0.004, float(z_))), Vec((0.0, 1.0, 0.0)), sky)[0] is not None:
                     held[j_, i_] = False
             # (and not where a piece ends in its taper)
-            self._sel |= held & ~dilate(~held, 1)
+            self._sel |= held & ~dilate(~held, 1) & erode(dilate(deep_c, 2), 1)
         return join(out)
 
     # ---------- a narrow strip ----------
