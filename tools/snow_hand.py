@@ -814,6 +814,8 @@ class Model:
                     ok = cand & np.isfinite(hp) & np.isfinite(hn)
                     hp0, hn0 = np.nan_to_num(hp), np.nan_to_num(hn)
                     ok &= np.abs(hp0 - hn0) <= tau + 0.6 * (dp + dn) * g
+                    # (the gap itself no wider than close: thin snow does not span a 5 cm gap between pickets)
+                    ok &= (dp + dn - 1) * g <= close + 0.5 * g
                     zi = (hp0 * dn + hn0 * dp) / np.maximum(dp + dn, 1)
                     acc += np.where(ok, zi, 0.0)
                     wsum += ok
@@ -1817,6 +1819,9 @@ class Model:
                     occ = (h > 0.015 * h.sum()).sum()
                     # (a square beam with chamfered edges faces eight ways too, but four of them hold most of it)
                     top4 = float(np.sort(h)[-4:].sum() / max(h.sum(), 1e-12))
+                    # (and its sixth biggest direction is a narrow chamfer beside its faces; round: about as big)
+                    hs6 = np.sort(h)[::-1]
+                    r6 = float(hs6[5] / max(hs6[0], 1e-12))
                     # (and round: its corners about as far from its centre line all round, stretch by stretch; a
                     # board with rounded edges is not)
                     s_ = pr[:, 0]
@@ -1828,7 +1833,7 @@ class Model:
                             q2 = pr[sb][:, 1:3]
                             rad = np.hypot(*(q2 - q2.mean(0)).T)
                             cvs.append(float(rad.std() / max(rad.mean(), 1e-9)))
-                    res = bool(occ >= 5 and top4 < 0.8 and cvs and float(np.median(cvs)) < 0.25)
+                    res = bool(occ >= 5 and top4 < 0.8 and r6 > 0.5 and cvs and float(np.median(cvs)) < 0.25)
         self._log_cache[p] = res
         return res
 
@@ -2120,8 +2125,262 @@ class Model:
             self._sel |= held & ~dilate(~held, 1) & erode(dilate(deep_c, 2), 1)
         return join(out)
 
+    # ---------- a straight beam ----------
+    def is_beam(self, p):
+        """part p is a straight beam, rail or board on edge with a narrow top (snow along it with beam()): long,
+        thin both ways, leaning less than about 35 degrees, a flat top no wider than 15 cm, not round"""
+        if not hasattr(self, '_beam_cache'):
+            self._beam_cache = {}
+        if p in self._beam_cache:
+            return self._beam_cache[p]
+        res = False
+        sel = np.nonzero(self.part_t == p)[0]
+        P = self._part_verts(p)
+        if len(sel) >= 6 and len(P) >= 8 and not self.is_log(p):
+            c0 = P.mean(0)
+            _, _, Vt = np.linalg.svd(P - c0, full_matrices=False)
+            pr = (P - c0) @ Vt.T
+            ext = np.ptp(pr, axis=0)
+            if ext[0] >= 0.4 and ext[1] <= 0.25 and ext[2] <= 0.25 and ext[0] >= 5.0 * ext[1] and abs(Vt[0][1]) < 0.57:
+                A_, B_, C_ = self.V[self.T[sel, 0]], self.V[self.T[sel, 1]], self.V[self.T[sel, 2]]
+                n = np.cross(B_ - A_, C_ - A_)
+                ar = np.linalg.norm(n, axis=1)
+                ny = n[:, 1] / np.maximum(ar, 1e-12)
+                topa = 0.5 * float(ar[ny > 0.85].sum())
+                wtop = topa / max(float(ext[0]), 1e-6)
+                res = bool(0.008 <= wtop <= 0.15)
+                if res:
+                    # (one of a deck: other tops beside it within 5 cm at about its height (the slats of a seat, the
+                    # planks of a table) make one surface for a blanket, the gaps bridged as the snow deepens)
+                    own = self.PART == p
+                    near = dilate(own, max(1, int(round(0.05 / self.g)))) & ~own & (self.PART >= 0)
+                    zown = maxf(np.where(own, np.nan_to_num(self.Z, nan=-1e9), -np.inf), max(1, int(round(0.05 / self.g))))
+                    dz = np.abs(np.nan_to_num(self.Z, nan=1e9) - zown)
+                    flat = self.NYF > 0.85
+                    res = not bool((near & flat & (dz < 0.03)).sum() * self.g * self.g > 0.25 * topa)
+        self._beam_cache[p] = res
+        return res
+
+    def beam(self, part, variant, depth=1.0, step=None, k=13, inset=0.003, sky=1.5):
+        """the snow along a straight beam, rail or board on edge (part): a half ellipse across its flat top, as high
+        as the depth gives and no more than about three quarters of the top's width, its edges just past the top's
+        edges and a few millimetres down; under something above it (another rail, a cap: a face looking down over
+        it) thinner by the share of the falling snow it shelters off, ending in a ramp where it is shut off; the
+        top found on the beam itself (a picket nailed across it stands through the snow). (V, F) or None."""
+        from mathutils import Vector as Vec
+        from mathutils.bvhtree import BVHTree
+        g = self.g
+        t = self.thick(variant) * depth
+        sel = np.nonzero(self.part_t == part)[0]
+        P = self._part_verts(part)
+        if len(P) < 8:
+            return None
+        c0 = P.mean(0)
+        _, _, Vt = np.linalg.svd(P - c0, full_matrices=False)
+        ax = Vt[0] / np.linalg.norm(Vt[0])
+        if abs(ax[1]) > 0.6:
+            return None
+        hz = np.array([ax[0], 0.0, ax[2]])
+        hz /= max(np.linalg.norm(hz), 1e-9)
+        nr = np.array([-hz[2], 0.0, hz[0]])
+        s_all = (P - c0) @ ax
+        u_all = (P - c0) @ nr
+        s0, s1 = float(s_all.min()), float(s_all.max())
+        Ln = s1 - s0
+        if Ln < 0.15:
+            return None
+        if step is None:
+            # (a long rail in steps of up to 10 cm: its top is straight; ends and shelter get their own stations)
+            step = float(np.clip(Ln / 40.0, 0.04, 0.1))
+        bp = BVHTree.FromPolygons([tuple(p) for p in self.V], [tuple(int(i) for i in t_) for t_ in self.T[sel]],
+                                  all_triangles=True, epsilon=0.0)
+        bva = self.bvh_all
+        ytop = float(P[:, 1].max()) + 0.05
+        n_st = max(3, int(math.ceil(Ln / step)) + 1)
+        S = np.linspace(s0 + 0.002, s1 - 0.002, n_st)
+        down = Vec((0.0, -1.0, 0.0))
+        umax = float(np.abs(u_all).max()) + 0.01
+        du = 0.002
+        ug = np.arange(-umax, umax + 1e-9, du)
+        lo = np.full(n_st, np.nan)
+        hi = np.full(n_st, np.nan)
+        for j, sj in enumerate(S):
+            pc = c0 + sj * ax
+            ys, oks = [], []
+            for uu in ug:
+                q = pc + uu * nr
+                loc, nrm, _, _ = bp.ray_cast(Vec((float(q[0]), ytop + float(sj * ax[1]), float(q[2]))), down, 2.0)
+                ys.append(loc.y if loc is not None else np.nan)
+                oks.append(loc is not None and nrm.y > 0.6)
+            ys = np.array(ys)
+            oks = np.array(oks)
+            if not oks.any():
+                continue
+            ymx = np.nanmax(np.where(oks, ys, np.nan))
+            top_ = oks & (ys > ymx - 0.02)
+            # the run of top round the highest point
+            i0 = int(np.nanargmax(np.where(top_, ys, -np.inf)))
+            a_, b_ = i0, i0
+            while a_ > 0 and top_[a_ - 1]:
+                a_ -= 1
+            while b_ < len(ug) - 1 and top_[b_ + 1]:
+                b_ += 1
+            lo[j], hi[j] = ug[a_] - 0.5 * du, ug[b_] + 0.5 * du
+        good = np.isfinite(lo)
+        if good.sum() < 2:
+            return None
+        lo = np.interp(S, S[good], lo[good])
+        hi = np.interp(S, S[good], hi[good])
+        k3 = np.array([0.25, 0.5, 0.25])
+        for _ in range(2):
+            lo = np.convolve(np.pad(lo, 1, mode='edge'), k3, 'valid')
+            hi = np.convolve(np.pad(hi, 1, mode='edge'), k3, 'valid')
+        w = np.clip(hi - lo, 0.004, None)
+        wl = float(np.median(w))
+        ny_ax = math.sqrt(max(0.0, 1.0 - ax[1] * ax[1]))
+        wslope = float(SC.slope_w(self.scls, variant, np.array([ny_ax]), self.skind)[0])
+        H = min(t * wslope, 0.75 * wl + 0.006)
+        if H < 0.004:
+            return None
+        mid = 0.5 * (lo + hi)
+        us = np.sin(np.linspace(-0.5 * math.pi, 0.5 * math.pi, k))
+        base = np.full((n_st, k), np.nan)
+        P2 = np.zeros((n_st, k, 3))
+        for j, sj in enumerate(S):
+            pc = c0 + sj * ax
+            for q, uq in enumerate(us):
+                uu = mid[j] + uq * (0.5 * w[j] + (0.001 if abs(uq) > 0.999 else 0.0))
+                uin = mid[j] + uq * 0.5 * w[j] * 0.85
+                p_ = pc + uu * nr
+                pin = pc + uin * nr
+                loc = bp.ray_cast(Vec((float(pin[0]), ytop + float(sj * ax[1]), float(pin[2]))), down, 2.0)[0]
+                P2[j, q] = p_
+                if loc is not None:
+                    base[j, q] = loc.y
+            row = base[j]
+            f_ = np.isfinite(row)
+            if f_.sum() >= 2:
+                base[j] = np.interp(us, us[f_], row[f_])
+            elif f_.sum() == 1:
+                base[j] = row[f_][0]
+        okb = np.isfinite(base).all(1)
+        # sheltered: the share of five rays (the vertical and four at 20 degrees) from its crest that meet a face
+        # looking down above it; something standing up beside it (a picket, a post) shelters nothing
+        frac = np.zeros(n_st)
+        dirs = _sky_dirs()
+        for j in range(n_st):
+            if not okb[j]:
+                continue
+            pc = P2[j, k // 2]
+            o = Vec((float(pc[0]), float(base[j, k // 2]) + 0.004, float(pc[2])))
+            clear_n = 0
+            for d3 in dirs:
+                loc, nrm, _, dd = bva.ray_cast(o, d3, sky)
+                if loc is None or nrm.y > -0.3:
+                    clear_n += 1
+            frac[j] = clear_n / float(len(dirs))
+        fs = np.where(okb, frac ** 0.7, 0.0)
+        dsl = float(S[1] - S[0])
+        lc_s = max(3.0 * H, 0.12)
+        for _ in range(n_st):
+            f0_ = fs
+            fs = np.minimum(fs, np.minimum(np.append(fs[1:], 1e9), np.insert(fs[:-1], 0, 1e9)) + dsl / lc_s)
+            if np.allclose(f0_, fs):
+                break
+        for _ in range(2):
+            fs = np.minimum(fs, np.convolve(np.pad(fs, 1, mode='edge'), k3, 'valid'))
+        fs = np.where(fs < 0.12, 0.0, fs)
+        prof = np.sqrt(np.clip(1.0 - us * us, 0.0, 1.0))
+        has = fs > 0.0
+        out = []
+        deep_c = np.zeros((self.nv, self.nu), bool)
+        j = 0
+        while j < n_st:
+            if not has[j]:
+                j += 1
+                continue
+            j0 = j
+            while j < n_st and has[j]:
+                j += 1
+            j1 = j - 1
+            ja = j0 - 1 if j0 > 0 else j0
+            jb = j1 + 1 if j1 < n_st - 1 else j1
+            if jb - ja < 1 or S[j1] - S[j0] < 0.02:
+                continue
+            j0, j1 = ja, jb
+            if not okb[j0:j1 + 1].all():
+                continue
+            Ls = S[j1] - S[j0]
+            le = min(max(1.2 * H, 0.025), 0.45 * Ls)
+            te0, te1 = j0 == 0, j1 == n_st - 1
+            Sp = S[j0:j1 + 1]
+            extra = []
+            for f_ in (0.02, 0.07, 0.15, 0.26, 0.4, 0.57, 0.77):
+                if te0:
+                    extra.append(S[j0] + f_ * le)
+                if te1:
+                    extra.append(S[j1] - f_ * le)
+            Sp = np.unique(np.concatenate([Sp, np.array(extra)]))
+            sj_ = S[j0:j1 + 1]
+            ip1 = lambda A: np.stack([np.interp(Sp, sj_, A[j0:j1 + 1, q]) for q in range(A.shape[1])], 1)
+            bs = ip1(base)
+            Pp = np.stack([ip1(P2[:, :, c]) for c in range(3)], 2)
+            fsp = np.interp(Sp, sj_, fs[j0:j1 + 1])
+            fac = np.ones(len(Sp))
+            rnd = lambda u: np.sqrt(u * (2.0 - u))
+            if te0:
+                fac = np.minimum(fac, rnd(np.clip((Sp - S[j0]) / le, 0.0, 1.0)))
+            if te1:
+                fac = np.minimum(fac, rnd(np.clip((S[j1] - Sp) / le, 0.0, 1.0)))
+            if not te0:
+                fac[0] = 0.0
+            if not te1:
+                fac[-1] = 0.0
+            hgt = H * (fac * fsp)[:, None] * prof[None, :]
+            # (the base along the beam smoothed where its top is uneven: no notch in the snow at a dent)
+            if len(bs) >= 3:
+                bs = np.apply_along_axis(lambda a_: np.maximum(a_, np.convolve(np.pad(a_, 1, mode='edge'), k3, 'valid')), 0, bs)
+            Y = bs + hgt
+            Y[:, 0] = bs[:, 0] - inset
+            Y[:, -1] = bs[:, -1] - inset
+            Y = np.where((fac * fsp)[:, None] <= 0.0, bs - inset, Y)
+            nj = len(Sp)
+            Va = np.column_stack([Pp[:, :, 0].ravel(), Y.ravel(), Pp[:, :, 2].ravel()])
+            idx_ = np.arange(nj * k).reshape(nj, k)
+            F = []
+            for a_ in range(nj - 1):
+                for q in range(k - 1):
+                    F.append((idx_[a_, q], idx_[a_ + 1, q], idx_[a_ + 1, q + 1]))
+                    F.append((idx_[a_, q], idx_[a_ + 1, q + 1], idx_[a_, q + 1]))
+            Fa = np.array(F, dtype=np.int64)
+            nrm = np.cross(Va[Fa[:, 1]] - Va[Fa[:, 0]], Va[Fa[:, 2]] - Va[Fa[:, 0]])
+            if float(nrm[:, 1].sum()) < 0:
+                Fa = Fa[:, [0, 2, 1]]
+            Fa = Fa[np.linalg.norm(nrm, axis=1) > 1e-12]
+            foot = np.zeros(len(Va), bool)
+            foot[idx_[:, 0]] = True
+            foot[idx_[:, -1]] = True
+            if fac[0] * fsp[0] <= 0.0:
+                foot[idx_[0]] = True
+            if fac[-1] * fsp[-1] <= 0.0:
+                foot[idx_[-1]] = True
+            self._caps.append({'V': Va, 'F': Fa, 'role': np.where(foot, 3, 0), 'anchor': np.full(len(Va), -1),
+                               'foot': foot})
+            out.append((Va, Fa))
+            dep = (Y - bs).ravel()
+            iu, jv = self.ij(Va[:, 0], Va[:, 2])
+            okd = dep > 0.004
+            deep_c[np.clip(np.round(jv[okd]).astype(int), 0, self.nv - 1),
+                   np.clip(np.round(iu[okd]).astype(int), 0, self.nu - 1)] = True
+        if out:
+            selc = (self.PART == part) & np.isfinite(self.Z)
+            self._claimed |= selc
+            self._soft |= selc
+            self._sel |= selc & ~dilate(~selc, 1) & erode(dilate(deep_c, 2), 1)
+        return join(out)
+
     # ---------- a narrow strip ----------
-    def ridge(self, R, variant, depth=1.0, step=0.05, k=9, inset=0.003, sky=1.5):
+    def ridge(self, R, variant, depth=1.0, step=None, k=13, inset=0.003, sky=1.5):
         """the snow on a narrow straight strip R (a plank's edge, a thin rail's flat top, a rebar): a crescent swept
         along it, as high as about the strip is wide, thinning to its two edges, rounded off at its ends and wherever
         something stands over it; its edges just past the strip's own edges, a few millimetres down its sides.
@@ -2143,6 +2402,9 @@ class Model:
         Ln = s1 - s0
         if Ln < 0.1:
             return None
+        if step is None:
+            # (a short strip, a picket's top, in a dozen stations: its snow a smooth cushion)
+            step = float(np.clip(Ln / 12.0, 0.01, 0.05))
         n_st = max(3, int(math.ceil(Ln / step)) + 1)
         S = np.linspace(s0, s1, n_st)
         # the strip's two edges at each station (its cells within a step of it), smoothed; straight or nothing
@@ -2167,13 +2429,16 @@ class Model:
         w = np.clip(hi - lo, g, None)
         wl = float(np.median(w))
         ny_ = float(np.nanmedian(self.NYE[R]))
-        H = min(t * float(SC.slope_w(self.scls, variant, np.array([ny_]), self.skind)[0]), 0.9 * wl + 0.012)
+        # (a rounded cap about three quarters as high as the strip is wide: cohesive snow on a rail holds no
+        # more; a half ellipse across it, no crest)
+        H = min(t * float(SC.slope_w(self.scls, variant, np.array([ny_]), self.skind)[0]), 0.75 * wl + 0.006)
         if H < 0.004:
             return None
         bva = self.bvh_all
         top_y = float(np.nanmax(self.Zall)) + 1.0
         own = np.unique(self.PART[R])
-        us = np.linspace(-1.0, 1.0, k)
+        # (the points across closer at the edges, where the ellipse turns down)
+        us = np.sin(np.linspace(-0.5 * math.pi, 0.5 * math.pi, k))
         base = np.full((n_st, k), np.nan)
         hh = np.zeros((n_st, k))
         P2 = np.zeros((n_st, k, 2))
@@ -2205,7 +2470,7 @@ class Model:
             pc = c0 + S[j] * ax + mid[j] * nr
             if bva.ray_cast(Vec((float(pc[0]), float(base[j, k // 2]) + 0.003, float(pc[1]))), Vec((0.0, 1.0, 0.0)), sky)[0] is not None:
                 good[j] = False
-        prof = np.clip(1.0 - us * us, 0.0, 1.0) ** 0.6
+        prof = np.sqrt(np.clip(1.0 - us * us, 0.0, 1.0))
         out = []
         j = 0
         while j < n_st:
@@ -2222,6 +2487,10 @@ class Model:
             le = min(max(1.2 * H, 0.025), 0.45 * Ls)
             fac = np.minimum(np.clip((S[j0:j1 + 1] - S[j0]) / le, 0.0, 1.0), np.clip((S[j1] - S[j0:j1 + 1]) / le, 0.0, 1.0))
             fac = np.sqrt(fac * (2.0 - fac))
+            if Ls < 4.0 * le:
+                # (short: one dome along it, no level crest between two rounded ends)
+                xm = (S[j0:j1 + 1] - 0.5 * (S[j0] + S[j1])) / max(0.5 * Ls, 1e-9)
+                fac = np.sqrt(np.clip(1.0 - xm * xm, 0.0, 1.0))
             # the base along the strip smoothed (a strip's surface is plane or near it), the crest along it too
             bs = base[j0:j1 + 1].copy()
             if len(bs) >= 3:
@@ -2529,8 +2798,9 @@ def join(meshes):
 def auto(m, variant, **style):
     """the plain recipe: every surface the snow reaches, each region its blanket"""
     logs = [p for p in range(int(m.part_t.max()) + 1) if m.is_log(p)]
-    out = [m.log(p, variant) for p in logs]
-    out.append(m.cover(variant, m.tops(variant, exclude=logs or None), **style))
+    beams = [p for p in range(int(m.part_t.max()) + 1) if p not in logs and m.is_beam(p)]
+    out = [m.log(p, variant) for p in logs] + [m.beam(p, variant) for p in beams]
+    out.append(m.cover(variant, m.tops(variant, exclude=(logs + beams) or None), **style))
     return join(out)
 
 
