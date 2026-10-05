@@ -68,14 +68,29 @@ def main(argv):
         m = B.parse(path)
         lod = X.visual_lod(X.read_model(m.shape))
         V, T = VH.triangles(lod)
+        if len(T) == 0:
+            print('sheet', name, 'no faces that hold snow', flush=True)
+            continue
         ground = SC.ground_for(path, V)
         cls, step, min_area, kind = SC.params(m, V)
         size = max(np.ptp(V[:, 0]), np.ptp(V[:, 2]))
-        top = SC.Top(V, T, ground, step)
-        bl = SC.Blanket(top, cls, SC.is_rough(m))
+        dr = SC.drape_for(m, path, V, T, lambda s: print(name, s, flush=True))
+        if dr is None:
+            top = SC.make_top(m, V, T, ground, step)
+            bl = SC.make_blanket(m, top, cls)
+
+        def cap(var):
+            thick = SC.THICK[kind][var]
+            over = SC.overhang_of(cls, var, thick)
+            if dr is not None:
+                d = dr.cap(thick, over)
+                return (d, dr.area, None) if d else (None, 0, None)
+            d = bl.dense(var, thick, over, min_area, cls == 'rock')
+            return d, float(top.valid.sum()) * step * step, getattr(bl, 'last_nf', None)
         # framed on the snow (the deepest variant): a tall tower or wall keeps its top in view
-        d7 = bl.dense(7, SC.THICK[kind][7], SC.overhang_of(cls, 7, SC.THICK[kind][7]), min_area, cls == 'rock')
-        P = d7[0] if d7 else V
+        d7 = cap(7)[0]
+        # framed on the model and its deepest snow: a tall tower keeps its top in view, a fence its wire
+        P = np.vstack([d7[0], V]) if d7 else V
         lo, hi = P.min(0), P.max(0)
         center = ((lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2, (lo[1] + hi[1]) / 2)
         ext = max(hi[0] - lo[0], hi[2] - lo[2], hi[1] - lo[1], 1.5)
@@ -85,12 +100,17 @@ def main(argv):
         for k, (az, el, var) in enumerate(views):
             co = setup()
             mesh_obj('model', V, [tuple(t) for t in T], (0.35, 0.33, 0.3, 1))
-            thick = SC.THICK[kind][var]
-            over = SC.overhang_of(cls, var, thick)
-            d = bl.dense(var, thick, over, min_area, cls == 'rock')
+            # the terrain under the map object: what lies below it is buried in the game, and what lies within
+            # 25 cm over it gets the terrain's snow instead of a cap
+            if ground > -1e5:
+                m = 0.3 * size + 2.0
+                x0, x1 = V[:, 0].min() - m, V[:, 0].max() + m
+                z0, z1 = V[:, 2].min() - m, V[:, 2].max() + m
+                mesh_obj('ground', [(x0, ground, z0), (x1, ground, z0), (x1, ground, z1), (x0, ground, z1)], [(0, 3, 2, 1)],
+                         (0.2, 0.24, 0.16, 1))
+            d, area, last_nf = cap(var)
             if d:
-                area = float(top.valid.sum()) * step * step
-                b0 = int(min(12000, max(400, area * 100)))
+                b0 = SC.lod0_budget(area, d[0], d[1][:last_nf]) if last_nf else SC.drape_budget(dr, d[0], d[1])
                 if os.environ.get('SZ_BUDGET'):
                     b0 = int(os.environ['SZ_BUDGET'])
                 (vs, fs), = SC.simplify(d[0], d[1], (b0,))
