@@ -219,13 +219,18 @@ def contours(Fv, level=0.5):
             loops.append(loop)
     out = []
     for L in loops:
-        # the higher side on the left: probe left of the longest segment
+        # the higher side on the left: probes left of every segment, the majority decides (one probe beside a
+        # saddle or on a strip a cell or two wide could fall on the wrong side, turning every normal of the loop)
         dv = np.roll(L, -1, 0) - L
-        k = int(np.argmax(np.hypot(dv[:, 0], dv[:, 1])))
-        p = (L[k] + L[(k + 1) % len(L)]) / 2.0
-        t = dv[k] / max(1e-9, float(np.hypot(*dv[k])))
-        q = p + 0.25 * np.array([-t[1], t[0]])
-        if bilinear(Fv, q[0] + 1.0, q[1] + 1.0) < level:
+        ln_ = np.hypot(dv[:, 0], dv[:, 1])
+        okv = ln_ > 1e-6
+        if not okv.any():
+            continue
+        p = (L + np.roll(L, -1, 0))[okv] / 2.0
+        t = dv[okv] / ln_[okv, None]
+        q = p + 0.2 * np.column_stack([-t[:, 1], t[:, 0]])
+        hi_ = bilinear(Fv, q[:, 0] + 1.0, q[:, 1] + 1.0) > level
+        if float(np.sum(ln_[okv] * hi_)) < 0.5 * float(np.sum(ln_[okv])):
             L = L[::-1]
         out.append(L)
     return out
@@ -746,6 +751,9 @@ class Model:
             hm = small_holes(M, int(holes / (g * g)))
             if hm.any():
                 Zh, _ = extend(np.where(M, Z, 0.0), M, hm)
+                # a pit fills; a bump standing up out of the snow (a pyramid cap, a bolt head) stays out of it
+                Zmh = np.where(np.isfinite(Zm), Zm, -1e9)
+                hm &= Zmh < Zh + 0.3 * t
                 Z = np.where(hm, Zh, Z)
                 M = M | hm
         NYE = self.NYE[sl]
@@ -922,6 +930,8 @@ class Model:
         if not loops:
             return None
         sp = spacing if spacing is not None else float(np.clip(self.size / 40.0, 0.03, 0.3))
+        if os.environ.get('SZ_SPACING'):
+            sp = float(os.environ['SZ_SPACING'])
         spe = float(np.clip(sp, 1.5 * g, 0.2))
         # along a straight edge or ring points no further apart than this (its bends keep their own points)
         slong = float(np.clip(2.5 * spe, 3.0 * g, 0.3))
@@ -959,7 +969,7 @@ class Model:
             Bwall[k0:k0 + n] = wd_ < fo_ - 0.25 * g
             k0 += n
         # ---------- points: rings of the rounded edge and the bulge, a grid inside ----------
-        def ring_pts(field, levels, where_):
+        def ring_pts(field, levels, where_, corners=False):
             out = []
             Fd = np.where(where_, field, np.nanmin(field[np.isfinite(field)]) - 1.0)
             amin = max(6.0, 0.003 * float((F > 0).sum()))
@@ -969,55 +979,109 @@ class Model:
                     # (no specks: a level near the plateau of a measure rings every ripple of it)
                     ar_ = 0.5 * abs(float(np.sum(Lc[:, 0] * np.roll(Lc[:, 1], -1) - np.roll(Lc[:, 0], -1) * Lc[:, 1])))
                     if len(Lc) >= 3 and ar_ >= amin:
-                        out.append(resample_loop(Lc, slong / g))
+                        out.append(resample_corners(Lc, slong / g, cmin) if corners else resample_loop(Lc, slong / g))
             return out
 
         inD = F > 0
-        cand_t, cand_b = [], []
+        cand_t = []
+        Rc = np.zeros((0, 2))
         tin = 0.012
         if not taper:
-            rr = float(np.median(np.minimum(np.clip(shoulder * Hx[M], 0.0, 0.12), rh_ref))) if M.any() else rh_ref
+            rhx = np.minimum(np.clip(shoulder * Hx, 0.0, 0.12), rh_ref)
+            rr = float(np.median(rhx[M])) if M.any() else rh_ref
             oo = float(np.median(Ox[M])) if M.any() else o_lo
-            s0 = rr / (rr + oo)
-            th0 = math.asin(min(1.0, s0))
-            # the top over the bulge: even steps of the arc from the edge to the tip
-            Gt = []
-            for f in (0.4, 0.75):
-                s_ = math.sin(th0 + (math.pi / 2 - th0) * f)
-                de_ = rr - s_ * (rr + oo)
-                Gt.append((de_ + oo) / oo)
-            Gf = (DE + Ox) / np.maximum(Ox, 1e-6)
-            cand_t += ring_pts(Gf, [gl for gl in Gt if 0.02 < gl < 0.98], inD & (DE < 0.3 * rh_ref))
-            cand_t += ring_pts(DE, [0.0] + [f * dfull for f in (0.35, 0.75)], inD)
-            rl_ = max(1, int(round(dfull / g)))
-            DEl = maxf(np.where(M, DE, -np.inf), rl_)
-            nar = M & (DEl < dfull) & (DEl > 0)
-            if nar.any():
-                Rt = np.where(nar, DE / np.maximum(DEl, 1e-9), np.where(M, 1.0, 0.0))
-                cand_t += ring_pts(Rt, [0.5, 0.88], M)
-            # the underside over the bulge: from 12 mm inside the edge up to the tip, even steps of its arc
-            Uf = (tin - DE) / (tin + Ox)
-            cand_b += ring_pts(Uf, [math.sin(math.pi / 2 * f) for f in (0.0, 0.45, 0.8)], inD)
+            # the rounded edge in even steps of its arc, from the tip (90 degrees) to the plateau (0), all rings
+            # levels of the one measure (0 at the tip, 1 where the top runs level): parallel rings, a clean strip
+            # round every edge and corner (rings of different measures crossed at the corners); no two rings closer
+            # than about half a cell
+            ext = rr + oo
+            ulev, last = [], 0.0
+            for th in (72.0, 54.0, 38.0, 24.0, 11.0, 0.0):
+                u_ = 1.0 - math.sin(math.radians(th))
+                if (u_ * ext - last) >= 0.6 * g and u_ * ext >= 0.6 * g:
+                    ulev.append(u_)
+                    last = u_ * ext
+            # each ring the boundary's own points stepped in along their normals (point for point: the strip
+            # between two rings is a row of quads, no fan of slivers ribbing the rounded edge); at a wall only the
+            # plateau's ring; a point past the middle of the domain (closer to another stretch of the rim than its
+            # step) or crowding the last one kept round a corner is left out
+            ext_b = (bilinear(Ox, Pb[:, 0], Pb[:, 1]) + bilinear(rhx, Pb[:, 0], Pb[:, 1])) / g
+            k0 = 0
+            for L in L2:
+                n = len(L)
+                e_ = ext_b[k0:k0 + n]
+                ext_b[k0:k0 + n] = sum(w_ * np.roll(e_, s) for w_, s in zip(wts, (-2, -1, 0, 1, 2))) / sum(wts)
+                k0 += n
+            ring_c, ring_t = [], []
+            for u_ in ulev:
+                k0 = 0
+                for L in L2:
+                    n = len(L)
+                    s_ = slice(k0, k0 + n)
+                    k0 += n
+                    tt = u_ * ext_b[s_]
+                    P = L - np.column_stack([NX[s_], NZ[s_]]) * tt[:, None]
+                    ok = (~Bwall[s_]) | (u_ > 0.99)
+                    ring_c.append(P[ok])
+                    ring_t.append(tt[ok])
+            Rc = np.vstack(ring_c) if ring_c else np.zeros((0, 2))
+            Rt_ = np.concatenate(ring_t) if ring_t else np.zeros(0)
+            if len(Rc):
+                okr = inside_loops(Rc, L2) & (loop_dist(Rc, L2) >= 0.9 * Rt_)
+                if os.environ.get('SZ_DEBUG'):
+                    print('  rings: levels %s ext %.4f g %.4f cand %d inside %d medial-ok %d' % (
+                        [round(u_, 3) for u_ in ulev], ext, g, len(Rc), int(inside_loops(Rc, L2).sum()), int(okr.sum())), flush=True)
+                Rc = Rc[okr]
+                keep_r = np.ones(len(Rc), bool)
+                lastk = 0
+                for k in range(1, len(Rc)):
+                    if np.hypot(*(Rc[k] - Rc[lastk])) < 0.45 * cmin:
+                        keep_r[k] = False
+                    else:
+                        lastk = k
+                Rc = Rc[keep_r]
+                cand_t.append(Rc)
         else:
             cand_t += ring_pts(DE, [f * rh_ref for f in (0.2, 0.7)], inD)
         si = max(2.0 * g, sp) / g
-        for cand, step, lo_de in ((cand_t, si, dfull), (cand_b, 3.0 * si, min(dfull, tin + 0.5 * sp))):
-            gi = np.arange(0, M.shape[1], max(1, int(round(step))))
-            gj = np.arange(0, M.shape[0], max(1, int(round(step))))
-            GI, GJ = np.meshgrid(gi, gj)
-            okp = inD[GJ, GI] & (DE[GJ, GI] > lo_de)
-            cand.append(np.column_stack([GI[okp], GJ[okp]]).astype(np.float64))
+
+        def clear_of_rings(P, dmin):
+            # (no point of the grid or the crest crowding a ring's: no slivers against the strip)
+            if not len(Rc) or not len(P):
+                return P
+            d = np.full(len(P), np.inf)
+            for k in range(0, len(P), 1000):
+                d[k:k + 1000] = np.sqrt(((P[k:k + 1000, None, :] - Rc[None]) ** 2).sum(-1)).min(1)
+            return P[d >= dmin]
+
+        gi = np.arange(0, M.shape[1], max(1, int(round(si))))
+        gj = np.arange(0, M.shape[0], max(1, int(round(si))))
+        GI, GJ = np.meshgrid(gi, gj)
+        okp = inD[GJ, GI] & (DE[GJ, GI] > dfull)
+        cand_t.append(clear_of_rings(np.column_stack([GI[okp], GJ[okp]]).astype(np.float64), 0.5 * si))
         # the middle line of the domain (its narrowest parts too have points inside: a wall top's crest)
         DEd = np.where(inD, DE, -np.inf)
         ridge = inD & (DEd >= maxf(DEd, 2) - 1e-9) & (DEd > 0) & (DEd < dfull)
         if ridge.any():
             rj, ri = np.nonzero(ridge)
             st_ = max(1, int(round(0.5 * spe / g)))
-            keep_ = ((ri // st_) + (rj // st_)) % 1 == 0
-            Rp = np.column_stack([ri, rj]).astype(np.float64)
+            # on the crest itself (a Newton step across it: the cells' centres stepped up and down a diagonal crest)
+            J_, I_ = DE.shape
+            jm, jp = np.clip(rj - 1, 0, J_ - 1), np.clip(rj + 1, 0, J_ - 1)
+            im_, ip_ = np.clip(ri - 1, 0, I_ - 1), np.clip(ri + 1, 0, I_ - 1)
+            c0 = DE[rj, ri]
+            gx_, gy_ = 0.5 * (DE[rj, ip_] - DE[rj, im_]), 0.5 * (DE[jp, ri] - DE[jm, ri])
+            hxx = DE[rj, ip_] - 2.0 * c0 + DE[rj, im_]
+            hyy = DE[jp, ri] - 2.0 * c0 + DE[jm, ri]
+            hxy = 0.25 * (DE[jp, ip_] - DE[jp, im_] - DE[jm, ip_] + DE[jm, im_])
+            Hm = np.stack([np.stack([hxx, hxy], -1), np.stack([hxy, hyy], -1)], -2)
+            ev, evec = np.linalg.eigh(Hm)
+            lam, nvec = ev[:, 0], evec[:, :, 0]
+            stp = np.where(lam < -1e-12, -(gx_ * nvec[:, 0] + gy_ * nvec[:, 1]) / np.where(lam < -1e-12, lam, -1.0), 0.0)
+            stp = np.clip(stp, -0.7, 0.7)
+            Rp = np.column_stack([ri + stp * nvec[:, 0], rj + stp * nvec[:, 1]])
             _, ui = np.unique((Rp // st_).astype(np.int64), axis=0, return_index=True)
-            cand_t.append(Rp[np.sort(ui)])
-            cand_b.append(Rp[np.sort(ui)])
+            cand_t.append(clear_of_rings(Rp[np.sort(ui)], max(0.6, 0.3 * spe / g)))
 
         def tri(cand, emin):
             C = np.vstack([c for c in cand if len(c)]) if any(len(c) for c in cand) else np.zeros((0, 2))
@@ -1039,7 +1103,39 @@ class Model:
             res = delaunay_2d_cdt([Vector(p) for p in pts], edges, [], 0, 1e-6, True)
             P2 = np.array([(v.x, v.y) for v in res[0]])
             Tr = np.array([f for f in res[2] if len(f) == 3], dtype=np.int64).reshape(-1, 3)
-            Tr = Tr[inside_loops(P2[Tr].mean(1), L2)] if len(Tr) else Tr
+            if len(Tr):
+                # inside by parity: the rim's edges crossed on the way in from beyond the hull (exact: a centroid
+                # test can put a sliver at a concave corner either side of the rim)
+                nv = len(P2)
+                con = set()
+                for k, (ea, eb) in enumerate(res[1]):
+                    if len(res[4][k]):
+                        con.add(min(ea, eb) * nv + max(ea, eb))
+                ek = {}
+                for t, f in enumerate(Tr.tolist()):
+                    for a_, b_ in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+                        ek.setdefault(min(a_, b_) * nv + max(a_, b_), []).append(t)
+                par = np.full(len(Tr), -1, dtype=np.int64)
+                dq = collections.deque()
+                for k, ts in ek.items():
+                    if len(ts) == 1 and par[ts[0]] < 0:
+                        par[ts[0]] = 1 if k in con else 0
+                        dq.append(ts[0])
+                while dq:
+                    t = dq.popleft()
+                    f = Tr[t]
+                    for a_, b_ in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+                        k = min(a_, b_) * nv + max(a_, b_)
+                        for u in ek[k]:
+                            if par[u] < 0:
+                                par[u] = par[t] ^ (1 if k in con else 0)
+                                dq.append(u)
+                Tr = Tr[par == 1]
+                if os.environ.get('SZ_DEBUG'):
+                    a_t = 0.5 * np.abs(np.cross(P2[Tr[:, 1]] - P2[Tr[:, 0]], P2[Tr[:, 2]] - P2[Tr[:, 0]])).sum()
+                    a_l = sum(0.5 * abs(float(np.sum(L[:, 0] * np.roll(L[:, 1], -1) - np.roll(L[:, 0], -1) * L[:, 1]))) for L in L2)
+                    print('  tri: kept %d of %d, unvisited %d, area %.1f loops %.1f (n loops %d)' % (
+                        len(Tr), len(par), int((par < 0).sum()), a_t, a_l, len(L2)), flush=True)
             onl = np.full(len(P2), -1, dtype=np.int64)
             for k, ov in enumerate(res[3]):
                 for o in ov:
@@ -1058,12 +1154,11 @@ class Model:
 
         emin = max(0.3, 0.12 * rh_ref / g)
         if os.environ.get('SZ_DEBUG'):
-            print('  points top %s bottom %s boundary %d dfull %.3f rh %.3f rb %d' % (
-                [len(c) for c in cand_t], [len(c) for c in cand_b], nb_pts, dfull, rh_ref, rb), flush=True)
+            print('  points %s boundary %d dfull %.3f rh %.3f rb %d' % (
+                [len(c) for c in cand_t], nb_pts, dfull, rh_ref, rb), flush=True)
         P2t, Trt, bmt = tri(cand_t, emin)
         if len(Trt) == 0:
             return None
-        P2b, Trb, bmb = tri(cand_b, emin)
         # ---------- heights ----------
         def fields(P2):
             return (bilinear(Zx, P2[:, 0], P2[:, 1]), bilinear(Hx, P2[:, 0], P2[:, 1]),
@@ -1099,22 +1194,32 @@ class Model:
             Yr = np.where(inR, Ys, Yr)
         zt, Ht, det, ot, st_ = fields(P2t)
         Yt = bilinear(Yr, P2t[:, 0], P2t[:, 1])
-        zb, Hb, deb, ob, sb_ = fields(P2b) if len(P2b) else (np.zeros(0),) * 5
         Xw = lambda P2: (self.u0 + (P2[:, 0] + ia) * g, self.v0 + (P2[:, 1] + ja) * g)
         xt, zzt = Xw(P2t)
-        # the support's thickness under each underside point (a sheet: the foot hardly below its top)
-        foot = np.zeros(len(P2b))
-        xb_, zzb = Xw(P2b) if len(P2b) else (np.zeros(0), np.zeros(0))
-        for q in range(len(P2b)):
-            loc, nr, _, dd = self.bvh.ray_cast(Vec((xb_[q], zb[q] - 0.002, zzb[q])), Vec((0.0, -1.0, 0.0)), 0.1)
+        # the underside: under the bulge and a little way in (further in the snow rests on the support, an underside
+        # would only lie hidden in it), on the top's own points so that its facets keep under the top's
+        isbd = np.zeros(len(P2t), bool)
+        isbd[bmt] = True
+        # the underside's faces: every face touching the rim or reaching in under the bulge (a corner less than the
+        # bulge's tuck in); the faces it leaves out have every corner further in, so its inner edge lies wholly where
+        # the underside rests in the support
+        near = (det < tin) | isbd
+        tsel = np.any(near[Trt], axis=1) | np.all(det[Trt] < tin + 0.012, axis=1)
+        if taper:
+            tsel[:] = False
+        twin = isbd.copy()
+        twin[np.unique(Trt[tsel].ravel())] = True
+        tq = np.nonzero(twin)[0]
+        foot = np.full(len(P2t), 0.002)
+        for q in tq:
+            loc, nr, _, dd = self.bvh.ray_cast(Vec((xt[q], zt[q] - 0.002, zzt[q])), Vec((0.0, -1.0, 0.0)), 0.1)
             thq = dd + 0.002 if (loc is not None and nr.y < -0.3) else 0.004
             foot[q] = float(np.clip(0.5 * thq, 0.002, 0.006))
-        Yb = ybot(zb, Hb, deb, ob, foot) if len(P2b) else np.zeros(0)
+        Yb = np.full(len(P2t), np.nan)
+        Yb[tq] = np.minimum(ybot(zt[tq], Ht[tq], det[tq], ot[tq], foot[tq]), Yt[tq] - 0.002)
+
         # beyond the support's edge nothing goes into what lies under it: the underside rests on it, the top keeps
         # above it (on a log, a pipe, a roof's steeper fall the bulge drapes over the surface going on below)
-        Ytb = bilinear(Yr, P2b[:, 0], P2b[:, 1]) if len(P2b) else np.zeros(0)
-        Yb = np.minimum(Yb, Ytb - 0.002) if len(P2b) else Yb
-
         def floor_at(x, z, ytop_):
             loc = self.bvh_all.ray_cast(Vec((x, ytop_ + 0.002, z)), Vec((0.0, -1.0, 0.0)), 0.6)[0]
             return -1e9 if loc is None else loc.y + 0.004
@@ -1123,15 +1228,11 @@ class Model:
             fl = floor_at(xt[q], zzt[q], float(Yt[q]))
             if fl > -1e8:
                 Yt[q] = max(Yt[q], fl + 0.002)
-        for q in np.nonzero(deb < -0.002)[0] if len(P2b) else []:
-            fl = floor_at(xb_[q], zzb[q], float(Ytb[q]))
-            if fl > -1e8:
-                Yb[q] = max(Yb[q], fl)
-                Ytb[q] = max(Ytb[q], fl + 0.002)
-        Yb = np.minimum(Yb, Ytb - 0.002) if len(P2b) else Yb
+                if twin[q]:
+                    Yb[q] = max(Yb[q], fl)
+        Yb[tq] = np.minimum(Yb[tq], Yt[tq] - 0.002)
         # ---------- the shell ----------
         Vl, Fl, role, anchor = [], [], [], []
-        it = np.arange(len(P2t))
         for q in range(len(P2t)):
             Vl.append((xt[q], Yt[q], zzt[q]))
             role.append(0)
@@ -1141,26 +1242,35 @@ class Model:
         flip = nrm[:, 1] < 0
         Tt[flip] = Tt[flip][:, [0, 2, 1]]
         Fl += [tuple(f) for f in Tt.tolist()]
-        # the underside: its own points, the open tips shared with the top
-        ib = np.full(len(P2b), -1, dtype=np.int64)
-        isb = np.zeros(len(P2b), bool)
+        # the underside's points: the open tips shared with the top
+        ib = np.full(len(P2t), -1, dtype=np.int64)
         for o in range(nb_pts):
             if not Bwall[o] and not taper:
-                ib[bmb[o]] = bmt[o]
-            isb[bmb[o]] = True
-        for q in range(len(P2b)):
+                ib[bmt[o]] = bmt[o]
+        for q in tq:
             if ib[q] < 0:
-                Vl.append((xb_[q], Yb[q], zzb[q]))
-                role.append(2 if deb[q] < tin * 0.5 else 3)
+                Vl.append((xt[q], Yb[q], zzt[q]))
+                role.append(2)
                 anchor.append(-1)
                 ib[q] = len(Vl) - 1
-        if len(Trb):
-            Tb = ib[Trb]
-            Va_ = np.array(Vl)
-            nrm = np.cross(Va_[Tb[:, 1]] - Va_[Tb[:, 0]], Va_[Tb[:, 2]] - Va_[Tb[:, 0]])
-            flip = nrm[:, 1] > 0
-            Tb[flip] = Tb[flip][:, [0, 2, 1]]
-            Fl += [tuple(f) for f in Tb.tolist()]
+        footv = set()
+        if not taper:
+            tb_ = Tt[tsel]
+            if len(tb_):
+                Fl += [tuple(f) for f in ib[tb_][:, [0, 2, 1]].tolist()]
+                # its inner edge (once in the underside, twice in the top): hidden in the support
+                def ekeys(T_):
+                    E_ = np.sort(np.concatenate([T_[:, [0, 1]], T_[:, [1, 2]], T_[:, [2, 0]]]), axis=1)
+                    return E_[:, 0] * (len(P2t) + 1) + E_[:, 1]
+                ku, cu = np.unique(ekeys(tb_), return_counts=True)
+                ka, ca = np.unique(ekeys(Tt), return_counts=True)
+                inner = ku[(cu == 1) & np.isin(ku, ka[ca == 2])]
+                for e_ in inner.tolist():
+                    for q in (e_ // (len(P2t) + 1), e_ % (len(P2t) + 1)):
+                        if ib[q] != q:
+                            role[ib[q]] = 3
+        bmb = bmt
+
         # the open tips held to the model (a tip pushed into a part beside the edge comes back out of it)
         bva = self.bvh_all
 
@@ -1219,7 +1329,7 @@ class Model:
                                                             Vec((nx_, 0.0, nz_)), 0.1)
                         x = float(np.clip(dd - 0.01 + (0.005 if nrw.y > -0.3 else -0.003), 0.0, 0.08)) if loc is not None \
                             else (xs[-1] if xs else 0.006)
-                        x = min(x, 0.012 + 1.7 * hgt) if xcap is None else min(x, xcap + 0.003)
+                        x = min(x, 0.025 + 0.6 * hgt) if xcap is None else min(x, xcap + 0.003)
                         xcap = x
                         xs.append(x)
                     Vl[vt] = (pt[0] + nx_ * xs[0], pt[1], pt[2] + nz_ * xs[0])
@@ -1257,6 +1367,9 @@ class Model:
             vt = int(bmt[o])
             if not Bwall[o] and not taper and role[vt] == 0:
                 role[vt] = 1
+            if taper:
+                # rough stone: the curtain's foot rests on the stone
+                footv.add(int(ib[bmb[o]]))
 
         Va = np.array(Vl, dtype=np.float64)
         Fa = np.array(Fl, dtype=np.int64)
@@ -1269,7 +1382,10 @@ class Model:
         # (a closed shell: no edge of it is open)
         role_a = np.array(role)
         anch_a = np.array(anchor)
-        foot_a = np.zeros(len(Va), bool)
+        # (the hidden inner edge of the underside, in the support, is its only open edge)
+        foot_a = role_a == 3
+        if footv:
+            foot_a[list(footv)] = True
         ar = np.linalg.norm(np.cross(Va[Fa[:, 1]] - Va[Fa[:, 0]], Va[Fa[:, 2]] - Va[Fa[:, 0]]), axis=1)
         Fa = Fa[ar > 1e-10]
         if os.environ.get('SZ_DEBUG'):
@@ -1465,8 +1581,9 @@ class Model:
         # the vertex of face b off the shared edge: above face a's plane is a valley
         opp = F[fb].sum(1) - Es.sum(1)
         valley = np.sum(fn[fa] * (V[opp] - V[Es[:, 0]]), axis=1) > 1e-6
-        upf = (fn[fa, 1] > 0.5) & (fn[fb, 1] > 0.5)
-        cr = upf & (((cosang < math.cos(math.radians(40)))) | (valley & (cosang < math.cos(math.radians(25)))))
+        # (on the top proper: the round of a nose or a rim turns sharply by design)
+        upf = (fn[fa, 1] > 0.75) & (fn[fb, 1] > 0.75)
+        cr = upf & (((cosang < math.cos(math.radians(35)))) | (valley & (cosang < math.cos(math.radians(25)))))
         ci = np.nonzero(cr)[0]
         ci = ci[np.argsort(cosang[ci])]
         put('crease', (V[Es[ci, 0]] + V[Es[ci, 1]]) / 2.0)
@@ -1484,6 +1601,10 @@ class Model:
             bd = E[~dup]
             op_ = ~(ft_all[bd[:, 0]] & ft_all[bd[:, 1]])
             put('open_edge', (V[bd[op_, 0]] + V[bd[op_, 1]]) / 2.0)
+            rl_all = np.concatenate([c['role'] for c in self._caps])
+            if op_.any():
+                pr_ = collections.Counter(tuple(sorted((int(rl_all[a_]), int(rl_all[b_])))) for a_, b_ in bd[op_])
+                res['open_roles'] = (0, [tuple(k_) + (v_,) for k_, v_ in pr_.most_common(4)])
         if len(cosang):
             res['max_angle'] = (int(round(math.degrees(math.acos(max(-1.0, min(1.0, float(cosang[upf].min()))))))) if upf.any() else 0, [])
         return res
