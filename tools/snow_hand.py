@@ -2954,6 +2954,26 @@ def join(meshes):
     return np.vstack(Vs), np.vstack(Fs)
 
 
+def hybrid(m, variant):
+    """the default: round rails and logs and straight beams get the hand-built crescents (log, beam), every other top
+    the volumetric cap of snow_addon (a7) with those parts left out; a fence rail holds a clean continuous ridge where
+    the metaball field would break into beads, a seat, wall, roof or rock the soft lumpy cap"""
+    import snow_addon as A
+    if not hasattr(m, '_sz_rails'):
+        n = int(m.part_t.max()) + 1
+        logs = [p for p in range(n) if m.is_log(p)]
+        beams = [p for p in range(n) if p not in logs and m.is_beam(p)]
+        m._sz_rails = (logs, beams)
+        if logs or beams:
+            m._sz_exclude = tuple(logs + beams)
+    logs, beams = m._sz_rails
+    hand = join([m.log(p, variant) for p in logs] + [m.beam(p, variant) for p in beams])
+    if hand is not None and len(hand[1]) > 400:
+        # the crescents are built fine; thin them to the same 2.5 mm the volumetric caps keep (a rail is a long ridge)
+        hand = A._err_decimate(np.asarray(hand[0], float), np.asarray(hand[1], np.int64), 4000, .0025)
+    return join([hand, A.build(m, variant)])
+
+
 def auto(m, variant, **style):
     """the plain recipe: every surface the snow reaches, each region its blanket"""
     logs = [p for p in range(int(m.part_t.max()) + 1) if m.is_log(p)]
@@ -2981,8 +3001,7 @@ def build(m, variant):
         return r.build(m, variant)
     if os.environ.get('SZ_DEFAULT', 'addon') == 'addon':
         # the volumetric metaball cap (snow_addon) is the default since v0.5.1; SZ_DEFAULT=auto for the old blanket
-        import snow_addon as A
-        return A.build(m, variant)
+        return hybrid(m, variant)
     return auto(m, variant)
 
 def inside_loops(P, loops):

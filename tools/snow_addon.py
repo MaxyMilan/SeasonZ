@@ -691,6 +691,19 @@ def _repose(Z,h,M,g,hmin):
     return np.where(M,np.minimum(h,np.maximum(T-Z,hmin)),h)
 
 
+def _drop_tips(m,mask):
+    """small separate tops (under 0.006 m2) hold snow only when nearly flat (a post top, under 20 degrees): the slanted
+    point of a picket or a pointed finial gets no bead"""
+    lx=mask[:,:-1]&mask[:,1:]; lz=mask[:-1,:]&mask[1:,:]
+    labels,n=H.label(mask,lx,lz)
+    if not n: return mask
+    lab=np.where(mask,labels,n)
+    cnt=np.bincount(lab.ravel(),minlength=n+1)[:n]
+    ny=np.bincount(lab.ravel(),weights=np.where(mask,m.NYF,0).ravel(),minlength=n+1)[:n]
+    bad=(cnt*m.g*m.g<.006)&(ny/np.maximum(cnt,1)<math.cos(math.radians(20)))
+    return mask&~np.r_[bad,False][lab]
+
+
 def _a4_close(M,Z,d,g):
     limit=max(.02,.5*d)
     r=max(1,int(math.ceil(limit/(2*g))))
@@ -713,7 +726,7 @@ def _a4_plan(m,calibration=False,seed=SEED):
     # a5 (Opus): snow holds to 72 degrees on rough surfaces (logs, bales, rock); full depth up to 50
     # smooth made surfaces (a bench back, a sheet roof) shed snow from about 60 degrees
     steep,full=(A5_STEEP,A5_FULL) if getattr(m,'rough',False) or m.cls=='rock' else (A5_STEEP_SMOOTH,A5_FULL_SMOOTH)
-    base=m.tops(4,slope=False)&(m.NYF>=math.cos(math.radians(steep)))
+    base=_drop_tips(m,m.tops(4,slope=False)&(m.NYF>=math.cos(math.radians(steep))))
     Z=np.nan_to_num(m.Z,nan=-1e6)
     angle=np.degrees(np.arccos(np.clip(m.NYF,0,1)))
     taper=np.clip((steep-angle)/(steep-full),0,1); taper=taper*taper*(3-2*taper)
@@ -1064,7 +1077,8 @@ def _a4_prune(m,V,F):
         _,_,axis=np.linalg.svd(xy,full_matrices=False)
         width=float(np.ptp(xy@axis.T,axis=0).min()) if len(pts)>2 else 0.
         foot=pts[boundary[pts]]
-        contact=any(m.bvh_all.find_nearest(Vector(V[i]),.006)[0] is not None for i in foot)
+        # the open foot lies sunk up to 2 cm in the support: contact within 3 cm (a floating ball has no foot at all)
+        contact=any(m.bvh_all.find_nearest(Vector(V[i]),.03)[0] is not None for i in foot)
         if area>=.01 and width>=.04 and contact and not _side_knob(m,V,F[ids]): keep[ids]=True
         else: removed+=1
     return (*G._compact(V,F[keep]),removed)
@@ -1366,7 +1380,7 @@ def build_a5(m,variant):
 def _a6_plan(m):
     """Surface particles at real-addon density, with one deterministic bank."""
     steep,full=(A5_STEEP,A5_FULL) if getattr(m,'rough',False) or m.cls=='rock' else (A5_STEEP_SMOOTH,A5_FULL_SMOOTH)
-    mask=m.tops(4,slope=False)&(m.NYF>=math.cos(math.radians(steep)))
+    mask=_drop_tips(m,m.tops(4,slope=False)&(m.NYF>=math.cos(math.radians(steep))))
     Z=np.nan_to_num(m.Z,nan=-1e6); sink=_a5_sink(m,mask,Z)
     # gaps between boards of one surface (a bench seat, a deck) up to ~2.5 cm carry snow at the boards' height:
     # without particles there the cap sags into a groove that reads as a dark line
@@ -1600,15 +1614,21 @@ def build_a6(m,variant):
 
 def _a7_plan(m):
     """A6 below 6 cm; A5 volume with a moving surface-particle skin above it."""
+    # parts a recipe or snow_hand.hybrid hands elsewhere (_sz_exclude: rails/logs/beams with their own crescents) or
+    # the only parts that hold snow (_sz_parts); blocked parts also get no spill from a neighbouring kernel
+    allowed=getattr(m,'_sz_parts',None); excluded=tuple(getattr(m,'_sz_exclude',None) or ())
     bench=getattr(m,'name','')=='misc_bench4'
-    allowed=(10,11,16,17,18,19) # front/seat boards plus uppermost back board
+    if allowed is None and bench:
+        allowed=(10,11,16,17,18,19) # front/seat boards plus uppermost back board
+    blocked=excluded+((12,13,14,15) if bench else ())
     original=m.tops
-    if bench:
-        m.tops=lambda *a,**kw:original(*a,**kw)&np.isin(m.PART,allowed)
+    if allowed is not None or excluded:
+        keep=np.isin(m.PART,allowed) if allowed is not None else ~np.isin(m.PART,excluded)
+        m.tops=lambda *a,**kw:original(*a,**kw)&keep
     try:
         surface=_a6_plan(m); volume=_a4_plan(m)
     finally:
-        if bench:m.tops=original
+        m.tops=original
     clouds={b:dict(c,threshold=THRESHOLD) for b,c in surface['clouds'].items()}
     stages={}
     for v,s in surface['stages'].items():
@@ -1629,19 +1649,19 @@ def _a7_plan(m):
             skin.update(P=P,threshold=THRESHOLD); clouds[skin_key]=skin
         stages[v]=dict(s,D=np.zeros_like(s['D']),skin_key=skin_key,volume_key=volume_key,blend=blend)
     return dict(surface,clouds=clouds,stages=stages,volume_bank_points=volume['bank_points'],
-                bench_allowed_parts=list(allowed) if bench else None)
+                bench_allowed_parts=list(allowed) if allowed is not None else None,blocked_parts=list(blocked))
 
 
 def _a7_grid(m,plan):
     grid=_a6_grid(m,plan)
-    if plan['bench_allowed_parts'] is not None:
+    if plan.get('blocked_parts'):
         g=grid['pitch'][0]; x=grid['origin'][0]+np.arange(grid['shape'][0])*g
         z=grid['origin'][2]+np.arange(grid['shape'][2])*g
         i=np.clip(np.rint((x-m.u0)/m.g).astype(int),0,m.nu-1)
         j=np.clip(np.rint((z-m.v0)/m.g).astype(int),0,m.nv-1)
         # Excluded back boards must not receive spill from a neighbouring
         # kernel either. This fixed emitter-domain mask is common to all depths.
-        blocked=np.isin(m.PART[j[:,None],i[None,:]],(12,13,14,15)).T
+        blocked=np.isin(m.PART[j[:,None],i[None,:]],plan['blocked_parts']).T
         for base in grid['floors']: grid['floors'][base]=np.where(blocked,-np.inf,grid['floors'][base])
     return grid
 
