@@ -2025,17 +2025,23 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
         t=time.perf_counter(); mesh=H.join(chunks[v]);chunks[v].clear()
         if mesh is None:
             cache[v]=dict(mesh=None,stats=dict(method='a7',empty=True));continue
+        steps={}; t0=time.perf_counter()
         V,F=_a3_weld(*mesh,1e-6,edge_keys=np.vstack(keys[v]));keys[v].clear();raw_count=len(F)
-        report('a7_cleanup',v,raw_count)
+        report('a7_cleanup',v,raw_count); steps['weld']=time.perf_counter()-t0; t0=time.perf_counter()
         inside=_a6_hidden(m,V); hidden=np.all(inside[F],axis=1); V,F=G._compact(V,F[~hidden])
+        steps['hidden']=time.perf_counter()-t0; t0=time.perf_counter()
         if len(F):
             # small props stay smooth up close: the tolerance also shrinks with the size of the cap
-            V=_a3_taubin(V,F,passes=A7_TAUBIN if m.thick(v)>.06 else 1);V,F=_err_decimate(V,F,_cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
+            V=_a3_taubin(V,F,passes=A7_TAUBIN if m.thick(v)>.06 else 1); steps['taubin']=time.perf_counter()-t0; t0=time.perf_counter()
+            # (a fence or wall (kind 1) is placed by the thousand: its caps 2500 triangles at most)
+            V,F=_err_decimate(V,F,min(_cap_budget(area),2500) if getattr(m,'kind',0)==1 else _cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
+            steps['decimate']=time.perf_counter()-t0; t0=time.perf_counter()
             # crumbs, knobs and floating balls go (under 0.01 m2, narrower than 4 cm, or touching nothing)
-            V,F,pruned=_a4_prune(m,V,F)
-            V,guard=_a7_growth_guard(m,V,F,previous)
+            V,F,pruned=_a4_prune(m,V,F); steps['prune']=time.perf_counter()-t0; t0=time.perf_counter()
+            V,guard=_a7_growth_guard(m,V,F,previous); steps['guard']=time.perf_counter()-t0
             guard['pruned_components']=pruned
         else:guard=dict(lowered_cells=0,lost_columns=0,empty=True)
+        guard['steps']={k:round(x,2) for k,x in steps.items()}; guard['dense_after_hidden']=int(raw_count-hidden.sum())
         stats=dict(method='a7',variant=v,depth=m.thick(v),base_depth=plan['stages'][v]['base'],
                    blend=plan['stages'][v]['blend'],seed=SEED,triangles=len(F),budget=limit,
                    raw_triangles=raw_count,buried_triangles_removed=int(hidden.sum()),

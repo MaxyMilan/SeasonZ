@@ -2141,8 +2141,8 @@ class Model:
             h0_ = hs
             hs = np.minimum(hs, np.vstack([hs[1:], hs[-1:] + 1e9]) + 0.7 * dsl)
             hs = np.minimum(hs, np.vstack([hs[:1] + 1e9, hs[:-1]]) + 0.7 * dsl)
-            hs = np.minimum(hs, np.hstack([hs[:, 1:], hs[:, -1:] + 1e9]) + 0.85 * da)
-            hs = np.minimum(hs, np.hstack([hs[:, :1] + 1e9, hs[:, :-1]]) + 0.85 * da)
+            hs = np.minimum(hs, np.hstack([hs[:, 1:], hs[:, -1:] + 1e9]) + LOG_ROUND * da)
+            hs = np.minimum(hs, np.hstack([hs[:, :1] + 1e9, hs[:, :-1]]) + LOG_ROUND * da)
             if np.allclose(h0_, hs):
                 break
         if n_st >= 3:
@@ -2398,7 +2398,7 @@ class Model:
         wl = float(np.median(w))
         ny_ax = math.sqrt(max(0.0, 1.0 - ax[1] * ax[1]))
         wslope = float(SC.slope_w(self.scls, variant, np.array([ny_ax]), self.skind)[0])
-        H = min(t * wslope, 0.75 * wl + 0.006)
+        H = min(t * wslope, RIDGE_W * wl + 0.006)
         if H < 0.004:
             return None
         mid = 0.5 * (lo + hi)
@@ -2590,7 +2590,7 @@ class Model:
         ny_ = float(np.nanmedian(self.NYE[R]))
         # (a rounded cap about three quarters as high as the strip is wide: cohesive snow on a rail holds no
         # more; a half ellipse across it, no crest)
-        H = min(t * float(SC.slope_w(self.scls, variant, np.array([ny_]), self.skind)[0]), 0.75 * wl + 0.006)
+        H = min(t * float(SC.slope_w(self.scls, variant, np.array([ny_]), self.skind)[0]), RIDGE_W * wl + 0.006)
         if H < 0.004:
             return None
         bva = self.bvh_all
@@ -2954,6 +2954,13 @@ def join(meshes):
     return np.vstack(Vs), np.vstack(Fs)
 
 
+# (Opus, 6 Oct) the review found fence rails without growth from v1 to v7: the crescent rose round a log no steeper than
+# 40 degrees (about 3 cm on a 7 cm pole) and a ridge on a board no higher than 3/4 of its width. Cohesive snow on a
+# rail stands taller: about 56 degrees round a log, a ridge up to 1.1 times the board's width
+LOG_ROUND = 1.5
+RIDGE_W = 1.1
+
+
 def hybrid(m, variant):
     """the default: round rails and logs and straight beams get the hand-built crescents (log, beam), every other top
     the volumetric cap of snow_addon (a7) with those parts left out; a fence rail holds a clean continuous ridge where
@@ -2970,7 +2977,8 @@ def hybrid(m, variant):
     hand = join([m.log(p, variant) for p in logs] + [m.beam(p, variant) for p in beams])
     if hand is not None and len(hand[1]) > 400:
         # the crescents are built fine; thin them to the same 2.5 mm the volumetric caps keep (a rail is a long ridge)
-        hand = A._err_decimate(np.asarray(hand[0], float), np.asarray(hand[1], np.int64), 4000, .0025)
+        # (a fence (class wall) is placed thousands of times: its crescents get 1500 triangles at most)
+        hand = A._err_decimate(np.asarray(hand[0], float), np.asarray(hand[1], np.int64), 1500 if m.kind == 1 else 4000, .0025)
     if hand is not None and len(hand[1]):
         # crumbs of crescent on sheltered log ends and side details go, as on the volumetric caps
         hv, hf, _ = A._a4_prune(m, np.asarray(hand[0], float), np.asarray(hand[1], np.int64))
