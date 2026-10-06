@@ -21,8 +21,10 @@ STIFFNESS=.75
 
 
 def budget(area):
-    """Proposed LOD0 table: up to 12/40/120 m2 -> 5800/8000/10000; else 12000."""
-    return 5800 if area<=12 else 8000 if area<=40 else 10000 if area<=120 else 12000
+    """LOD0 triangles from the snow area (m2): about 1500 per m2 on props (a fence rail with a few hundred, a bench
+    seat about 1500), at most 5800; larger caps 8000/10000/12000 up to 40/120/more m2"""
+    if area<=12: return int(np.clip(1500*area,400,5800))
+    return 8000 if area<=40 else 10000 if area<=120 else 12000
 
 
 def _surface(m):
@@ -1040,9 +1042,66 @@ def _a4_prune(m,V,F):
         width=float(np.ptp(xy@axis.T,axis=0).min()) if len(pts)>2 else 0.
         foot=pts[boundary[pts]]
         contact=any(m.bvh_all.find_nearest(Vector(V[i]),.006)[0] is not None for i in foot)
-        if area>=.01 and width>=.04 and contact: keep[ids]=True
+        if area>=.01 and width>=.04 and contact and not _side_knob(m,V,F[ids]): keep[ids]=True
         else: removed+=1
     return (*G._compact(V,F[keep]),removed)
+
+
+def _cap_budget(area):
+    """the most LOD0 triangles a cap may have (props 5800, larger 8000/10000/12000)"""
+    return 5800 if area<=12 else 8000 if area<=40 else 10000 if area<=120 else 12000
+
+
+def _err_tol(d):
+    """how far the simplified cap may stray from the dense one: about a tenth of the snow's lump size"""
+    return float(np.clip(.12*d+.002,.003,.01))
+
+
+def _err_decimate(V,F,cap,tol,floor=200):
+    """the fewest triangles between floor and cap whose surface stays within tol of the dense cap (99.5th percentile
+    of sampled dense vertices): a long thin ridge keeps the triangles it needs, a flat roof sheds them"""
+    import bpy
+    from mathutils.bvhtree import BVHTree
+    if len(F)<=floor: return V,F
+    me=bpy.data.meshes.new('sz_err_dec'); me.from_pydata(V.tolist(),[],F.tolist())
+    obj=bpy.data.objects.new('sz_err_dec',me); bpy.context.scene.collection.objects.link(obj)
+    mod=obj.modifiers.new('dec','DECIMATE'); mod.use_collapse_triangulate=True
+    S=V[np.random.default_rng(5).choice(len(V),min(4000,len(V)),replace=False)]
+    def run(n):
+        mod.ratio=min(1.,n/len(F))
+        res=bpy.data.meshes.new_from_object(obj.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+        res.calc_loop_triangles()
+        v=np.empty(len(res.vertices)*3); res.vertices.foreach_get('co',v)
+        f=np.empty(len(res.loop_triangles)*3,np.int32); res.loop_triangles.foreach_get('vertices',f)
+        bpy.data.meshes.remove(res)
+        return v.reshape(-1,3),f.reshape(-1,3).astype(np.int64)
+    def err(v,f):
+        if not len(f): return 1e9
+        b=BVHTree.FromPolygons(v.tolist(),f.tolist(),all_triangles=True)
+        d=np.array([b.find_nearest(Vector(q))[3] or 1e9 for q in S])
+        return float(np.percentile(d,99.5))
+    hi=min(cap,len(F)); best=run(hi) if hi<len(F) else (V,F)
+    if err(*best)<=tol:
+        lo=floor
+        for _ in range(7):
+            if hi<=lo*1.12: break
+            mid=int((lo*hi)**.5); cand=run(mid)
+            if err(*cand)<=tol: hi,best=mid,cand
+            else: lo=mid
+    bpy.data.objects.remove(obj,do_unlink=True); bpy.data.meshes.remove(me)
+    return best
+
+
+def _side_knob(m,V,F):
+    """a small cap (under 0.01 m2 seen from above) on a side detail (a handle or latch more than 25 cm under the highest
+    part of the model within 60 cm): snow does not build there, a post top keeps its cap"""
+    t=V[F]; n=np.cross(t[:,1]-t[:,0],t[:,2]-t[:,0]); proj=float(np.abs(n[:,1]).sum()*.5)
+    if proj>=.01: return False
+    if not hasattr(m,'_sz_zmax'):
+        m._sz_zmax=H.maxf(np.nan_to_num(m.Zall,nan=-1e6),max(1,int(round(.6/m.g))))
+    c=t.reshape(-1,3).mean(0); u,j=m.ij(np.array([c[0]]),np.array([c[2]]))
+    i=int(np.clip(np.rint(u[0]),0,m.nu-1)); jj=int(np.clip(np.rint(j[0]),0,m.nv-1))
+    return float(t[:,:,1].max())<float(m._sz_zmax[jj,i])-.25
 
 
 def _a4_phi(m,P,clearance):
@@ -1532,7 +1591,8 @@ def _a7_plan(m):
             # extruding the field. Its uplift tends continuously to zero
             # at 6 cm; the full A5 cloud still supplies the 3D body.
             h=volume['stages'][v]['h']
-            uplift=blend*np.minimum(np.maximum(h-.06,0),1.15*(d-.06))
+            # a soft knee where the body thins below the skin (k 3 cm): the flank runs on smoothly instead of a step
+            x=h-.06; uplift=blend*np.minimum(.03*np.logaddexp(0,x/.03),1.15*(d-.06))
             P[:,1]+=uplift[jj,ii]
             skin.update(P=P,threshold=THRESHOLD); clouds[skin_key]=skin
         stages[v]=dict(s,D=np.zeros_like(s['D']),skin_key=skin_key,volume_key=volume_key,blend=blend)
@@ -1634,7 +1694,7 @@ def _a7_growth_guard(m,V,F,previous):
     Moving upper-face vertices up conservatively removes QEM's small inward
     error. Lost edge samples get a local boundary displacement first.
     """
-    if previous is None or not len(F):return V,dict(lowered_cells=0,lost_columns=0,iterations=0,max_move_m=0.)
+    if previous is None or not len(F) or not len(previous[1]):return V,dict(lowered_cells=0,lost_columns=0,iterations=0,max_move_m=0.)
     from mathutils.bvhtree import BVHTree
     oldV,oldF=previous; original=V.copy(); g=min(.01,m.g)
     lo=np.minimum(oldV.min(0),V.min(0)); hi=np.maximum(oldV.max(0),V.max(0))
@@ -1701,12 +1761,14 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
             for v,(V,F,E) in result.items():
                 if len(F):chunks[v].append((V,F));keys[v].append(E)
     field_seconds=time.perf_counter()-t;report('a7_field',field_seconds)
-    cache={};previous=None;limit=budget(float(plan['mask'].sum()*m.g*m.g))
+    cache={};previous=None;area=float(plan['mask'].sum()*m.g*m.g)
     for v in wanted:
         same=representatives[m.thick(v)]
         if same!=v:
             cache[v]=dict(cache[same]);cache[v]['stats']=dict(cache[same]['stats'],variant=v,reused_variant=same,cleanup_seconds=0.)
             previous=cache[v]['mesh'];continue
+        # deeper snow has taller sides and more lumps to carry: the budget grows with the depth
+        limit=budget(area*(1+4*m.thick(v)))
         t=time.perf_counter(); mesh=H.join(chunks[v]);chunks[v].clear()
         if mesh is None:
             cache[v]=dict(mesh=None,stats=dict(method='a7',empty=True));continue
@@ -1714,8 +1776,11 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
         report('a7_cleanup',v,raw_count)
         inside=_a6_hidden(m,V); hidden=np.all(inside[F],axis=1); V,F=G._compact(V,F[~hidden])
         if len(F):
-            V=_a3_taubin(V,F,passes=1);V,F=G._decimate(V,F,limit) if len(F)>limit else (V,F)
+            V=_a3_taubin(V,F,passes=1);V,F=_err_decimate(V,F,_cap_budget(area),_err_tol(m.thick(v)))
+            # crumbs, knobs and floating balls go (under 0.01 m2, narrower than 4 cm, or touching nothing)
+            V,F,pruned=_a4_prune(m,V,F)
             V,guard=_a7_growth_guard(m,V,F,previous)
+            guard['pruned_components']=pruned
         else:guard=dict(lowered_cells=0,lost_columns=0,empty=True)
         stats=dict(method='a7',variant=v,depth=m.thick(v),base_depth=plan['stages'][v]['base'],
                    blend=plan['stages'][v]['blend'],seed=SEED,triangles=len(F),budget=limit,
@@ -1732,7 +1797,8 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
 
 def build(m,variant):
     """A7 hybrid; previous builders remain explicit build_a2/a3/a5/a6 calls."""
-    if not hasattr(m,'_snow_a7_cache') or variant not in m._snow_a7_cache:prepare_a7(m,(variant,))
+    # all seven depths at once: one field, and the growth guard sees every shallower depth
+    if not hasattr(m,'_snow_a7_cache') or variant not in m._snow_a7_cache:prepare_a7(m,tuple(range(1,8)))
     data=m._snow_a7_cache[variant];m.addon_stats=dict(data['stats'])
     if data['mesh'] is None or not len(data['mesh'][1]):return None
     m._sel|=data['selected'];m._claimed|=data['selected']
