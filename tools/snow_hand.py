@@ -2311,9 +2311,11 @@ class Model:
                 if res:
                     # (one of a deck: other tops beside it within 5 cm at about its height (the slats of a seat, the
                     # planks of a table) make one surface for a blanket, the gaps bridged as the snow deepens)
+                    # (Opus, 6 Oct: 12 cm, was 5: the top boards of a pallet lie 6-10 cm apart and each got a sausage of
+                    # its own; as one deck they get the addonfine pillow that bridges the gaps as the snow deepens)
                     own = self.PART == p
-                    near = dilate(own, max(1, int(round(0.05 / self.g)))) & ~own & (self.PART >= 0)
-                    zown = maxf(np.where(own, np.nan_to_num(self.Z, nan=-1e9), -np.inf), max(1, int(round(0.05 / self.g))))
+                    near = dilate(own, max(1, int(round(DECK_GAP / self.g)))) & ~own & (self.PART >= 0)
+                    zown = maxf(np.where(own, np.nan_to_num(self.Z, nan=-1e9), -np.inf), max(1, int(round(DECK_GAP / self.g))))
                     dz = np.abs(np.nan_to_num(self.Z, nan=1e9) - zown)
                     flat = self.NYF > 0.85
                     res = not bool((near & flat & (dz < 0.03)).sum() * self.g * self.g > 0.25 * topa)
@@ -2958,6 +2960,7 @@ def join(meshes):
 # 40 degrees (about 3 cm on a 7 cm pole) and a ridge on a board no higher than 3/4 of its width. Cohesive snow on a
 # rail stands taller: about 56 degrees round a log, a ridge up to 1.1 times the board's width
 LOG_ROUND = 1.5
+DECK_GAP = 0.12
 RIDGE_W = 1.1
 
 
