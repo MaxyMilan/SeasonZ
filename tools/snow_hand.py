@@ -1621,6 +1621,28 @@ class Model:
                 Yt[q] = max(Yt[q], fl + 0.002)
                 if twin[q]:
                     Yb[q] = max(Yb[q], fl)
+        # headroom: a part hanging over the snow (the lower edge of a back slat over a seat, a rail over a sill)
+        # keeps the top 4 mm under its underside; a part the snow rises well past (its median more than a
+        # centimetre above the underside) is buried instead, the snow coming against its face
+        if not taper:
+            upv = Vec((0.0, 1.0, 0.0))
+            hit_p, hit_y = {}, {}
+            for q in range(len(P2t)):
+                room = float(Yt[q] - zt[q])
+                if room <= 0.002:
+                    continue
+                loc, nr_, idx_, _ = self.bvh_all.ray_cast(Vec((xt[q], float(zt[q]) + 0.003, zzt[q])), upv, room + 0.01)
+                if loc is None or nr_.y > -0.3:
+                    continue
+                p_ = int(self.part_t[self._all_t[idx_]])
+                hit_p.setdefault(p_, []).append(q)
+                hit_y[q] = float(loc.y)
+            for p_, qs in hit_p.items():
+                over = np.array([Yt[q] - hit_y[q] for q in qs])
+                if float(np.median(over)) > 0.01:
+                    continue
+                for q in qs:
+                    Yt[q] = max(min(float(Yt[q]), hit_y[q] - 0.004), float(zt[q]) + 0.002)
         Yb[tq] = np.minimum(Yb[tq], Yt[tq] - 0.002)
         # ---------- the shell ----------
         Vl, Fl, role, anchor = [], [], [], []
