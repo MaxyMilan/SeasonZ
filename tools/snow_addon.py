@@ -753,7 +753,7 @@ def _drop_tips(m,mask):
     """tops that hold no cap: less than 45% of the sky open; and small separate tops (under 0.006 m2) unless they are
     nearly flat (under 20 degrees) and at least 3 cm wide - a post top keeps its cap, the slanted point or the 2 cm
     edge of a picket gets no bead"""
-    mask=mask&(_sky_open(m,mask)>=.45)
+    mask=mask&(_sky_open(m,mask)>=A7_SKYMIN)
     lx=mask[:,:-1]&mask[:,1:]; lz=mask[:-1,:]&mask[1:,:]
     labels,n=H.label(mask,lx,lz)
     if not n: return mask
@@ -1694,6 +1694,10 @@ def _fftsize(n):
 
 
 A7_DENSK=2.     # deep caps: particle density (and threshold) x (1 + A7_DENSK) at 23 cm, x1 at 5 cm
+A7_GRIDMAX=.03  # the volume lattice's horizontal pitch at most this (m; big models)
+A7_GYMIN=0.     # ... and its vertical pitch at least this (m; 0: a third of the thinnest depth)
+A7_SKYMIN=.45   # tops seeing less of the sky (nine rays) hold no cap; (Opus, 6 Oct) the floor of a deep open tub
+                # (mine_rail_tram) sees the sky straight up but little of the slanted rays
 
 
 def _dens(base):
@@ -1789,8 +1793,10 @@ def _a6_grid(m,plan):
     # The emitter grid is independent of the extraction grid. Large models
     # retain the same surface particle density while using larger voxels.
     # big models on a coarser lattice (3 cm at 15 m): the lumps are 8+ cm there, and a house builds in minutes
-    g=float(np.clip(float(np.ptp(m.V,axis=0).max())/450.,.0075,.03))
-    gy=min(g,min(s['base'] for s in plan['stages'].values())/3)
+    # (Opus, 6 Oct) A7_GRIDMAX/A7_GYMIN per model: the 40 m rock walls (rock_wallh1) ran out of memory at 3 cm (42
+    # million faces in the weld), their steep faces cut into thin layers by the 1.7 cm vertical pitch
+    g=float(np.clip(float(np.ptp(m.V,axis=0).max())/450.,.0075,A7_GRIDMAX))
+    gy=max(min(g,min(s['base'] for s in plan['stages'].values())/3),min(A7_GYMIN,g))
     pitch=np.array((g,gy,g)); core=64
     maxR=max(s['R'] for s in plan['clouds'].values())
     extra=max(float(s['D'].max()) for s in plan['stages'].values())

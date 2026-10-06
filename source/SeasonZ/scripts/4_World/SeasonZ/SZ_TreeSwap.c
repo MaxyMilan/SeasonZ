@@ -871,6 +871,12 @@ class SZ_TreeSwap
 			return true;
 		if (shape.IndexOf("misc_tree_pavement") >= 0)
 			return true;
+		// flat wreck debris on the road (glass, plastic, metal bits; over a thousand on Chernarus): buried like decals
+		if (shape.IndexOf("\\wrecks\\vehicles\\wreck_decal") >= 0)
+			return true;
+		// DayZ Expansion's mapping: grass tufts and grass patches (tens of thousands around its towns)
+		if (shape.IndexOf("dayzexpansion\\objects\\structures\\grass") >= 0)
+			return true;
 		return shape.IndexOf("\\roads\\decals\\") >= 0;
 	}
 

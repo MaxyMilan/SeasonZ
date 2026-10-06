@@ -2947,6 +2947,72 @@ class Model:
 
 
 
+def part_fields(m, min_top=0.05):
+    """separate() groups: every part with at least min_top m2 of top its own field that spills onto no other part, the
+    remaining parts one more field. (Opus, 6 Oct, c37) the big pipe bridges: pipes lying at different heights side by
+    side shared one field and the v7 pillow bridged them as one broad sheet (marshmallow)"""
+    if not hasattr(m, '_sz_part_fields'):
+        n = int(m.part_t.max()) + 1
+        big = [p for p in range(n) if part_top_area(m, p, ny_min=0.3) >= min_top]
+        rest = tuple(p for p in range(n) if p not in big)
+        groups = [((p,), tuple(q for q in range(n) if q != p)) for p in big]
+        if rest:
+            groups.append((rest, tuple(big)))
+        m._sz_part_fields = groups
+    return m._sz_part_fields
+
+
+def see_through(m, min_top=0.05):
+    """the parts with less than min_top m2 of top (truss bars, braces, brackets) let the snow through: they leave the
+    model's height raster and its occlusion, so the surfaces under them carry an unbroken cap, and hold no snow of
+    their own (once per model). (Opus, 6 Oct, c59) the big pipe bridges: every brace of the truss top crossing over a
+    pipe was the highest surface there, and the pipe's pillow broke at each brace into links of sausage; a 10 cm bar
+    half a metre up does not keep the snow off a pipe"""
+    if getattr(m, '_sz_see', None) is not None:
+        return m._sz_see
+    n = int(m.part_t.max()) + 1
+    thin = [p for p in range(n) if part_top_area(m, p, ny_min=0.3) < min_top]
+    if thin:
+        sel = np.isin(m.part_t, thin)
+        m.occ_t = m.occ_t & ~sel
+        m.good_t = m.good_t & ~sel
+        m._raster()
+        m._bvh()
+        for att in ('_snow_a7_cache', '_snow_a4_cache', '_sz_sky', '_sz_level_fields', '_sz_part_fields'):
+            if hasattr(m, att):
+                delattr(m, att)
+    m._sz_see = tuple(thin)
+    return m._sz_see
+
+
+def level_fields(m, min_top=0.05, gap=0.12):
+    """separate() groups by height: the parts with at least min_top m2 of top, clustered by the height of their
+    highest upward face (a new level where the next one lies more than gap m higher), each level its own field that
+    spills onto no other level; the remaining parts one more field. (Opus, 6 Oct, c59) part_fields gave every pipe
+    segment of a pipe bridge its own field: rounded ends and seams at every joint, like links of sausage"""
+    if not hasattr(m, '_sz_level_fields'):
+        n = int(m.part_t.max()) + 1
+        top = {}
+        for p in range(n):
+            if part_top_area(m, p, ny_min=0.3) < min_top:
+                continue
+            sel = (m.part_t == p) & (m.n_t[:, 1] > 0.3)
+            top[p] = float(m.V[m.T[sel]][..., 1].max())
+        levels = []
+        for p in sorted(top, key=top.get):
+            if levels and top[p] - top[levels[-1][-1]] <= gap:
+                levels[-1].append(p)
+            else:
+                levels.append([p])
+        big = [p for lv in levels for p in lv]
+        rest = tuple(p for p in range(n) if p not in top)
+        groups = [(tuple(lv), tuple(q for q in big if q not in lv) + rest) for lv in levels]
+        if rest:
+            groups.append((rest, tuple(big)))
+        m._sz_level_fields = groups
+    return m._sz_level_fields
+
+
 def separate(m, v, groups):
     """one addonfine cap per group of parts, each its own field: (Opus, 6 Oct) a pallet leaning on another one shared
     one field with it and its deep pillow flowed down over the high edge onto the lower pallet (marshmallow). groups:
@@ -2999,12 +3065,95 @@ def wreck(m, v, **over):
     most), thin strips ridges; (Opus, 6 Oct, c52) panels hold snow up to 45 degrees and the layer thins out over the
     last 20 (_sz_fade): at full weight up to the limit the deep kernels sat as a bead on the curved bonnets and
     mudguards and hung down over grilles and tyres as curtains and lobes. SZ_WRK (json) overrides for tests"""
-    c = dict(A7_OVL=0.3, A7_LIPDROP=0.05, A7_THIN=0.07, A5_STEEP_SMOOTH=45.0, A5_FULL_SMOOTH=25.0, A7_FADE=20.0)
+    # (c58) small or narrow tops below a bigger one (grille slats, headlamps, bumper rims) stay bare: H.ledges
+    c = dict(A7_OVL=0.3, A7_LIPDROP=0.05, A7_THIN=0.07, A5_STEEP_SMOOTH=45.0, A5_FULL_SMOOTH=25.0, A7_FADE=20.0,
+             LEDGES=[0.08, 0.4])
     import json
     c.update(over)
     c.update(json.loads(os.environ.get('SZ_WRK') or '{}'))
+    cr = c.pop('CROWN', None)
+    if cr:
+        crown(m, *cr)
+    lg = c.pop('LEDGES', None)
+    if lg:
+        ledges(m, *lg)
     m._sz_fade = True
     return consts(m, v, fn=lambda m_, v_: big_tops(m_, v_, 0.01), **c)
+
+
+def ledges(m, drop=0.08, reach=0.4, amin=0.25, wmin=0.12, jump=0.04, ny=0.5):
+    """small or narrow tops just below a bigger one hold no snow (once per model). (Opus, 6 Oct, c54) wrecks: the
+    grille's slats, the headlamps, a bumper's rim and the tyre lugs under a mudguard carried snow of their own and the
+    deep cap of the bonnet or guard above bridged down to them as a curtain; crown() fixed that but read every
+    curved bonnet as a slope and stripped a truck's bed between its higher side boards. Here the tops split into
+    surfaces where neighbouring cells step more than jump m; a surface is minor when smaller than amin m2 or nowhere
+    wider than wmin m. A minor surface's cells more than drop m below a major surface within reach m in plan go bare;
+    the major surfaces (bonnet, roof, bed, guards) keep all their snow. (c56) surfaces also split where the top turns
+    steeper than ny (0.5: 60 degrees): over the steep front panel the grille joined the bonnet as one surface"""
+    if getattr(m, '_sz_ledges', False):
+        return
+    base = m.tops(4, slope=False) & (m.NYF >= ny)
+    Z = np.where(base, m.Z, np.nan)
+    n = base.size
+    lab = np.where(base, np.arange(n).reshape(base.shape), n)
+    conn = []
+    for dj, di in N4:
+        ok = base & sh(base, dj, di, False) & (np.abs(Z - sh(Z, dj, di, np.nan)) <= jump)
+        conn.append((dj, di, ok))
+    for _ in range(4 * max(base.shape)):
+        new = lab
+        for dj, di, ok in conn:
+            new = np.where(ok, np.minimum(new, sh(new, dj, di, n)), new)
+        flat = new.ravel()
+        new = np.where(flat < n, flat[np.minimum(flat, n - 1)], n).reshape(base.shape)
+        if np.array_equal(new, lab):
+            break
+        lab = new
+    k = max(1, int(round(wmin / 2 / m.g)))
+    E = base.copy()
+    for _ in range(k):
+        for dj, di in N4:
+            E &= sh(E, dj, di, False)
+    ids, cnt = np.unique(lab[base], return_counts=True)
+    area = dict(zip(ids.tolist(), (cnt * m.g * m.g).tolist()))
+    wide = set(np.unique(lab[E]).tolist())
+    major = base & np.vectorize(lambda x: x in wide and area.get(x, 0) >= amin, otypes=[bool])(lab)
+    Lz = np.where(major, m.Z, -np.inf)
+    r = max(1, int(round(reach / m.g)))
+    L = Lz
+    for dj, di in ((1, 0), (0, 1)):
+        out = L.copy()
+        for kk in range(1, r + 1):
+            out = np.maximum(out, sh(L, kk * dj, kk * di, -np.inf))
+            out = np.maximum(out, sh(L, -kk * dj, -kk * di, -np.inf))
+        L = out
+    bare = base & ~major & (np.where(base, m.Z, np.inf) < L - drop)
+    keep = ~bare
+    orig = m.tops
+    m.tops = lambda *a, **kw: orig(*a, **kw) & keep
+    m._sz_ledges = True
+
+
+def crown(m, drop=0.5, reach=1.0):
+    """only the crown holds snow: cells within drop m of the highest top within reach m in plan (once per model).
+    Castle walls: the stone face's blocks beside and below the crown. (Opus, 6 Oct, c53) wrecks: the grille's slats,
+    the headlamps, the bumper and the tyre tops just below a bonnet's or mudguard's edge carried snow of their own,
+    and the deep cap bridged down to them as a curtain"""
+    if getattr(m, '_sz_crown', False):
+        return
+    Z = np.where(np.isfinite(m.Z), m.Z, -np.inf)
+    r = max(1, int(round(reach / m.g)))
+    L = Z
+    for dj, di in ((1, 0), (0, 1)):
+        out = L.copy()
+        for k in range(1, r + 1):
+            out = np.maximum(out, sh(L, k * dj, k * di, -np.inf))
+            out = np.maximum(out, sh(L, -k * dj, -k * di, -np.inf))
+        L = out
+    keep = Z >= L - drop
+    orig = m.tops
+    m.tops = lambda *a, **kw: orig(*a, **kw) & keep
+    m._sz_crown = True
 
 
 def consts(m, v, fn=None, **c):

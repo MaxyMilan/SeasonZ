@@ -715,7 +715,13 @@ class SZ_RoofSnow
 			v0 = midV - (b.m_NV - 1) * b.m_StepV * 0.5;
 		}
 		b.m_Origin = Vector(mat[3][0], 0, mat[3][2]) + b.m_U * u0 + b.m_V * v0;
-		b.m_Top = mat[3][1] + mm[1][1] * mat[1].Length() + 1.5;
+		// small structures and narrow ones start their rays 6 m up: a table, bed or shelf inside a building (DayZ
+		// Expansion's interiors and mapping place furniture as separate objects) has the ceiling above it, which then
+		// blocks every sample; 1.5 m stopped short of most ceilings and the furniture got snow indoors
+		float above = 1.5;
+		if (b.m_Small || b.m_Kind == 1)
+			above = 6.0;
+		b.m_Top = mat[3][1] + mm[1][1] * mat[1].Length() + above;
 		b.m_Bottom = b.m_Ground - 0.5;
 		b.m_Row = 0;
 		b.m_H.Clear();

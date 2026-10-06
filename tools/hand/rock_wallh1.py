@@ -1,9 +1,13 @@
 """rock_wallh1: a long horizontal rock wall (placed over 2000 times).
 
-(Opus, 6 Oct) built on its own: with other rocks in parallel it ran out of memory (b1). Like the other rock walls
-now: a short lip (30% of the depth + 1 cm, sinking 1.6 cm at most), no cornices with pointed drips."""
+(Opus, 6 Oct) b1/c46: out of memory in parallel and alone (42 million faces at 3 cm; at 5 cm it took the whole PC down).
+(Opus, 6 Oct, c66) built alone under a memory guard on a coarse lattice (8 cm, 5 cm vertically): the 3 cm
+lattice ran out of memory (tens of millions of faces in the weld); a rock cap's lumps are coarser than that anyway.
+A short lip (30% of the depth + 1 cm, sinking 1.6 cm at most), no cornices with pointed drips. Cracks in the crown up to 15 cm wide are bridged
+(A7_CREVICE): c66 left a dark slit through rock_wallh3's cap."""
 import snow_hand as H
 
 
 def build(m, v):
-    return H.consts(m, v, A7_OVL=0.3, A7_LIPDROP=0.05)
+    return H.consts(m, v, A7_OVL=0.3, A7_LIPDROP=0.05, A7_CREVICE=0.15, A7_GRIDMAX=0.08, A7_GYMIN=0.05)
+

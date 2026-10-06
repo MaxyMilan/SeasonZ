@@ -962,3 +962,122 @@ time,name,sha256,note
 2026-10-06T20:13:50,power_transformerstation_big,4d3c44fb90c024c1ba1f8e077672753a5067e18b611e6f379c191f8f722fccb7,"big_tops .08 THIN .16; balken en paaltoppen bedekt. minor: kapjes op isolatoren, bolle balkeinden boven palen"
 2026-10-06T20:14:56,rock_monolith1,ffbc43edea360e616d514e3ff3865aeb61987ed729635bdd9f120642805f3df0,"korte lip; kap goed. minor: een puntige druppel onder de lip bij v7, scherpe chips en witte strepen op wand bij v1/laag"
 2026-10-06T20:14:57,rock_bright_monolith1,ffbc43edea360e616d514e3ff3865aeb61987ed729635bdd9f120642805f3df0,"korte lip; kap goed. minor: een puntige druppel onder de lip bij v7, scherpe chips en witte strepen op wand bij v1/laag (lid van rock_monolith1)"
+2026-10-06T20:31:10,airfield_light_reflector,8070d0857841cc7c82545079bd7f95d8328c5fcf252bfc26f4c56c78ca6f2e75,kussen op kast. minor: lip rolt aan de korte einden iets om (v7)
+2026-10-06T20:31:10,busstation_wall_bench,9705c6a6b37bdd1c024106b2cfe408ee9bf2067b5892dd00ea958d9c1ca7c466,muurkap en zitbank apart. minor: hoekige overgang aan muureinden v4-v7
+2026-10-06T20:31:11,city_stand_fastfood,161f9ef15572d2f5a4a9bd90aa82963dae6a09b4a4c3ff3306d722029aef4dd5,"plat dak kussen. minor: klein tandje onder dakrand, vinnetje bij dakdraad"
+2026-10-06T20:31:11,city_stand_news1,161f9ef15572d2f5a4a9bd90aa82963dae6a09b4a4c3ff3306d722029aef4dd5,"plat dak kussen. minor: klein tandje onder dakrand, vinnetje bij dakdraad"
+2026-10-06T20:31:12,craterlong_02,3680c76454da1aa457e92995d3015e50e27a5edb89ee719a475bad0b219d5d38,"kraterrand bedekt als heuvel. minor: kleine gaatjes bovenop bij v1, rafelige voorrand"
+2026-10-06T20:31:12,fuelstation_build,91f703c43c8d08b315ae3c7f7df040cbbaf5a92716fcfe9330965922989d23e6,dak bedekt. minor: kleine donkere driehoekjes langs de opstaande dakrand
+2026-10-06T20:31:13,garbage_pile7,e9e2294aa03f01d3c96a5f4ee03d0b05f3090964cf7eb3a5e7e284457f974f2e,"hoop als sneeuwhopen. minor: opening in voorste kap, hoekige vlakken (rommelhoop)"
+2026-10-06T20:31:13,garbage_pile8,d6874d3033b5521b44a35961053e1cbf06272daddeab3ca5f7d9a69895aeb901,"dozen bedekt. minor: scheurtje in een dooskap, hoge en lage dozen deels verbonden"
+2026-10-06T20:31:14,hospital_transport_bed,3da0de5ec92263daeef586bb5f61520bc073bcccf0457c319b7b3b8f75ac3b12,"ligvlak gelijkmatig kussen, randen netjes"
+2026-10-06T20:31:14,lunapark_carousel_small,e433cf9613057bf73ca5d2b2a584d7c9ab75fea2dc73b4c68617366085513b13,"dak bedekt. minor: lichte facetten, tandjes langs onderrand"
+2026-10-06T20:31:15,lunapark_carousel_swan,5523c2448c76b12acb29c9210ce08f9c5c3319c54bd30df2ddf7c73c62fa4898,"ruggen op armen. minor: bolletje op naaf, klontjes tussen staven"
+2026-10-06T20:31:15,mil_fortified_nest_small,35a8eae40132622dd40372b4ce7fa225f64b36af2928cf3e7b554424836adea8,dak van zakken bedekt. minor: lichte facetten
+2026-10-06T20:31:15,mil_guardshed,3c4fd47d19bf5b1b207d89fa2dc488a773a91e76e18b21f6af3df91068242564,"dak doorlopend, zachte groei, nette hoeken"
+2026-10-06T20:31:16,mil_guardtower,85dfa18ebef7c40d81ab5b58984cb8fd1362c2911be4634188c19287d0517c2f,dak bedekt. minor: lichte facetten en hoekige lip
+2026-10-06T20:31:16,mine_rail_end,d6d2cba49dae7d8d102350cc134ff76fca667ba588c42a5a1f313f33e333a0d1,strook achter stootblok groeit. minor: kapjes op stootblokpalen
+2026-10-06T20:31:17,mine_rail_switch,9ec8557f342391f86c3d70132c0f1c04fc7dac148a66efd035264b0c3ef77a00,smalle ruggen op rails. minor: weinig groei v4-v7
+2026-10-06T20:31:17,misc_barricade,afd0e60d63c4efcbb8a83d6ddfa5f98f46923588ca590c052bb07f1d0db70138,rommel bedekt. minor: lobben tussen achterste obstakels (rommelhoop)
+2026-10-06T20:31:17,misc_obstacle_cross,906a894238915c77e4ce172a79fe04acdca8222ffe4a83a2059ad108c933c6f9,minor: dunne buis kaal
+2026-10-06T21:02:00,misc_obstacle_bridge,3ccbfe68ccdb55a2cd9bacf86625232536d64d5e48e4d0c5831befaeabaf325a,"grond -.22: hele loopvlak incl. lage einden bedekt, korte lip"
+2026-10-06T21:02:00,misc_obstacle_pass,62ddce29f8a2c73bf9e8a1e530971bea0e9d820631ac20b4fd808f449c3d0457,"grond -.22: oprit volledig bedekt, nette lip"
+2026-10-06T21:02:01,misc_obstacle_ramp,b807068fefa3482508efb47500531a7c047ca0c450a749d2311685d4c813eac8,"grond -.22: loopvlak volledig, lip rolt kort over zijbuis"
+2026-10-06T21:02:01,misc_hedgehog_iron,34d60f9efb3b348cebaf2123753432fb90de99ac14714c0191a20decedd1ca6a,"THIN .16: sneeuw in de kruising van de balken, flenzen kaal. minor: kussen in de kruising"
+2026-10-06T21:02:02,castle_walls_end_nolc,ab3923cc62896982fda862e401f4559cd353c3b73c6d6196032585a3bf9b2b4a,kroonregel: alleen top bedekt. minor: bolle kap op smalle pilaartop bij v7
+2026-10-06T21:02:02,chapel,cf152ae06a7d17a8814c4b54d598abc91ea59c13bdda4a2d724cbbb16870ae21,big_tops + korte lip: boogjes en tentdak bedekt. minor: kussens op boogjes sluiten aan op dak
+2026-10-06T21:13:12,misc_dragonteeth_big,56c253fdd3098b16f2b7bdca019282284fd9c8048d6738b3d1249adcf5a7a473,"korte lip + helling 45: nette kapjes op de toppen, geen druipers. minor: geplooid kapje op de gebroken tand (v1)"
+2026-10-06T21:14:37,wreck_uaz,de0412d9e94e2e4433599b9e7d25e36f5317c22f24b15b824cd4f091d119b9fd,"wrakroute + ledges: motorkap schone kap zonder gordijn, laadbak bedekt"
+2026-10-06T21:14:38,wreck_ural,627f43f8a9645216473501165e64c777598a1dc3714f5d07533d71e4851ca514,"wrakroute + ledges: laadbak vol, motorkap en cabine goed. minor: spatbordkap rolt iets over de voorkant"
+2026-10-06T21:14:38,wreck_sed02_aban2_red,f86dd794ffe69db1ac779872fc6b10a23ab59842c76522b96c40976d69d51f97,"wrakroute + ledges: kap op dak/kofferbak schoon, motorruimte rand bedekt. minor: klontjes op radiateurrand"
+2026-10-06T21:14:38,wreck_sed02_aban2_grey,f86dd794ffe69db1ac779872fc6b10a23ab59842c76522b96c40976d69d51f97,"wrakroute + ledges: kap op dak/kofferbak schoon, motorruimte rand bedekt. minor: klontjes op radiateurrand (lid van wreck_sed02_aban2_red)"
+2026-10-06T21:14:38,wreck_sed02_aban2_yellow,f86dd794ffe69db1ac779872fc6b10a23ab59842c76522b96c40976d69d51f97,"wrakroute + ledges: kap op dak/kofferbak schoon, motorruimte rand bedekt. minor: klontjes op radiateurrand (lid van wreck_sed02_aban2_red)"
+2026-10-06T21:14:38,wreck_tractor,ec870d1e56b785be06ac16a70f3263b72ab4eda68d2b96581581e83bf2192e59,"kroonregel .10/.35: cabine en spatborden schoon, banden kaal onder de spatborden. minor: bolle kap op spatbord"
+2026-10-06T21:17:45,wreck_decal_small1,,"SKIP plat wrakpuin op het wegdek, geen bovenvlak (craft notop); verdwijnt onder de sneeuwlaag via IsPathShape"
+2026-10-06T21:17:45,wreck_decal_small2,,"SKIP plat wrakpuin op het wegdek, geen bovenvlak (craft notop); verdwijnt onder de sneeuwlaag via IsPathShape"
+2026-10-06T21:17:46,wreck_decal_big,,"SKIP plat wrakpuin op het wegdek, geen bovenvlak (craft notop); verdwijnt onder de sneeuwlaag via IsPathShape"
+2026-10-06T21:17:53,wreck_decal_big,,SKIP test
+2026-10-06T21:18:01,wreck_decal_big,,"SKIP plat wrakpuin op het wegdek, geen bovenvlak (craft notop); verdwijnt onder de sneeuwlaag via IsPathShape"
+2026-10-06T21:22:51,wreck_caravan_wbrown,9a2b06761785cbc873e3309c0ffea3555a9902e6af65da8c42d0c12c1c032ecf,"wrakroute: dakkussen met korte lip, geen gordijn"
+2026-10-06T21:22:51,wreck_hb01_aban1_white,744b453c1756bdaaf732caaf66983fc99d482fd0bbd9eddc829f482d6b427daf,"wrakroute+ledges: motorkap en dak schoon, geen gordijn over koplampen"
+2026-10-06T21:22:51,wreck_hb01_aban1_green,744b453c1756bdaaf732caaf66983fc99d482fd0bbd9eddc829f482d6b427daf,"wrakroute+ledges: motorkap en dak schoon, geen gordijn over koplampen (lid van wreck_hb01_aban1_white)"
+2026-10-06T21:22:51,wreck_hb01_aban1_blue,744b453c1756bdaaf732caaf66983fc99d482fd0bbd9eddc829f482d6b427daf,"wrakroute+ledges: motorkap en dak schoon, geen gordijn over koplampen (lid van wreck_hb01_aban1_white)"
+2026-10-06T21:22:52,wreck_hb02_aban1_red,b7ba81b26ab1629a829b610a20aef95a36390d3daad5e54a43630b5330cacb34,"wrakroute+ledges: motorkap en dak schoon, achterklep-rand klein kapje"
+2026-10-06T21:22:52,wreck_hb02_aban1_blue,b7ba81b26ab1629a829b610a20aef95a36390d3daad5e54a43630b5330cacb34,"wrakroute+ledges: motorkap en dak schoon, achterklep-rand klein kapje (lid van wreck_hb02_aban1_red)"
+2026-10-06T21:22:52,wreck_hb02_aban1_black,b7ba81b26ab1629a829b610a20aef95a36390d3daad5e54a43630b5330cacb34,"wrakroute+ledges: motorkap en dak schoon, achterklep-rand klein kapje (lid van wreck_hb02_aban1_red)"
+2026-10-06T21:22:52,wreck_sed01_aban1_wine,c634e1ebedc9b1910ac361e06eda0923f1623e0b5234423a2e477b6a23fb0e2e,wrakroute+ledges: dak en kofferbak schoon. minor: ring sneeuw rond open motorruimte
+2026-10-06T21:22:52,wreck_sed01_aban1_white,c634e1ebedc9b1910ac361e06eda0923f1623e0b5234423a2e477b6a23fb0e2e,wrakroute+ledges: dak en kofferbak schoon. minor: ring sneeuw rond open motorruimte (lid van wreck_sed01_aban1_wine)
+2026-10-06T21:22:52,wreck_sed01_aban1_black,c634e1ebedc9b1910ac361e06eda0923f1623e0b5234423a2e477b6a23fb0e2e,wrakroute+ledges: dak en kofferbak schoon. minor: ring sneeuw rond open motorruimte (lid van wreck_sed01_aban1_wine)
+2026-10-06T21:22:53,wreck_sed01_aban2_black,056d85d0fdc04285b08f000d94a27c57db55441147dd1603ae7f74162e1b716a,"wrakroute+ledges: motorkap, dak schoon. minor: ring rond open kofferbak"
+2026-10-06T21:22:53,wreck_sed01_aban2_white,056d85d0fdc04285b08f000d94a27c57db55441147dd1603ae7f74162e1b716a,"wrakroute+ledges: motorkap, dak schoon. minor: ring rond open kofferbak (lid van wreck_sed01_aban2_black)"
+2026-10-06T21:22:53,wreck_sed01_aban2_wine,056d85d0fdc04285b08f000d94a27c57db55441147dd1603ae7f74162e1b716a,"wrakroute+ledges: motorkap, dak schoon. minor: ring rond open kofferbak (lid van wreck_sed01_aban2_black)"
+2026-10-06T21:22:53,wreck_truck01_aban1_green,66087a1536ab989aa67a63a8e7016d781c6af72e89bf170b81a6394bf50b24c9,"wrakroute+ledges: cabine, motorkap, laadbak bedekt. minor: spatbordkap rolt iets over de voorkant"
+2026-10-06T21:23:42,barn_brick2,75aae0b4d2f856db3163b34f9c00948ee39031f595f78bf9fc26b331bb2040e5,"velden per onderdeel (dak/gevels/goten), helling 70/55, dak v1-v2 = v3-kap: geen flappen op de hoeken, bescheiden gevelkappen. minor: zachte schaduwvegen aan rechter dakeinde bij v1-v4"
+2026-10-06T21:27:14,wreck_bmp2,0e202a7f0b7c645aa35fe61243914176c4c9efc0cd5f4c8ef2b1eacb213b81f5,wrakroute+ledges: romp en toren bedekt. minor: kap rolt iets over de zijschermen bij v7
+2026-10-06T21:27:14,wreck_harverster,f46aacf51d31ffd60f620853a5422b89db6483a79bf72b9823c38572543e45d0,"wrakroute+ledges: bakken schoon bedekt, korte lip"
+2026-10-06T21:27:14,wreck_hb01_aban2_green,7a2bd09dc046e6f3d78022197535cf47fe68b7876114f79b2fe07a3a20fd2b47,"wrakroute+ledges: dak, rand motorruimte. minor: klontjes op bumperhoeken v7"
+2026-10-06T21:27:14,wreck_hb01_aban2_white,7a2bd09dc046e6f3d78022197535cf47fe68b7876114f79b2fe07a3a20fd2b47,"wrakroute+ledges: dak, rand motorruimte. minor: klontjes op bumperhoeken v7 (lid van wreck_hb01_aban2_green)"
+2026-10-06T21:27:15,wreck_hb02_aban2_blue,47d231f0c30144e2a323e749f92e65d9ab8ba131a636513e2a944ba768cb8f05,"wrakroute+ledges: dak, rand motorruimte. minor: klontjes langs deurframe"
+2026-10-06T21:27:15,wreck_hb02_aban2_red,47d231f0c30144e2a323e749f92e65d9ab8ba131a636513e2a944ba768cb8f05,"wrakroute+ledges: dak, rand motorruimte. minor: klontjes langs deurframe (lid van wreck_hb02_aban2_blue)"
+2026-10-06T21:27:15,wreck_hb02_aban2_black,47d231f0c30144e2a323e749f92e65d9ab8ba131a636513e2a944ba768cb8f05,"wrakroute+ledges: dak, rand motorruimte. minor: klontjes langs deurframe (lid van wreck_hb02_aban2_blue)"
+2026-10-06T21:27:15,wreck_sed02_aban1_yellow,b4cc52f8258a1060c6ffc1b3051e0e9921ef3534b51dbd8842e555b4c068b4a1,"wrakroute+ledges: motorkap, dak, kofferbak schoon"
+2026-10-06T21:27:15,wreck_sed02_aban1_grey,b4cc52f8258a1060c6ffc1b3051e0e9921ef3534b51dbd8842e555b4c068b4a1,"wrakroute+ledges: motorkap, dak, kofferbak schoon (lid van wreck_sed02_aban1_yellow)"
+2026-10-06T21:27:15,wreck_sed02_aban1_red,b4cc52f8258a1060c6ffc1b3051e0e9921ef3534b51dbd8842e555b4c068b4a1,"wrakroute+ledges: motorkap, dak, kofferbak schoon (lid van wreck_sed02_aban1_yellow)"
+2026-10-06T21:29:03,roadblock_woodencrate,5d54aac0884370dab285a8e499f60deced0181f17931af735cd46d76a168e161,"gesloten kussen op de kist, nette lip"
+2026-10-06T21:29:04,sign_build_hotel,60fbf33628cd8656c974531191d9be910e41dc28197f61c1619d5550827f5dd2,"kap op bordtop. minor: kleine rol op de bevestigingsarm, tandjes onder de rand"
+2026-10-06T21:31:08,pipe_big_9m,68e078d0d10fc015c98337b4e97ee09bd030a13867643183c112621f8dfe8953,"familierecept see_through+level_fields+THIN .16: geen worsten op schoren, geen brug tussen buizen op verschillende hoogte. minor: buiskussens onderbroken onder vakwerkschoren"
+2026-10-06T21:31:09,pipe_big_cornerl,85d7cf26db25cbe2cd074a07fc55068304d8dee0a52d07e2f2bf9954de6772a9,"familierecept see_through+level_fields+THIN .16: geen worsten op schoren, geen brug tussen buizen op verschillende hoogte. minor: buiskussens onderbroken onder vakwerkschoren"
+2026-10-06T21:33:12,wall_cgry_corner_2,645310e7d8c014d749e4032a98ad7e192422ff80faa5dbbf25fe1f292997b681,pilaartop: gesloten kap met korte lip
+2026-10-06T21:33:12,wall_gate_ind2rail_r,043ec6236660eb34a5457cdda4805375377eb369af124554648804942dd3324e,"kapjes op palen, dunne ruggen op regels"
+2026-10-06T21:33:13,wall_indvar1_5_d_2,efad6336de81101bf58cea0c645d320b74d58bdcffdeb9a8bb1c77aa9ad217f2,"gebroken muurtop gevolgd, korte lip"
+2026-10-06T21:33:13,wall_indvar2_pole,fd6a60d47fe4c4f9947704206e0375d4735baae1752f55d625c5c9b97cbeb8f0,pilaartop: gesloten kap
+2026-10-06T21:34:20,quarry_hammermill,15b7df921185eb6ed5506bcabff97aa3454eb7921243ff82e4a0d58c7ce13829,"rand van de trechter bedekt. minor: kap rolt iets naar buiten over de rand, steile binnenwanden kaal"
+2026-10-06T21:34:43,wreck_bmp1,72404423de9688b4b3efa4cc3baac9e5fecdb63b2f1b3423609ce8d9a3f29f97,"wrakroute+ledges: romp bedekt, toren klein kapje"
+2026-10-06T21:34:43,wreck_digger,4fa26549695228b6521b3760500d2bff5f5b0e74b8aa66b12f54f111aa8f1d53,"wrakroute+ledges: cabine, contragewicht, giek bedekt. minor: kleine klontjes op de giek"
+2026-10-06T21:34:43,wreck_harvester_head,4597b8cc971ac1dc6e7bf86bf0dda9f0d2dbefc08cbea885ab7dd443fe1ec5ec,wrakroute+ledges: frame en haspel bedekt. minor: lichte bobbels op de bovenrand
+2026-10-06T21:34:44,wreck_hb01_aban2_blue,7a0061beb5f9d96f66cd8a8afd5f3ca44cc1b0ff56f01f19657e2b7a17552cf2,"wrakroute+ledges: dak, rand motorruimte. minor: klontje op bumper v7"
+2026-10-06T21:34:44,wreck_powgen,34be7ad057f0ab2c46e50b2b9b7d6b6ba2943f2bc9fc07fe9a93df26c8f4bc9a,"wrakroute+ledges: dak van de aanhanger schoon, deksel met kapje"
+2026-10-06T21:34:44,wreck_truck01_aban1_orange,17574091fb32e52240c870bee78a3933a3685752574908dc173e1017cbcfaae1,"wrakroute+ledges: cabine, motorkap, laadbak. minor: spatbordkap rolt iets over de voorkant"
+2026-10-06T21:34:45,wreck_truck01_aban1_blue,17574091fb32e52240c870bee78a3933a3685752574908dc173e1017cbcfaae1,"wrakroute+ledges: cabine, motorkap, laadbak. minor: spatbordkap rolt iets over de voorkant (lid van wreck_truck01_aban1_orange)"
+2026-10-06T21:34:45,wreck_offroad02_aban1,a153710c3d50ab704e3e40ccfe89bb3454ec4fa0d548a0955485de26582dfbb3,"wrakroute+ledges: dak, motorkap. minor: dunne ruggen op de bullbar, ring rond dakluik"
+2026-10-06T21:39:59,wreck_bulldozer,4af81324be728737d8bcd31ac28ff3a79c07e2a13e70413f217ebf1b0b8dae40,"wrakroute+ledges: rupsen, blad en cabinedak schoon bedekt"
+2026-10-06T21:39:59,wreck_t72_chassis,11af0bf57d75da47b935ab925c3485daf1a8d8e6199798b6acc1bd8aced7d965,"wrakroute+ledges: romp bedekt, ring rond toreenopening. minor: kleine flappen aan de zijschermen"
+2026-10-06T21:39:59,wreck_truck01_aban1_firetruck,c1bfcd7e51821db185dfc20df48694c29d4784ed43704136c37bb796c83926a5,"wrakroute+ledges: cabine, spatborden. minor: dikke kappen op losse banden"
+2026-10-06T21:40:00,wreck_truck01_aban2_firetruck,2981b132b27900cc6131949b1a9c44629f96688aa36f26054c97b367d6e313e2,"wrakroute+ledges: cabine, spatborden. minor: dikke kappen op losse banden"
+2026-10-06T21:40:10,pipe_big_18m,1b61abe353e7c8ee40c1a16926161fdd9225dd07d5a3fc8b83cf2623ef8cbb63,"familierecept see_through+level_fields+THIN .16: kussens per buis, geen brug tussen hoogtes, schoren kaal. minor: kussens onderbroken onder vakwerkschoren"
+2026-10-06T21:40:11,pipe_big_cornerr,a34ced8cd2d1d09b3183d43fe90e0e6adf3ec1117f05a0e25e342c4f399b55c4,"familierecept see_through+level_fields+THIN .16: kussens per buis, geen brug tussen hoogtes, schoren kaal. minor: kussens onderbroken onder vakwerkschoren"
+2026-10-06T21:40:12,pipe_big_ground1,186f6250c67941672a7b8b079418e65231eb6a9eb760a582924acc627b7fb6aa,"familierecept see_through+level_fields+THIN .16: kussens per buis, geen brug tussen hoogtes, schoren kaal. minor: kussens onderbroken onder vakwerkschoren"
+2026-10-06T21:40:12,pipe_big_ground2,e65381fd7c6ce1f49e9ef6811518c91b80711e86ab92ac3d54d7ede97e1fdffc,"familierecept see_through+level_fields+THIN .16: kussens per buis, geen brug tussen hoogtes, schoren kaal. minor: kussens onderbroken onder vakwerkschoren"
+2026-10-06T21:40:13,pipe_big_smallconr,e86b322afd39ece0f49be3abfbabeba6d32c01e14ff45dd31fb4a6aeb3bf14f1,"familierecept see_through+level_fields+THIN .16: kussens per buis, geen brug tussen hoogtes, schoren kaal. minor: kussens onderbroken onder vakwerkschoren"
+2026-10-06T21:40:14,pipe_big_smallconl,c8b2f9e595d57db28adf4e2784d0a7d0437f166c2e12ae1851e3f3a7a30d5371,"familierecept see_through+level_fields+THIN .16: kussens per buis, geen brug tussen hoogtes, schoren kaal. minor: kussens onderbroken onder vakwerkschoren"
+2026-10-06T21:41:37,house_1w06,098cb3cd035c0570849dbe20180da805ebd0be9db130a62406420b2d016da211,"daken en afdak bedekt, schoorsteenkap, hoeken schoon"
+2026-10-06T21:41:38,houseblock_2f5,bfd689ddbf61cb6a27b0bab4011156eb0b165a5b886c3a841cdbcd8235f61b82,"dak en lager dak bedekt, nette lip"
+2026-10-06T21:41:38,shed_closed,fbfa887ce4eb97da5441a6ecf4b2582c6d0b7bd6e858532dad9a15658c3177ae,dak bedekt. minor: dunne donkere latjes onder de dakrand
+2026-10-06T21:41:38,tenement_big,76e3ad0dd6a4600c1a38906583b175b8e85c08569d7d80b8ea68228d1947c1f6,plat dak en balkons bedekt. minor: rollen op balkonranden bij v7
+2026-10-06T21:41:39,houseblock_2f4,1ef0a8570183b41add9cb5eb4c92d770e67b34094c04f2a9bff8f1cddce5474e,"daken bedekt, schoorsteenkapjes"
+2026-10-06T21:41:39,houseblock_2f2,eaf047d3190ddd5fe237beb514f03dde5f44364cd1ea18210bcab4c6cc49f984,"daken bedekt, nette hoeken"
+2026-10-06T21:41:40,houseblock_2f1,817006288ed2c8077e0bb244a6d0fdcefd49409eeeb54314eda08b5240aaafd2,"dak bedekt, nette hoeken"
+2026-10-06T21:41:40,houseblock_2f6,96a027073a421e2df5fa3fe97dfa2aaec145e63de4ca15a0fa781fb47a247cb0,"daken bedekt, nette hoeken"
+2026-10-06T21:41:41,house_2w04_yellow,bcd2d2855b3ec3a4ba76fcaba0ccfa52b44dcb3e1303f58cc12b83d574ff2383,"schilddak bedekt. minor: kleine vinnetjes aan de goot, glasdak veranda kaal"
+2026-10-06T21:41:41,house_2w04,713be21c5a67b0bad25dfd3e17aaacfd39795baf2745ed65ce879a757aa5e91c,"schilddak bedekt. minor: kleine vinnetjes aan de goot, glasdak veranda kaal"
+2026-10-06T21:41:42,village_pub,f5cb5be6feb3d5edb94ae9bef82b82cf7e00e9c0b7dd911ad3eadffb08713720,"daken bedekt, schoorsteenkap, hoeken schoon"
+2026-10-06T21:41:42,pier_tube_big,5f72a809afbf212f49291c1763e99680b32cfbdcbc8470498dcb153db4bceb2a,kap op buistop. minor: bolle kap
+2026-10-06T21:41:43,farm_cowsheda,411bd60acd3b7c77c5bc230975f4f5c3fec9fb2e44c616fe02bc73eb2bb9efc8,dak bedekt. minor: wit randje op gevelplank
+2026-10-06T21:41:43,power_station,dd19b947c55fe5136daaaaeaea8f28bee251c888df40107b5ac42babaf57ffe5,platte daken bedekt. minor: dikke lip bij de trap
+2026-10-06T21:41:44,castle_wall1_end1_nolc,d46509682eabce0c1c2060a1272fb4cf3e51d6348912e9245bd48ba7985b6f36,kroonregel: alleen kroon bedekt. minor: kapjes op smalle treden van het breukeinde
+2026-10-06T21:41:44,tower_tc2_base,8cf5a8724ebe5f1627619834a74e98690f8b4fb0730fd97297e9fad44f83cc1a,platformring bedekt
+2026-10-06T21:41:45,ship_big_fronta,f73c2c748e697707f236579fcf84d559258f80be2fe213b3c6bc4fee51584aeb,dek en reling bedekt. minor: wit randje op romp
+2026-10-06T21:41:45,ship_big_frontb,d9da056089dcfa4f0c309720d9a800cc3bd525f4fe2d3b061aa56dcff9203757,wrakschip: dek bedekt. minor: dunne platen tussen het puin
+2026-10-06T21:41:46,smokestack_medium,ad243665665f6a80adf6b3190b8ee11a99922b2adbfdcbaa169252355bc657ec,"platformring bedekt, reling kaal"
+2026-10-06T21:41:46,tisy_hq,b38d87c1a9939849e05186b6199dea6d9120455f1e1bfeb38290d063c082a7df,dak en betonplaat bedekt
+2026-10-06T21:43:45,radio_panelpas,17c111dca2534e4ea7b0fc5826717fb24383e7697aea80da9b1544a6e0e44b13,big_tops + korte lip: deksels bedekt. minor: zachte naad tussen de twee dekselkussens
+2026-10-06T21:43:45,rubble_concrete1,e0c226999c6aa5ebe9fe5c0a055c21ab19c0fc609d2c6dab13bf4a312b25b11a,"ruw (rotsbehandeling) + lage delen: gesloten hoop, randen volgen de brokken"
+2026-10-06T21:43:46,sign_build_bar,28cbfdca6d9d12ad2d6578035317190510c327622afa2f64efad6c9d07d6620e,velden per onderdeel: bord en arm elk eigen kap. minor: kleine rol op de arm
+2026-10-06T21:43:46,skilift_tower_middle_slope,51797d26c725610a8407dcee678261737145ae0b716de4ef154ccfab5bb016f3,"THIN .16 + korte lip: dunne ruggen op armen, kapjes op schijven"
+2026-10-06T21:49:14,ruin_chimney,7d0f3a682e590174fc82d2c21312ce8624817d2a2af4711411574757243a802b,"ledges: geen nek meer tussen stapelkap en richel. minor: rond kapje op zijrichel, ring rond schoorsteenopening"
+2026-10-06T21:50:47,misc_coil,58a9617730cb2425dee0238b2db610499a082504ff90ddeb2ddbead1943a3830,"Volta recept (delen 0-5, THIN .035, korte lip): schijf gesloten bedekt. minor: getande rand v7, dunne ruggen op spaken bij v1"
+2026-10-06T21:50:47,mil_camonet_side_east,b3aba184a2d1ea346b55b6f5efc3907ca5ad9886749340e4fefc9246d64df236,"Volta recept (deel 31 + ledges): net besneeuwd, plooien gevolgd. minor: rafelige rand met tandjes"
+2026-10-06T21:50:47,mil_camonet_side_nato,b3aba184a2d1ea346b55b6f5efc3907ca5ad9886749340e4fefc9246d64df236,"Volta recept (deel 31 + ledges): net besneeuwd, plooien gevolgd. minor: rafelige rand met tandjes (lid van mil_camonet_side_east)"
+2026-10-06T21:50:47,medical_tent_shower,de36c307e3db609c070004965ae1cdb47cb972ac3b4bbc7fbf7fafbdd96c4e29,Volta recept (dak delen + ledges): tentdak bedekt. minor: blokkige kussens tussen de framebuizen
+2026-10-06T21:56:08,ruin_doorwall,d2d4d8c42ef773aa81e30b71af8c1828d3bc9d931daaa103309e4f4fa9907e5c,"ruw + helling 55 + ledges: kroon en treden bedekt, geen splinters meer. minor: twee kleine scherfjes op een breukvlak"
+2026-10-06T21:58:23,house_1w09,aa8222b0e505d269bf27a5279821e3a9e2443155deab2f4b938e425db37945ea,"dak gesloten bedekt, schoorsteenkap, nette lip. minor: enkele kleine bultjes op het dak bij v1-v2"
