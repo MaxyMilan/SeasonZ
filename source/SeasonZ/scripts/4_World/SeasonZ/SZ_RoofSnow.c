@@ -3746,7 +3746,9 @@ class SZ_RoofSnow
 
 	protected Object MakeBaked(SZ_RoofBuilding b, int variant, float lift)
 	{
-		string p3d = SZ_Const.DATA + "baked\\" + b.m_Baked + "_v" + variant.ToString() + ".p3d";
+		if (b.m_Baked == "")
+			return null;
+		string p3d = SZ_Const.BAKED + b.m_Baked.Substring(0, 1) + "\\" + b.m_Baked + "_v" + variant.ToString() + ".p3d";
 		Object o = g_Game.CreateStaticObjectUsingP3D(p3d, b.m_Obj.GetPosition(), "0 0 0", 1.0, true);
 		if (!o)
 			return null;

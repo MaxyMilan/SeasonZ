@@ -1,4 +1,4 @@
-"""ruin_slum_house3: a collapsed slum shack: leaning boards, sheet panels, a tyre and junk (Expansion mapping).
+"""ruin_slum_house4: a collapsed slum shack: leaning boards, sheet panels, a tyre and junk (Expansion mapping).
 
 (Opus, 6 Oct, e1; Astra Boyle/McClintock/Feynman) four routes left stiff sheets, pointed flaps or tall sheets on the
 broken panels: the volumetric cap, the wreck route (35 degrees), the rough heap route and the blanket. Selective

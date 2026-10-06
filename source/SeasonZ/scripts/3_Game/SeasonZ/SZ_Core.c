@@ -10,6 +10,9 @@ class SZ_Const
 	static const string OLD_CONFIG_FILE = "$profile:DynamicSeasons/config.json";
 	static const string OLD_STATE_FILE = "$profile:DynamicSeasons/state.json";
 	static const string DATA = "SeasonZ\\data\\";
+	//! the snow baked per model: one PBO per first letter of the model name (SeasonZ_Baked_<letter>.pbo with that
+	//! prefix, see tools/split_stage.py), so that no PBO grows past the 2 GB the tools and the game can address
+	static const string BAKED = "SeasonZ_Baked_";
 	static const float LEVEL_ALT_0 = 0.0;
 	static const float LEVEL_ALT_1 = 250.0;
 	static const float LEVEL_ALT_2 = 500.0;

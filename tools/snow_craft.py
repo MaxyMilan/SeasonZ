@@ -1636,6 +1636,10 @@ def craft_hand(path, out_dir, name):
     None when it has neither. SZ_HAND=all makes every model's snow by hand (its recipe, or the default)"""
     import snow_hand as H
     ap = approved_mesh(name)
+    # (Opus, 7 Oct) SZ_APPROVED_ONLY=1: a test build of the reviewed caps only; a model not yet approved keeps the
+    # old route instead of building its (possibly heavy) recipe inside the craft
+    if ap is None and os.environ.get('SZ_APPROVED_ONLY') == '1':
+        return None
     if ap is None and H.recipe(name) is None and os.environ.get('SZ_HAND') != 'all':
         return None
     hm = H.Model(name, path=path)
