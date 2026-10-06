@@ -669,6 +669,28 @@ def _a5_boost(h,d,R):
     return np.clip(full/np.maximum(_a5_integral(h,R),1e-6),1.,6.).astype(np.float32)
 
 
+A5_REPOSE=math.tan(math.radians(50.))
+
+
+def _repose(Z,h,M,g,hmin):
+    """the angle of repose: within a support the snow top may not rise more steeply than 50 degrees from a neighbour,
+    so a thick cap on a round tank, bale or boulder slopes down to its flanks instead of ending in a step"""
+    T=np.where(M,Z+h,np.inf)
+    n=int(min(80,math.ceil(float(h.max(initial=0))/(g*A5_REPOSE))+2))
+    # only neighbours on the same continuous surface (a step up to another part is not a slope)
+    steps=[(dj,di,math.hypot(dj,di)*g*A5_REPOSE,
+            M&H.sh(M,dj,di,False)&(np.abs(H.sh(Z,dj,di,1e6)-Z)<=3.5*g*math.hypot(dj,di)))
+           for dj in (-1,0,1) for di in (-1,0,1) if dj or di]
+    for _ in range(n):
+        new=T.copy()
+        for dj,di,rise,cont in steps:
+            new=np.where(cont,np.minimum(new,H.sh(T,dj,di,np.inf)+rise),new)
+        new=np.where(M,np.maximum(new,Z+hmin),np.inf)
+        if np.array_equal(new,T): break
+        T=new
+    return np.where(M,np.minimum(h,np.maximum(T-Z,hmin)),h)
+
+
 def _a4_close(M,Z,d,g):
     limit=max(.02,.5*d)
     r=max(1,int(math.ceil(limit/(2*g))))
@@ -715,6 +737,7 @@ def _a4_plan(m,calibration=False,seed=SEED):
         # a5 (Opus): a cap ends in a thin rounded lip at the slope limit, never in particle crumbs
         R=_a4_radius(d)
         h=np.where(base&eligible&(taper>0),np.maximum(h,max(A5_HMIN,A5_BEAD*R)),0.)
+        h=_repose(Z,h,base&eligible&(taper>0),g,max(A5_HMIN,A5_BEAD*R))
         pillow=h.copy()
         reach=int(math.ceil(R/g))
         for dj in range(-reach,reach+1):
@@ -1054,7 +1077,8 @@ def _cap_budget(area):
 
 def _err_tol(d):
     """how far the simplified cap may stray from the dense one: about a tenth of the snow's lump size"""
-    return float(np.clip(.12*d+.002,.003,.01))
+    # the lumps are 1-2 cm high at any depth: a coarser fit lays flat triangles between them that read as pits
+    return float(np.clip(.04*d+.002,.0025,.005))
 
 
 def _err_decimate(V,F,cap,tol,floor=200):
@@ -1344,6 +1368,11 @@ def _a6_plan(m):
     steep,full=(A5_STEEP,A5_FULL) if getattr(m,'rough',False) or m.cls=='rock' else (A5_STEEP_SMOOTH,A5_FULL_SMOOTH)
     mask=m.tops(4,slope=False)&(m.NYF>=math.cos(math.radians(steep)))
     Z=np.nan_to_num(m.Z,nan=-1e6); sink=_a5_sink(m,mask,Z)
+    # gaps between boards of one surface (a bench seat, a deck) up to ~2.5 cm carry snow at the boards' height:
+    # without particles there the cap sags into a groove that reads as a dark line
+    gap=_a4_close(mask,Z,max(m.thick(1),.04),m.g)&~mask
+    Zfill=np.where(gap,H.maxf(np.where(mask,Z,-1e6),max(1,int(math.ceil(.02/m.g)))),Z)
+    emit=mask|gap
     angle=np.degrees(np.arccos(np.clip(m.NYF,0,1)))
     taper=np.clip((steep-angle)/(steep-full),0,1); taper=taper*taper*(3-2*taper)
     stages={}; closed=mask.copy(); means={}
@@ -1354,7 +1383,7 @@ def _a6_plan(m):
         extra=(d-base)*taper*np.minimum(1,width/max(d,1e-9))
         stages[v]=dict(depth=d,base=base,height=height,R=.54*height,D=extra,width=width)
         if base not in means:
-            means[base]=np.where(mask,50/height**2*m.g*m.g/np.maximum(m.NYF,.1),0.)
+            means[base]=np.where(emit,50/height**2*m.g*m.g/np.where(gap,1.,np.maximum(m.NYF,.1)),0.)
     rng=np.random.default_rng(SEED); rounding=rng.random(mask.shape)
     counts={b:np.floor(lam+rounding).astype(int) for b,lam in means.items()}
     maximum=np.maximum.reduce(list(counts.values()))
@@ -1368,6 +1397,7 @@ def _a6_plan(m):
     normal=m.n_t[np.maximum(m.TID.ravel()[cols],0)]
     expected=Z.ravel()[cols]-(normal[:,0]*(px-m.u0-ii*m.g)+normal[:,2]*(pz-m.v0-jj*m.g))/np.where(np.abs(normal[:,1])>1e-7,normal[:,1],1.)
     good=(parts>=0)&(ny>=math.cos(math.radians(steep)))&(np.abs(sky-expected)<max(.025,3*m.g))
+    isgap=gap.ravel()[cols]; sky=np.where(isgap,Zfill.ravel()[cols],sky); good|=isgap
     clouds={}
     for b,c in counts.items():
         selected=good&(ordinal<c.ravel()[cols])
@@ -1379,7 +1409,8 @@ def _a6_plan(m):
 def _a6_grid(m,plan):
     # The emitter grid is independent of the extraction grid. Large models
     # retain the same surface particle density while using larger voxels.
-    g=float(np.clip(float(np.ptp(m.V,axis=0).max())/650.,.0075,.02))
+    # big models on a coarser lattice (3 cm at 15 m): the lumps are 8+ cm there, and a house builds in minutes
+    g=float(np.clip(float(np.ptp(m.V,axis=0).max())/450.,.0075,.03))
     gy=min(g,min(s['base'] for s in plan['stages'].values())/3)
     pitch=np.array((g,gy,g)); core=64
     maxR=max(s['R'] for s in plan['clouds'].values())
@@ -1504,11 +1535,12 @@ def _a6_hidden(m,V):
     inside=np.zeros(len(V),bool)
     for k,p in enumerate(V):
         hit,n,_,_=m.bvh_all.find_nearest(Vector(p))
-        if hit is not None: inside[k]=(Vector(p)-hit).dot(n)<-.002
+        if hit is not None: inside[k]=(Vector(p)-hit).dot(n)<-.005
     ids=np.flatnonzero(inside)
     if len(ids):
         sky,_,part=_source_points(m,V[ids][:,[0,2]])
-        inside[ids]&=(part>=0)&(V[ids,1]<sky-.002)
+        # only clearly buried vertices: open models (rocks, logs) misjudge inside near their skin and tore holes
+        inside[ids]&=(part>=0)&(V[ids,1]<sky-.005)
     return inside
 
 
@@ -1649,7 +1681,9 @@ def _a7_tile(plan,grid,tile,variants):
         stage=plan['stages'][v]; skin=field(stage['skin_key']); current=skin
         if stage['volume_key'] is not None:
             body=field(stage['volume_key'])
-            current=skin+stage['blend']*np.maximum(body-skin,0)
+            # smooth union (k 4 cm): where the thick body thins out onto the skin the surface rounds over, no step
+            k=.04; hh=np.clip(.5+.5*(body-skin)/k,0,1); smax=skin+(body-skin)*hh+k*hh*(1-hh)
+            current=skin+stage['blend']*(smax-skin)
         sl=(slice(int(start[0]),int(end[0])+1),slice(int(start[2]),int(end[2])+1))
         floor=grid['floors'][stage['base']][sl]
         yy=grid['origin'][1]+np.arange(start[1],end[1]+1)*pitch[1]
@@ -1747,7 +1781,12 @@ def _a7_growth_guard(m,V,F,previous):
 
 def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
     from concurrent.futures import ThreadPoolExecutor
-    report=getattr(m,'_addon_log',lambda *a:None); start=time.perf_counter(); plan=_a7_plan(m); grid=_a7_grid(m,plan)
+    report=getattr(m,'_addon_log',lambda *a:None); start=time.perf_counter(); plan=_a7_plan(m)
+    if not any(len(c['P']) for c in plan['clouds'].values()):
+        # nothing wide and open enough to hold snow (thin tubes, a mesh fence): no cap in any depth
+        m._snow_a7_cache={v:dict(mesh=None,stats=dict(method='a7',empty=True,variant=v)) for v in range(1,8)}
+        return m._snow_a7_cache
+    grid=_a7_grid(m,plan)
     planning=time.perf_counter()-start
     # All predecessors must be built for the final-mesh growth guarantee.
     wanted=tuple(range(1,max(variants)+1)); representatives={}
@@ -1776,7 +1815,8 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
         report('a7_cleanup',v,raw_count)
         inside=_a6_hidden(m,V); hidden=np.all(inside[F],axis=1); V,F=G._compact(V,F[~hidden])
         if len(F):
-            V=_a3_taubin(V,F,passes=1);V,F=_err_decimate(V,F,_cap_budget(area),_err_tol(m.thick(v)))
+            # small props stay smooth up close: the tolerance also shrinks with the size of the cap
+            V=_a3_taubin(V,F,passes=1);V,F=_err_decimate(V,F,_cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
             # crumbs, knobs and floating balls go (under 0.01 m2, narrower than 4 cm, or touching nothing)
             V,F,pruned=_a4_prune(m,V,F)
             V,guard=_a7_growth_guard(m,V,F,previous)
