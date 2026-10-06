@@ -2972,6 +2972,26 @@ def separate(m, v, groups):
     return join(out)
 
 
+def part_top_area(m, p, ny_min=0.7):
+    """the area of part p's faces looking up (within about 45 degrees), seen from above (m2)"""
+    sel = np.nonzero((m.part_t == p) & (m.n_t[:, 1] > ny_min))[0]
+    if not len(sel):
+        return 0.0
+    t = m.V[m.T[sel]]
+    return float(np.abs(np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])[:, 1]).sum() * 0.5)
+
+
+def big_tops(m, v, min_top):
+    """the addonfine cap on the parts with at least min_top m2 of top only: (Opus, 6 Oct) on shipping containers the
+    door handles, locking rods and the doors' top edges (1-14 cm2 each) grew bulbs and a lumpy curtain under the
+    roof's lip. The roof, the frame rails and the corner castings carry the snow"""
+    if not hasattr(m, '_sz_rails'):
+        n = int(m.part_t.max()) + 1
+        m._sz_parts = tuple(p for p in range(n) if part_top_area(m, p) >= min_top)
+        m._sz_rails = ([], [])
+    return hybrid(m, v)
+
+
 def post_tops(m, v, posts, logs, min_area=0.0012, reach=0.03):
     """small blankets on the sawn tops of fence posts (wall_woodf family); (Opus, 6 Oct) a post top a rail rests on or
     passes over shows only a sliver beside the rail: its blanket stood out as a white flange at the crossing by v7. A
