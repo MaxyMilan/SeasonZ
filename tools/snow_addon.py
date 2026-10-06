@@ -1208,6 +1208,9 @@ def _err_decimate(V,F,cap,tol,floor=200):
     mod=obj.modifiers.new('dec','DECIMATE'); mod.use_collapse_triangulate=True
     pick=np.random.default_rng(5).choice(len(V),min(4000,len(V)),replace=False); S=V[pick]
     NS=_smooth_normals(V,F,_vnormals(V,F),3)[pick] if A7_NTOL>0 else None
+    # (Opus, 6 Oct) the other way round as well: every vertex and face centre of the simplified cap within 3 tol of
+    # the dense one. One-sided, a collapse could fold a triangle up into a fin standing out of a smooth cap
+    dense=BVHTree.FromPolygons(V.tolist(),F.tolist(),all_triangles=True)
     state=[len(F)]
     def run(n):
         mod.ratio=min(1.,n/state[0])
@@ -1223,6 +1226,10 @@ def _err_decimate(V,F,cap,tol,floor=200):
         hits=[b.find_nearest(Vector(q)) for q in S]
         d=np.array([h[3] if h[3] is not None else 1e9 for h in hits])
         e=float(np.percentile(d,99.5))
+        if e<=tol:
+            P=np.vstack((v,v[f].mean(1)))
+            back=max((dense.find_nearest(Vector(q),3*tol+1e-4)[3] is None) for q in P)
+            if back: return 1e9
         if A7_NTOL>0 and e<=tol:
             # (Opus, 6 Oct) shading: the smooth normal the simplified cap shows at each sample against the dense cap's.
             # Distance alone let long flat triangles cross a rounded pillow - with smooth shading they read as facets
@@ -1248,7 +1255,52 @@ def _err_decimate(V,F,cap,tol,floor=200):
             if err(*cand)<=tol: hi,best=mid,cand
             else: lo=mid
     bpy.data.objects.remove(obj,do_unlink=True); bpy.data.meshes.remove(me)
+    if A7_UNFOLD>0: best=_unfold(*best,dense,V,F)
     return _beautify(*best) if A7_BEAUTY else best
+
+
+A7_UNFOLD=75.   # faces of the simplified cap turned more than this from the dense cap under them get relaxed; 0: off
+
+
+def _unfold(V,F,dense,DV,DF,rounds=6):
+    """(Opus, 6 Oct) fins: a collapse can fold a small triangle over its neighbour, so it stands out of a smooth cap
+    as a blade (garbage_bin v7) or creases it. A fold faces away from the dense cap under it AND turns more than 90
+    degrees from a neighbour across an edge (a thin lip alone is neither). Its shortest edge collapses onto the dense
+    cap: the fold goes, nothing around it moves"""
+    import bmesh, bpy
+    if not len(F): return V,F
+    DN=_smooth_normals(DV,DF,_vnormals(DV,DF),3); lim=math.cos(math.radians(A7_UNFOLD))
+    def dn_at(P):
+        hits=[dense.find_nearest(Vector(q)) for q in P]
+        idx=np.array([h[2] if h[2] is not None else 0 for h in hits]); loc=np.array([tuple(h[0]) if h[0] is not None else tuple(q) for h,q in zip(hits,P)])
+        n=(_bary(loc,DV[DF[idx]])[:,:,None]*DN[DF[idx]]).sum(1); return n/np.maximum(np.linalg.norm(n,axis=1)[:,None],1e-12),loc
+    me=bpy.data.meshes.new('sz_unfold'); me.from_pydata(V.tolist(),[],F.tolist())
+    bm=bmesh.new(); bm.from_mesh(me); bpy.data.meshes.remove(me); done=0
+    for _ in range(rounds):
+        bm.faces.ensure_lookup_table(); bm.normal_update()
+        cand=[f for f in bm.faces if f.calc_area()>1e-9 and any(l.edge.is_manifold and f.normal.dot(l.link_loop_radial_next.face.normal)<0 for l in f.loops)]
+        if not cand: break
+        dn,_=dn_at(np.array([tuple(f.calc_center_median()) for f in cand]))
+        bad=[f for f,n in zip(cand,dn) if f.normal.dot(Vector(n))<lim]
+        if not bad: break
+        edges=set()
+        for f in bad:
+            ed=min(f.edges,key=lambda x:x.calc_length())
+            if not any(v.is_boundary for v in ed.verts) or all(v.is_boundary for v in ed.verts): edges.add(ed)
+        if not edges: break
+        bmesh.ops.collapse(bm,edges=list(edges),uvs=False); done+=len(edges)
+        bmesh.ops.dissolve_degenerate(bm,dist=1e-7,edges=list(bm.edges))
+        bmesh.ops.triangulate(bm,faces=list(bm.faces))
+        for v in bm.verts:
+            if not v.is_boundary and v.is_valid:
+                q=dense.find_nearest(v.co,.03)[0]
+                if q is not None: v.co=q
+    if not done: bm.free(); return V,F
+    me=bpy.data.meshes.new('sz_unfold2'); bm.to_mesh(me); bm.free(); me.calc_loop_triangles()
+    v=np.empty(len(me.vertices)*3); me.vertices.foreach_get('co',v)
+    f=np.empty(len(me.loop_triangles)*3,np.int32); me.loop_triangles.foreach_get('vertices',f)
+    bpy.data.meshes.remove(me)
+    return v.reshape(-1,3),f.reshape(-1,3).astype(np.int64)
 
 
 A7_NTOL=20.     # the simplified cap's smooth normals stay within this many degrees of the dense cap's (95th pct); 0: off
@@ -1564,6 +1616,10 @@ def _a6_plan(m):
     # gaps between boards of one surface (a bench seat, a deck) up to ~2.5 cm carry snow at the boards' height:
     # without particles there the cap sags into a groove that reads as a dark line
     gap=_a4_close(mask,Z,max(m.thick(1),.04),m.g)&~mask
+    if getattr(m,'rough',False) or m.cls=='rock':
+        # (Opus, 6 Oct) a crack in a rock's crown (up to ~7 cm wide, its sides up to 7 cm apart in height) is bridged
+        # by the snow from the first depth on: it showed as a dark slit through the cap (stone4)
+        gap|=_a4_close(mask,Z,.15,m.g)&~mask
     Zfill=np.where(gap,H.maxf(np.where(mask,Z,-1e6),max(1,int(math.ceil(.02/m.g)))),Z)
     if A7_ROCKFILL and (getattr(m,'rough',False) or m.cls=='rock'):
         # a steep crevice or notch inside a rock's crown (enclosed, up to 0.25 m2) emitted nothing and showed as a hole
