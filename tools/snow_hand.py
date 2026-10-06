@@ -2987,9 +2987,24 @@ def big_tops(m, v, min_top):
     roof's lip. The roof, the frame rails and the corner castings carry the snow"""
     if not hasattr(m, '_sz_rails'):
         n = int(m.part_t.max()) + 1
-        m._sz_parts = tuple(p for p in range(n) if part_top_area(m, p) >= min_top)
+        # (Opus, 6 Oct) top measured on faces up to 72 degrees (the slope limit): with 45 the steep roof of barn_brick1
+        # (274 m2, pitched about 50 degrees) counted no top at all and the barn got no snow
+        m._sz_parts = tuple(p for p in range(n) if part_top_area(m, p, ny_min=0.3) >= min_top)
         m._sz_rails = ([], [])
     return hybrid(m, v)
+
+
+def wreck(m, v, **over):
+    """the wrecked vehicles: parts with 1 dm2 of top or more, a short lip (30% of the depth + 1 cm, sinking 1.6 cm at
+    most), thin strips ridges; (Opus, 6 Oct, c52) panels hold snow up to 45 degrees and the layer thins out over the
+    last 20 (_sz_fade): at full weight up to the limit the deep kernels sat as a bead on the curved bonnets and
+    mudguards and hung down over grilles and tyres as curtains and lobes. SZ_WRK (json) overrides for tests"""
+    c = dict(A7_OVL=0.3, A7_LIPDROP=0.05, A7_THIN=0.07, A5_STEEP_SMOOTH=45.0, A5_FULL_SMOOTH=25.0, A7_FADE=20.0)
+    import json
+    c.update(over)
+    c.update(json.loads(os.environ.get('SZ_WRK') or '{}'))
+    m._sz_fade = True
+    return consts(m, v, fn=lambda m_, v_: big_tops(m_, v_, 0.01), **c)
 
 
 def consts(m, v, fn=None, **c):
@@ -3095,7 +3110,16 @@ def _thin_ridges(m, variant, rails):
     if blocked:
         T &= ~dilate(np.isin(m.PART, list(blocked)) & m.valid, max(1, int(round(0.02 / m.g))))
     wide = m.tops(4, slope=False) & ~thin
-    T &= ~dilate(wide, max(1, int(math.ceil(0.10 / m.g))))
+    # a wide top within 10 cm covers the strip with its lip only from above or beside it: (Opus, 6 Oct, c35) a handrail
+    # over a walkway keeps its ridge (the walkway's cap lies a metre below)
+    rw = max(1, int(math.ceil(0.10 / m.g)))
+    Zw = np.where(wide, m.Z, -np.inf)
+    for k in range(rw):
+        out = Zw.copy()
+        for dj, di in (N8 if k % 2 == 0 else N4):
+            out = np.maximum(out, sh(Zw, dj, di, -np.inf))
+        Zw = out
+    T &= ~(Zw >= m.Z - 0.15)
     if not T.any():
         return []
     return [m.ridge(R_, variant) for R_, Zc in m.regions(T, variant, close=0.0, min_area=0.002)]
@@ -3207,7 +3231,16 @@ def build(m, variant):
     if m.name.startswith('trailsign_') or m.name.startswith('trailmap_'):
         # (Opus, 6 Oct) the hiking trail signs: a little pitched roof over an open gable; the roof's lip hung down across
         # the gable openings as ribbed curtains by v4-v7 (r10). A short lip: 15% of the depth (+1 cm), sinking 1.6 cm
-        return consts(m, variant, A7_OVL=0.15, A7_LIPDROP=0.05)
+        # (c38) and only the roof's planes (5 dm2 of top or more: no gable boards, rafter ends, ridge strips), at most the
+        # fourth depth: on a roof half a metre wide and pitched about 47 degrees the deep kernels (37 cm at v7) rolled a
+        # mushroom with ribbed curtains over both gables; a roof that steep sheds what falls after that. (c40) the eave
+        # still hung a pleated skirt over the rafter ends: no overhang at all, the snow ends at the roof's edge
+        return consts(m, min(variant, 4), fn=lambda m_, v_: big_tops(m_, v_, 0.05), A7_OVL=0.0, A7_LIPDROP=0.0)
+    if m.name.startswith('wreck_'):
+        # (Opus, 6 Oct, c37) the wrecks: bonnets and roofs hung deep curtains over grilles, doors and windows, and small
+        # fittings (mirrors, handles, frame tubes) grew blobs. Parts with 1 dm2 of top or more, a short lip (30% of
+        # the depth + 1 cm, sinking 1.6 cm at most), thin strips ridges
+        return wreck(m, variant)
     if m.name.startswith('sign_') or m.name.startswith('bilboard_'):
         # (Opus, 6 Oct) road signs: their 4 mm plates and 6 cm posts are under the lattice of the volumetric cap and
         # stayed bare; snow_signs builds the edge ridge and post caps on their own faces

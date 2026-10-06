@@ -753,3 +753,212 @@ time,name,sha256,note
 2026-10-06T16:23:36,wall_gate_wood3,41719533a2bbfc3c6fe6c4197a503823157016a8698be60ecb000f217780e32d,fence_auto: kussentjes op de plankkoppen
 2026-10-06T16:23:36,wall_wood2_5_end_2,955b2eebdb3df4fe63f3e0c0cb19f0185a305eb3b966f2939b6de3d9b7f0929a,"fence_auto: kussentje op de plankkop, rug op de regel"
 2026-10-06T16:23:37,wall_fenstadium,8766f3848001feb52c28f294f740859775bb2bfdbcca7c19fee64ef4cf9c824e,"minor: fence_auto; ruggen op de onderste buizen, dunne bovenbuis kaal"
+2026-10-06T16:37:51,misc_chickencoop,ed6968a94b3e542497b62630e8137296cb339d397e924a4ba471660d5bf89f30,"c35 Opus: dakkussen rolt netjes over de rand, laag en close schoon"
+2026-10-06T16:37:51,misc_deerstand1,bfbe97b8224fa0cbb703aaebf9bdf97ff1ce0e6651c9b358e320ee9da1585775,"c35 Opus: dakkussen schoon, open platform onder dak kaal, ok"
+2026-10-06T16:37:52,misc_feedshack,60997c3634c64cf7f378ee990d0efb88900cc6108aec0ba137b778d0ecfdb3ff,"c35 Opus: zadeldak schoon, gevelrand zonder druipers, ladder treden lichte richels"
+2026-10-06T16:37:52,misc_polytunnel,8baa9dacd03255c5fe88ccd236fe6468ef6db93b2c47a8319a584c2755412252,"c35 Opus: boog en voetbalk; minor: v1 dunne laag met kale plekken tussen de spanten, kleine klontjes op de voetbalkhoeken"
+2026-10-06T16:37:53,misc_toilet_mobile,ebf31152b1ca0d58db7d3b2a189e5e6a5f5bf69683abee138649bbccb1996ce9,c35 Opus: dakkussen; minor: v7 vrij bol kussen op het kleine dak
+2026-10-06T16:37:53,misc_woodreserve,5488c5aedab46c8c989c98240ff10ef846480ce4d569746763bf668a90eaf2a3,"c35 Opus: alleen dakkap, rolt netjes over; minor: kleine plooi op de hoek in close v7"
+2026-10-06T16:37:53,power_transformer_small,4dbaa3af0b2508976e90228bbc98d06f800b970c4149c79f0d6a10fb49d8c54d,"c35 Opus: dwarsliggers kaal (dun), kast en grote toppen; minor: paaltoppen kleine bolle kapjes"
+2026-10-06T16:37:54,roadblock_cncblocks_long,6c49f0f55ac60e860d0989f8ca35310957494ce9f1c98af102f309165413d2a2,"c35 Opus: bovenkap en traptreden schoon, geen flappen meer"
+2026-10-06T16:37:54,rubble_dirtpile_large,7ec68c7c352434d6657b34fb7b9046fc4b30339d26f3cdf26ef942f4098727e5,"c35 Opus: hele hoop bedekt, zachte voet; minor: kleine donkere tandjes onder de lip bij de grond (close v7)"
+2026-10-06T16:37:55,rubble_dirtpile_medium1,9955a34cf88157fcc0c847b40ba2aca50c32f1b45484fc47b6ff390703628b68,c35 Opus: hele hoop bedekt; minor: kleine bult op de top bij v4-v7
+2026-10-06T16:37:55,rubble_dirtpile_medium2,b14b3d44ef8545397e39b3879279d8a8f0ba119175580d1e300de4843f1e14de,"c35 Opus: hele hoop bedekt, voet schoon"
+2026-10-06T16:37:55,sawhorse_dz,5441712ce605bdab4d7de1dccd71dfa375b76484ff2f9e56d88d71b9f0d845cb,"c35 Opus: richel op de bovenbalk, schoren kaal"
+2026-10-06T16:37:56,shed_m4,5084e564d3e222f7298b79614ebc3c93b837382867e941c99da2b19d5ba51edf,c35 Opus: zadeldak schoon; minor: kleine krul aan de gevelhoek (close v7)
+2026-10-06T16:37:56,shed_w5,0a9a8e137cbf087d7eaf277053a71d60b645639ec6ec51343e89133109323650,"c35 Opus: zadeldak schoon, gevelranden zonder tongen"
+2026-10-06T16:37:57,train_wagon_box,55cea4ec84d750006ddb84fc1b4fab41014874552b43de7e517ead02ead446ff,c35 Opus: dak met korte lip; minor: enkele korte druppels aan het dakuiteinde en een kapje op de buffer (close v7)
+2026-10-06T16:45:11,garbage_container,dbc71d9df2d935a1b5fa38b4a05ed61b55d09f1b579746d91eecde2140ee1ca4,"c37 Opus: dekselkussen schoon, geen vinnen meer bij de greep"
+2026-10-06T16:45:11,garbage_container_glass,dbc71d9df2d935a1b5fa38b4a05ed61b55d09f1b579746d91eecde2140ee1ca4,"c37 Opus: dekselkussen schoon, geen vinnen meer bij de greep (lid van garbage_container)"
+2026-10-06T16:45:12,garbage_container_plastic,dbc71d9df2d935a1b5fa38b4a05ed61b55d09f1b579746d91eecde2140ee1ca4,"c37 Opus: dekselkussen schoon, geen vinnen meer bij de greep (lid van garbage_container)"
+2026-10-06T16:45:12,garbage_container_paper,dbc71d9df2d935a1b5fa38b4a05ed61b55d09f1b579746d91eecde2140ee1ca4,"c37 Opus: dekselkussen schoon, geen vinnen meer bij de greep (lid van garbage_container)"
+2026-10-06T16:45:12,misc_boxwooden,44e0a5da6c9ebc23662e57e5e2b33848d48e36f252cb7275dbaa344b1a2fdbdc,"c37 Opus: kussen op het deksel, rolt netjes over de rand"
+2026-10-06T16:45:12,misc_dragonteeth,4d8c2012013baa5aa06e883036bac7a1f759ea9cd06357d01537db1c8d34aa55,c37 Opus: kapjes op de tanden; minor: een korte tong langs een steile zijde (close v7)
+2026-10-06T16:45:13,misc_tree_pavement1,6a5297febd0d419630a1e6aaf55524170a199b2134bdc48eb0289860e4ea402f,c37 Opus: rand en aarde bedekt; minor: v1 dunne laag met kale vlekjes in de aarde
+2026-10-06T16:45:13,misc_woodpile1,00dd99a5e219545166eeff6ef25dc4c90d9e803a107f6ccd79eb9833a4ad25bb,"c37 Opus: kapjes op de bovenste blokken, geen slierten langs de kopse kanten"
+2026-10-06T16:45:14,pipe_medl_buildr,48024d1c1717b250b9bf0e0e8d6f86ded294370d41cbc74bd016d5e017f10f79,"c37 Opus: buizen dunne richels, geen worsten op de onderste buizen"
+2026-10-06T16:45:14,prison_maincastle_barsdoors,f7c4535e715395d64bdfad9bf4dc652f0e682be2cac8843359ec0211628b413a,c37 Opus: bovenregel en dwarsstangen dunne richels
+2026-10-06T16:45:14,radio_panelbig,7fa8f148d48a2084e8fb339eb3065bc4b69601d8a61f09e09c8190d54b49fc45,"c37 Opus: kap over paneel en tafel, geen flappen meer"
+2026-10-06T16:45:15,rubble_metal1,551565a056771db36715343c67d7706238b608bff18d146428a76e351d35e8db,c37 Opus: hele hoop bedekt; minor: v1 steekt schroot door de dunne laag
+2026-10-06T16:45:15,shed_m3,2f3dccb1c406417f6298e2a554aa253bc4e24f1c593ba46128ced83a842d986c,"c37 Opus: zadeldak schoon, gevelranden zonder tongen"
+2026-10-06T16:45:15,tb_doors_c,a700bf8006ef9987a1569ee1cf6b6b06e5f50dd4026c866167ab9108579081de,c37 Opus: dunne richel op de bovenkant; minor: klein kapje op de klink
+2026-10-06T16:45:16,wall_forfieldfen_end,7390db866754dbcc6b5dd8f4c56687e9bbf828800d2bdcfb934e54a4c1f09ad7,"c37 Opus: dunne richels op de stammen, kapjes op de palen; minor: twee korte druppels aan de paalkap (close v7)"
+2026-10-06T16:45:16,wall_indvar2_5,e1cfef9eeb8430ac0e5c1de0d4573c9951b1bd8d1156134941d5334287836bd0,"c37 Opus: muurkap en pijlerkap schoon, dunne lijn op de paneelrichel"
+2026-10-06T16:45:17,workbench,08afc825d504a41f2f6b96c90cc6e72087cd8e3a1b7c5a6ed4853fe347a6b2df,"c37 Opus: blad en trede bedekt, geen splinters meer"
+2026-10-06T16:58:11,castle_stairs_bottom_nolc,b7af3fb2f84b029b1a45e777c4bc4312c12568295b0834da0796f3305dbab5be,"c39 Opus: treden en bordes bedekt, leuningen kaal (geen worsten meer); recept big_tops .01 + THIN .12"
+2026-10-06T16:58:11,misc_range_roof,4b6b89aca6c40e0fbe14258e6e67adfc314f37c06509d40b50d71370e9bee82b,"c39 Opus: alleen het dak, korte lip; minor: kleine tandjes langs de golfplaatrand (close v7)"
+2026-10-06T16:58:12,train_742_blue,b0daf14e09e4edbdf7e6260e251ae774eb756f6d51fb66788b0329d70bf64bdb,"c39 Opus: dak, looppaden en kopse platforms; leuningen dun/kaal dankzij hoogtebewuste THIN; minor: kapjes op kastjes aan de kop"
+2026-10-06T16:58:12,train_742_red,a95dffbb2996e76b243f412b8bc0c21e48033ad9b7248c4d0557644de5750fc3,"c38 Opus: dak, looppaden en kopse platforms; leuningen dun/kaal dankzij hoogtebewuste THIN; minor: klein bolletje op een leuningstijl (close v7)"
+2026-10-06T16:58:13,mil_tower_small,4a502330009a50d80d9f6e46d920a03fa4ade6c590d90b1800e4b13fb5497d9c,"c38 Opus: dakkussen zonder druipers langs de hoekpalen, ladder kaal"
+2026-10-06T17:03:15,hbarrier_4m,f0a2e6164172d7beed6a69105130d039d8f599597c729ca12ed1ea592c758e91,"c37 Opus: vulling bedekt, lip rolt over het gaas; minor: kleine tandjes langs de lip (close v7)"
+2026-10-06T17:03:15,hotel_damaged_airplane_back,a8e527daa8d0759406263707d957054f542cf1a75416dd5361bc1b983767cc25,"c37 Opus: romp, staart en vleugels bedekt; minor: sneeuw volgt de gekartelde breukrand"
+2026-10-06T17:03:16,misc_bench5,78d2e5cb21b3cd563b3d6075e30a04af2a066bb295bb96c997c0774f0552fcaf,"c37 Opus: zitbalk bedekt, stammen eronder kaal"
+2026-10-06T17:03:16,misc_boardspack1,a7fe7e30f239a7db0ea934b5bcba84c360c5ad0314d2879054b94c2a0a1877ea,"c37 Opus: kussen op het pak, rolt netjes over"
+2026-10-06T17:03:16,misc_greenhouse,c295a7559b0db9b834c3104acda89e1bb76685530aa37ca2b36f04070754faea,c37 Opus: dak bedekt met gaten waar ruiten kapot zijn; minor: v7 wat dikke randen rond de gaten
+2026-10-06T17:03:17,ruin_wall,9d68a86e306b66656e7d36babe53dc3f0ac43c55ce5abf6b84364db97371d6c7,"c37 Opus: gebroken muurkop bedekt, rolt mee met de breuklijn"
+2026-10-06T17:03:17,sign_city_elektro,7686455c6d7068faf14a71a4d7a6757ef653a6d82fd8055cf90d7f8ceece6fc5,"c37 Opus: letters kapjes, richels bedekt; minor: tandwiel wat klonterig bij v7"
+2026-10-06T17:03:18,skilift_tower_start,5d3dfb39c43991d6bbba2479500ef67241719dea582eee730900102b301312c3,c37 Opus: platformkussen; minor: bolle kap op de paaltop
+2026-10-06T17:07:26,cemetery_grave4,c15862f784589444f0cd638bad27d115a6635ab1fed9d68f1383e953ee9d5396,c39 Opus: hele grafheuvel bedekt incl. voet (recept als aardhopen)
+2026-10-06T17:07:27,pier_crane_a,f8366ac374f12160a51324730a2229d7d8a65a529ced7c0f6f75f5d68ab8c0a1,"c39 Opus: platform, kap en richels bedekt, leuning kaal; minor: kleine kapjes op de voetplaten"
+2026-10-06T17:07:27,misc_deerstand2,f931b3c04b3b5120a44d82cdc68e87aebadc4c14ab7076cecf55b396d67ca765,"c41 Opus: dak met korte lip, open voorkant van de vloer en wandtoppen; minor: enkele kleine hoopjes op de vloer"
+2026-10-06T17:07:27,trailmap_noarrow,58b8c9b500218420c6ba9a9c217ef4323818801e8407b547f34cd37ab577c31c,"c41 Opus: dak zonder overhang, gevel vrij; minor: kleine golfjes langs de dakrand (volgt de gootrand)"
+2026-10-06T17:07:28,trailsign_skiresort,7fa343a8f9cc13e8499d07b127feb6ad7582db6a4e59ab55b1f61a7981b4c22f,"c41 Opus: dakje zonder overhang, gevels vrij; minor: kleine golfjes langs de dakrand"
+2026-10-06T17:24:59,roadblock_pillbox,ceb7dd315267f236c67c89cc44e25b25a9c612d2a15ab2682391f70f0bc82049,c41 Opus: muurkoppen en eindstapels bedekt (laag v7 is perspectief op de muurtop); minor: kort tongetje in een spleet tussen blokken (close v4)
+2026-10-06T17:25:00,city_stand_grocery,4b882ebc1e0cdc86750c90e090664724f2b342304cc63203f40ffef1db6d9043,"c39 Opus: dak binnen de reling, luifel en richels bedekt, reling kaal; minor: kapje op de haakpijp en op het bordje boven de deur"
+2026-10-06T17:25:00,lunapark_ferris_wheel,ea70fb2215e52d5659bc8a921eee2bf52d870d56f6374713026a91f7a4cb7d22,"c39 Opus: platform, trap en hokje bedekt, leuningen kaal; minor: kleine knopjes op de toppen van de A-bokken"
+2026-10-06T17:25:00,misc_deconshower_large,8d2e19b22e8e52dbf494881016c144abb272bb9415c65ca3887a2dcd299c9829,"c39 Opus: torentoppen kussens, vakwerkbrug dunne strook; minor: kleine kapjes op voetplaten"
+2026-10-06T17:25:01,pipe_big_support,75eacc98ee0fa30e8793a9cb4fcf7fb5b3c144d9d8164aff3f931af8fd50bdd3,"c39 Opus: bovenbalk bedekt zonder worst, rest kaal"
+2026-10-06T17:28:47,misc_gunrack,46438d7d9aff64ff890fb844d356f8821519d064d382f1b7c596ca1c61eaecb3,"c37 Opus: bovenbalk en armen eigen kussens, geen brug meer over de openingen; minor: v7 bovenbalk vrij dik kussen"
+2026-10-06T17:28:47,misc_well,d164dcd476342a99e06a56e8af064753d8ce930e7f740620cebe1946bbde74ba,c37 Opus: deksel kussen dat over de rand rolt; minor: kleine donkere tandjes onder de lip (close v7)
+2026-10-06T17:28:47,roadblock_cncblocks_short,50cad986a10c179dbf7926e5902559967e4ed04a623a2649f2b263236029cf16,"c37 Opus: bovenkap rolt netjes over, geen druipers aan de hoeken"
+2026-10-06T17:28:48,rubble_bricks1,e181f236e8a9ba8fe23d4799daa210c8fec5fdd360764831fdc237fe4e3cd7f8,c37 Opus: hoop bedekt; minor: ronde bult over de rand (close v7)
+2026-10-06T17:28:48,tenement_big_entry,ae86a21ec9110a5b1c12f605bdb95443691f53e2751461d6a0236b4388f5d636,"c37 Opus: luifel kussen, treden rollen worden helling bij v7; minor: plooien in de trapsneeuw bij v7"
+2026-10-06T17:28:48,wall_cbrk_5_d,19d0c738fa2469e5d33c54e3feed1b035b87d609765659034e714ff4d9af647f,c37 Opus: pijlerkap en brokjes op de getrapte breukrand; minor: brokjes vrij klonterig bij v7
+2026-10-06T17:28:49,wall_cgry_corner,c0aeee6673aa148c961aba67f2b4a7d9843540f4a27344d60ad21058490efd05,c37 Opus: pijlerkap zonder terrassen; minor: kleine tandjes onder de lip
+2026-10-06T17:28:49,workshop_box,05f152ccecd0a4d76bf09ef5e090c7c8a84c1ccff278de48f54bd1a605eb356c,c37 Opus: dakkussen; minor: klein donker spleetje in de lip aan een hoek (close v7)
+2026-10-06T17:28:50,wreck_ikarus,042783e21e40c9273b1ae15cb900736b841496d375d5f950b2ca98bce397f7c8,c37 Opus: dakkussen zonder tongen; minor: kussen op de voorbumper
+2026-10-06T17:30:10,rock_spike1,cd0c2f9860ccc362c1c944efc1a141ffe3e27b91804e7934e15842fd3ebd941f,b1 Astra fail/Opus minor: richels en top goed bedekt op normale afstand; minor: grote facetten en een vouwlijn zichtbaar in close-up (driehoekbudget grote rots)
+2026-10-06T17:30:10,rock_bright_spike1,cd0c2f9860ccc362c1c944efc1a141ffe3e27b91804e7934e15842fd3ebd941f,b1 Astra fail/Opus minor: richels en top goed bedekt op normale afstand; minor: grote facetten en een vouwlijn zichtbaar in close-up (driehoekbudget grote rots) (lid van rock_spike1)
+2026-10-06T17:30:11,shed_open_big_end,a0343d2d7f4c8ad06f9ce6d8ede7191a9098fc1bb140668f3b1d46cf1df9cda8,"b1 Astra ok, Opus ok: smalle strook op de spanttop"
+2026-10-06T17:30:11,shed_open_big,42ee078f7a4a1b4c15714cb7024bf729db4d64b19a1466ba90ac3376487a7eb0,"b1 Astra ok, Opus ok: gesloten daklaag, onderconstructie schoon"
+2026-10-06T17:30:11,shed_open_sideroof,90b2a68561a13c08b8cf9dcfb088dd945e96c25be7c7db67f977829ab91db53d,"b1 Astra minor, Opus ok: daklaag gelijkmatig; minor: kleine kartels langs de korte dakrand bij v7"
+2026-10-06T17:30:12,garage_row_small,421cd952cba7f5efbd0212da32d433a66a7b5b81663c0b489f66008c8ada23ae,"b1 Astra minor, Opus ok: plat dak bedekt; minor: kleine kartels onder de daklip boven de goot (v4)"
+2026-10-06T17:30:12,house_2w01,8541c09abebcabf8fdd12cb2f06dae23d9f8eca74bb5e7a55e75eb932f9507d0,"b1 Astra minor, Opus ok: daken gesloten; minor: twee kleine inkepingen in de lip van het verandadak (v7)"
+2026-10-06T17:30:13,house_1w04,557bfb0ff834b8f16bed8d02f8920e3614ab4ef13b9428fe5be4f2c89716eaa4,"b1 Astra fail/Opus minor: daken gesloten, close v7 schoon; minor: kleine verhogingen rond de afvoerpijp op het aanbouwdak bij v4"
+2026-10-06T17:30:13,tenement_small,e63d05007d022b5758b048f198c19350557a9051c51e71409e9fe79ebe65cf95,"b1 Astra minor, Opus ok: plat dak en opbouwen bedekt; minor: korte tong bij een buitenhoek van de dakrand (v7)"
+2026-10-06T17:30:13,house_2w02,c2721ae0ac29216f32b4c85a70149328905f4c91e8c4969d5770777a2f034d3d,"b1 Astra minor, Opus ok: daken en schoorstenen bedekt; minor: korte tong onder de dakrand boven het entreedak (v7)"
+2026-10-06T17:30:14,pier_concrete2,dec3f4751abdbede99728020870af3ff0f1fc751ec6698b1bf64d7678cdbd74b,"b1 Astra fail/Opus minor: bovenvlak bedekt, lip schoon; minor: streeppatroon op een hoek van het bovenvlak in de lage view"
+2026-10-06T17:30:14,workshop4,98e91f12d7c7da72821315cdcd8fffbd2eb5a8bbd441ad661cf8fc5d09cd12ad,b1 Astra fail/Opus minor: dak bedekt met korte lip; minor: klein gespleten flapje aan de dakhoek (close v7)
+2026-10-06T17:30:14,houseblock_2f_corner,9b42098b1ac80f0720ecf59b51383eb8c32b52a7120a28eb7a9f319d77c26350,"b1 Astra minor, Opus ok: dak en schoorstenen bedekt; minor: enkele ondiepe facetten nabij de dakrand (v7)"
+2026-10-06T17:37:04,cihly2,b8added51063048e0f43feafc955944983a985812df4b49c4cfbb9c51610fc07,"c42 Opus: kussen op de stenen, korte lip; minor: v7 onderrand van de lip wat onregelmatig (laag v7)"
+2026-10-06T17:37:05,cihly3,6a1cd6e2e85e35ccfde15604a3632fd5f3582a8fcdcde86355aef3e1baa03e44,"c42 Opus: kussen over beide stapels, korte lip; minor: kleine kloof in de lage view"
+2026-10-06T17:37:05,garbage_pile2,1ea067fd29f67f97507aae6757280977f28ee22364d9e60ee1dcceea2b493b10,"c42 Opus: hele hoop als sneeuwheuvel incl. pallets aan de voet, geen vingers meer; minor: getrapte randlobben (close v7)"
+2026-10-06T17:37:06,mil_guardhouse2,5132b1b9564d74c8a8ded75a24b23d24bdfcb6fc6b540a59251181b0462f7021,"c42 Opus: dak en pijlers bedekt, slagboom kaal (geen worst of sliert meer)"
+2026-10-06T17:37:06,misc_concretepanels,b387cb8a69b42c1ec5e055596beaba4971bcb5962b3f5a8d338f492db9c4e1b1,c42 Opus: kussen op de stapel met korte lip; minor: hoek zakt iets over de rand (close v7)
+2026-10-06T17:37:06,wheel_cart_dz,7e140533907fd1a746ced681c99ac32ae5db6d9f8127df8cd21443397d9cad59,"c42 Opus: bak gevuld, handgrepen dunne stroken; minor: korte lip over de voorrand bij v7"
+2026-10-06T17:38:20,trailsign_10_sinistok,62c701b3b05a16cf3e36fdce510d43642510e110a2a0c009f6ba4a75ecb30dc9,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:20,trailsign_13_lysaya_gora,329f9e4542752fbedfb3508141f0a3a09038663b2f7eab084622f53caac8de43,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:20,trailsign_23_altar,5b63cc4f732d19f27e2dc3f5d388d22905434600b4736a65cbff6adab45e1a43,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:21,trailsign_26_nagornoe,c993e6c833a964580ac828199adfe6fb6a0ed78c7eb905283ed29102d890c2aa,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:21,trailsign_30_black_mnt,0a79fc05fcf2cd7047793a1c11b9e2fbb58012c801c77d3bd9fa560d2c927e74,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:21,trailsign_37_berezinotrainst,8b9a4cced166e470df6df3d41b207d1d9d462309a83db974909c1322cb8face4,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:22,trailsign_48_green_mnt,66f5a6aa13fc9ff10a8bbc56af27f335a7a16989e3b31d2fa6c27b3ac09b6f72,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:22,trailsign_52_pop_ivan,09d1e2d8219cd3cc6e68fe518f91eef7b7d2c44939f9c81d6759b8d13f2a9415,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:22,trailsign_53_soborki,85f2043a32926bf52d7b69a3bf1e18b970dca7712c101f0124a15377e7027217,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:23,trailsign_58_dubina,6a5b1799ebd7959c28862af4514724cffe54fd6884fe7e2dab4df85ca40a0e44,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:23,trailsign_59_malinovka,3c518cda7ad9f676c0da70259ed46d39e1cad170ab006f491e9f6b048f9b63a3,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:23,trailsign_66_msta,ecd13d5d866d4d8dbc34046617d50e2aee26a55ae594159318f85cf7239af62b,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:24,trailsign_67_mstablue,6240b880e1bac0b6a06a6915c850f5ebf534ee22b8440e61d8e02a887f198019,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:24,trailsign_73_pik_kozlova,b5b840ef792cf66e6d051f48b127a9eef6bbec42afa2282fb5bb271841d9855c,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:24,trailsign_82_kamenka,6496eeb96da99968e04900304c8b70c331f21968b48d24838049e3a7f5fb358c,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:25,trailsign_biathlonarena,9f1655d817d6b69db3bb41ac398d923376d88cbdab108a4b5feb12ba87dadaef,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:25,trailsign_simurg,a93e1f1adeb382a6e26d54ef7cd75f838f988f7393c80046a35df5b9addfcc14,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:38:26,trailsign_wolf_mnt,476461002868caa2f84b4793c86a390751fcc609f467ed7eb771da340cd0a1e6,"c42 Opus: dakje zonder overhang (route big_tops .05, max v4, OVL 0), gevels vrij; minor: rafter-eindjes en kleine golfjes langs de dakrand"
+2026-10-06T17:40:19,boat_small3,10e38c32e7fed5cb2883582868d0e27d581aa9bc5948c9ef9db90af295d45f31,"c37 Opus: zeil over de romp bedekt, v4-v7 glad; minor: twee korte tongetjes aan de boeg bij v1"
+2026-10-06T17:40:19,misc_timbers2,5c62402e0ea3f500785efc2277cf6800ef265e65d5ed46164507b9c95cc2c02c,c37 Opus: dunne stroken op de stammen; minor: kleine kapjes op de stameinden aan de kopse kant
+2026-10-06T17:40:20,rock_monolith3,2315df31f4e76061c95c2c3bea5a120dba19ffe91f885f67190d8d40205ab77a,"c37 Opus: top dik bedekt, richels spikkels; minor: holte onder de overhangende lip (close v7)"
+2026-10-06T17:40:20,ruin_corner1,447cae5a56358a9c99118f226bcafe9dd8ec8250c4c7028f55adaca4f7e00c2e,"c37 Opus: gebroken muurkoppen bedekt, volgt de breuklijn zonder zaagtand"
+2026-10-06T17:40:21,wall_indcnch_5,47e1a1555f40f0c5a4d83af33d647e5ec765aedbb4215379724edd811a68859a,c37 Opus: hele plaat bedekt; minor: kleine veeg op de afgebroken hoek (laag v7)
+2026-10-06T17:46:28,boat_small1,0c685b6bf17d5bc585a457c2c91799b80019d5617e1fd515d544483460a51d54,"c43 Opus: bodem gevuld (grondgrens omlaag), doften kussens; minor: kleine kartels aan de binnenkant van het boord (close v7)"
+2026-10-06T17:46:28,boat_small2,b3b6246dce1beebec3a73ea5ae6df0a6f482f65bed43bde96bed40fd136db1d2,"c43 Opus: zeil bedekt, korte lip; minor: korte lip rond de spiegel aan de achterkant"
+2026-10-06T17:46:29,boathouse_piert,f9e37f1038f58e3ec94d866fd643b831b9f5dbd569ae2f4faafd088b6506d903,"c43 Opus: loopdek bedekt met korte lip, palen kapjes, geen sliert langs de palen"
+2026-10-06T17:46:29,mine_rail,aa8dbbcafdc722558501fbe5bbdf2b87ee49f31340537e268a01590dbe798f8d,c43 Opus: spoor als witte band met de rails zichtbaar (grondgrens omlaag)
+2026-10-06T17:46:30,misc_boogieman,891fa38e70ffbe5d41719d8ed288435abbd5c9536e99ed89e201812953f85f78,c43 Opus: hoed bedekt met korte lip; minor: v7 hoedkussen paddenstoelvormig (volgt de brede rand)
+2026-10-06T17:46:30,misc_scaffolding,c408b7cfc1d0518011cf1807bfc8ad987ac243f4fda1050dde796d020f51ffe4,"c43 Opus: platforms kussens, buizen dun/kaal (THIN .12); minor: kleine knopjes op enkele koppelingen"
+2026-10-06T17:46:31,pipe_small_20m,ec0e3a4dc2a2390407ac46febdebf3a23d6c65472cab06fe13a3ef32cd31a36a,"c43 Opus: richel op de buis, korte lip; minor: zacht afgerond eindje bij de flens (close v7)"
+2026-10-06T17:46:31,pipe_small_broken,60525119013c900d6050d930366a7c932ec27de350434d967322d80a4c4c6367,"c43 Opus: richel op beide buisdelen, korte lip; minor: zacht afgerond eindje met kleine plooi bij de steun"
+2026-10-06T17:46:31,roadblock_bags_endl,008ef77881caaa1ff063fe0046f9f6bf926368985bfd9fefde169353d7e9fcf6,c43 Opus: bovenkap en treden; minor: v7 sneeuw vormt een helling over de getrapte zijkant
+2026-10-06T18:03:28,barn_wood1,afdc8f5b04e0f57388f480fbf872c524638f7d53798c8468619d7133b8790e19,"b1 Astra minor, Opus ok: lang zadeldak gesloten; minor: lichte knikken op het dakvlak bij v1-v4"
+2026-10-06T18:03:29,farm_cowshedb,f4220603ad49d339f879c30c9283c98eb870384286aec6215789348213e56e14,"b1 Astra ok, Opus ok: dak afgerond, interieur kaal; minor: klein bolletje bij een paalvoet"
+2026-10-06T18:03:29,house_1b01_pub,1d30d0e646f213df12ceafe329400f5db4c32ffc2533b4f682050dc24f7f7a2e,b1 Astra fail/Opus minor: dak en schoorstenen bedekt; minor: kleine flap onder de dakrand bij de goothoek (close v7)
+2026-10-06T18:03:29,house_2b04,4c809bb198b2bf6c4b843b3f960201029da54acf9b41dfc28cc056d294cd0972,b1 Astra fail/Opus minor: schilddak gesloten; minor: goothoekje steekt als donker driehoekje door de lip aan een dakhoek (close v4/v7)
+2026-10-06T18:03:30,houseblock_1f2,4113cac5ade126276ac749d36cec1dc86061c07cdb2978965571e0b3930f0ca2,b1 Astra fail/Opus minor: gebogen dak gesloten; minor: v1 volgt de facetten van het gebogen dak
+2026-10-06T18:03:30,pier_concrete1,71365ab5c8127db85dae7edc0a586a39d181daaa05c059af6c45a5407f144dbd,"b1 Astra ok, Opus ok: dek gesloten met nette randen"
+2026-10-06T18:03:31,wreck_c130j_cargo,2195d1f15c511053e124ea0f4c4f8e5a2e931ed75eae23ae1786acaca8f4535b,"b1 Astra minor, Opus ok: romp, vleugels en staart bedekt; minor: kleine kartels aan vleugelranden (close-ups)"
+2026-10-06T18:03:31,garbage_pile4,59443f8ef5080571b9f1a241005520e754193320b080c5b827b004bc197f2616,c44 Opus: hoop met dozen bedekt (recept als pile2); minor: v7 wat bultige kussens op de dozen
+2026-10-06T18:03:32,garbage_pile5,01f35e4cd7655c466607fb0e9a248b254dee9954a08e943944353a352f4817d9,"c44 Opus: hele hoop bedekt, voorwerpen steken eruit"
+2026-10-06T18:03:32,garbage_pile6,9533793b8170ddb8b3c8fc60b1ced258efcae11019183ed8ecebebbf759e3af6,"c44 Opus: hele hoop bedekt, voorwerpen steken eruit"
+2026-10-06T18:03:32,house_1w03,ca23b1c1dd40cb9b2a80fa5029189cccb318d1130a37ba813fdd7ffd95ba179d,"c43 Opus: daken gesloten v2-v7, korte lip; minor: v1 dunne scheur in de laag bij de antennevoet"
+2026-10-06T18:05:55,cemetery_tombstone8_damaged,398e99c9ad272c43750212e9db6a4e5d1d009f7dac9d6af1952ac3263d8f31d2,"c45 Opus: richelkapje op de smalle breuk, liggende plaat kussen (grondgrens omlaag); minor: sokkelrandjes kaal (THIN .18)"
+2026-10-06T18:05:56,misc_seesaw,950940fdec26ec11ba873bf3483fb393471cbd69431e6a9229f491b30df7e989,"c45 Opus: beide zittingen kussens (grondgrens omlaag), stang kaal"
+2026-10-06T18:05:56,misc_well_pump_blue,205eeb50aee7e67a06fb0f4d180f1dbd8bd0a6b5f0ef65d2d39ae9fd314955e9,"c45 Opus: voetplaat en putring bedekt, pompzuil zonder bol; minor: v7 rond kussen op de putring"
+2026-10-06T18:12:11,decon_layflathose_01_step_f,d21be4e32c85a0b143d38ff248eb34f1e2991ac4d64433c12cd5f2bd96851ac6,c37 Opus: verhoogde bocht van de slang bedekt; minor: platte slangeinden op de grond kaal (onder 25 cm)
+2026-10-06T18:12:12,decon_pressurehose_01_step_f,fc1702d1499d4b2bdeca3c5759480bb4153e24e9114f7eaca623c19cf22f4104,c37 Opus: verhoogde bocht van de slang bedekt; minor: slang op de grond kaal (onder 25 cm)
+2026-10-06T18:12:12,misc_advertcolumn,b4d21bf802a1e1287273d591a1a79101f832e6c5fa5bd54557946fbb1df08d1a,"c37 Opus: kegelkap met nette lip, geen zaagtand meer"
+2026-10-06T18:12:12,monument_soldiers,038797bc5f6b59bdaa78e1f66d9ce88cc4dd002aae1d2a7f806273d7fb9e9551,"c37 Opus: sokkel en treden bedekt, beelden kleine kapjes; minor: kapjes op hoofden en armen"
+2026-10-06T18:12:13,rock_monolith2,755602fe36ada21cfb30a4d58cdc066ce7ecd759e6599060094d72338d06e76c,c37 Opus: lagen van de rots met richels sneeuw; minor: facetten in close-up
+2026-10-06T18:12:13,rock_spike3,9c8e47fb3c25d6f219bd7c095fa50aacfb9286460d72faec094e6ee88905251d,c37 Opus: rotsblokken met plekken sneeuw op richels; minor: facetten in close-up
+2026-10-06T18:12:14,rubble_metal3,c6be4a1dadf3bc345f2a03c2376e315cd5b53c396de7b28f272924c285ea0726,"c37 Opus: platen met kussens, korte lip; minor: holte onder een opstaande plaat"
+2026-10-06T18:12:14,wreck_brdm,e09a1b2b4598efb42c95a4a6a5485271bec4f705ac20d25d9d5cae4699e525d9,c37 Opus: romp en koepel bedekt (wrakroute); minor: kapjes op de wielen en een klein donker vinnetje aan de voorrand
+2026-10-06T18:12:14,wreck_trailer_closed,71d7e09f2ad4d31fef9890521a1a79639e6cbe0d80104cda09236eb2334b1684,"c37 Opus: laadbak gevuld, randen schoon"
+2026-10-06T18:18:30,farm_hopper,d28335edc52750e6f453b6a8771594ee477fb6da7322821884f8d7cf46ca37da,"c46 Opus: silotop bedekt, reling en ladder kaal/dun (THIN .10), geen franje langs de rand"
+2026-10-06T18:18:31,misc_gcontainer_big,a2733f970d70463a1a4a57599a527921bdb339e796034967ca0aae1f9465ac22,"c46 Opus: lading en randen bedekt, geen laken meer over de kopse kant (deel 0 uitgesloten en geblokkeerd)"
+2026-10-06T18:18:31,roadblock_bags_endr,93d193124771b3f53d7808b978864f9b81998cf553abc9e0404cc4ec52bc74ab,"c46 Opus: eigen kussen per zandzak, geen bolle prop over de trap meer; minor: v7 gestapelde bolle kussens op de treden"
+2026-10-06T18:18:31,pipe_small_ground1,22e3a76b6931cd49c44db4feb4bfd4942ac133bdfe7338837ca69360391b95dc,"c47 Opus: richel op de buis, steun apart veld; minor: zacht afgeronde lob aan het buiseinde (close v7)"
+2026-10-06T18:18:32,pipe_small_l45,5d949aa9f32fe1e2ffd24943f2677a0c06508dc0d7b0de5d640a7445807934a7,"c47 Opus: richel volgt de bocht, steun apart veld; minor: zacht afgeronde lob aan de buiseinden (close v7)"
+2026-10-06T18:18:32,pipe_small_r45,d3704c6eea1e97658c5e7a9ebc5b490c3ae5c0ca35519c3a595628ce48893123,"c47 Opus: richel volgt de bocht, steun apart veld; minor: zacht afgeronde lob aan de buiseinden (close v7)"
+2026-10-06T18:18:33,pipe_small_r90,af61651b3554a2f593d0a334378d2d750ae60d331223fbf96b7ddf9c67d9b8ee,"c47 Opus: richel volgt de bocht, steun apart veld; minor: zacht afgeronde lob aan de buiseinden (close v7)"
+2026-10-06T18:18:33,pipe_small_stairs,7c11691e10248323a2e14c1001a5b384dc067e123e26a4e975802780ef3522b8,"c47 Opus: buis en trap bedekt, leuningen kaal; minor: zacht afgeronde lob aan de buiseinden (close v7)"
+2026-10-06T18:18:34,pipe_small_valve,a839a69b65c698b8941e6b47aa0baf36994687cabf1561a1eaac791b449b7303,"c47 Opus: buis en klephuis bedekt, steunen apart; minor: zacht afgeronde lob aan de buiseinden, kapjes op de steunblokken"
+2026-10-06T18:25:31,house_1w07,c6d7713cbc7371b9b8d3c7a5bf8bcb7b5ca0c7ecc7748baa52a7480cc088e68b,"c43 Opus: daken gesloten v2-v7, korte lip; minor: v1 dunne laag volgt de pannenrijen met donkere naden"
+2026-10-06T18:25:31,house_1w11,87e6db2fe1102c2a49cc314ce99c3766a7bdd2ccca6f971e49506f92808b4c00,"c43 Opus: dak, schoorsteen en trap bedekt; minor: dunne donkere naad langs de nok bij v1-v4, dicht vanaf v5"
+2026-10-06T18:25:32,skilift_tower_end,1858d87cf808900eb36fa2a68391dd3d64719cba52af1df91a4ff06288bfd97e,"c43 Opus: contragewicht kussen, wielframe en verbindingen kaal/dun (THIN .20), geen klonten meer"
+2026-10-06T18:25:32,skilift_tower_middle,50d7afb0d37592d80df88d5b62847a19cb511a812c6d6fc2db4cd1a508afdbff,"c43 Opus: voetblok kussen, armen en wieltreinen kaal (THIN .20), geen ballen meer"
+2026-10-06T18:26:22,mil_camonet_roof_east,9275c9f48f644c9295850b62bb22d5ee344f8a1f69e57fe1dc9d301aedeedbb5,"c46 Opus: net als besneeuwd doek, korte lip; minor: rafelige rand volgt de gescheurde netrand (close v7)"
+2026-10-06T18:26:22,mil_camonet_roof_nato,9275c9f48f644c9295850b62bb22d5ee344f8a1f69e57fe1dc9d301aedeedbb5,"c46 Opus: net als besneeuwd doek, korte lip; minor: rafelige rand volgt de gescheurde netrand (close v7) (lid van mil_camonet_roof_east)"
+2026-10-06T18:26:22,train_wagon_flat,60b22579b6fd9d82a55a3925b872fe717aceb5f4e593c50ae3d80dbff96bde9e,"c46 Opus: laadvloer gesloten, buffers kaal/dun; minor: korte lobben over de kopse balk (close v7)"
+2026-10-06T18:26:22,misc_concreteblock1_end,8563dbcdc22627fa462d36e6ad511684df190301fc9269de5b7c6e757acc321c,c37 Opus: rug van het eindblok bedekt met nette lip; minor: brede voet onder 25 cm kaal (met verlaagde grondgrens werd het blok een bult)
+2026-10-06T18:26:23,misc_cover_big,1e3f4b87d974510b876710f00204405caf60f6e817286d1c4ac0e6f9030b398c,"c48 Opus: hele rotsrij bedekt incl. lage platen (grondgrens omlaag, ruw)"
+2026-10-06T18:26:23,monument_war2,621fdeeaeda30f5d45b5e6a5aa8fc951e9961993f3f12bba20b70336ac27c93d,"c48 Opus: voetplaat, sokkeltreden en obelisktop bedekt"
+2026-10-06T18:26:24,rubble_concrete2,544f938f59a4f8360b6ab968f4b44dd511d06c759e2670c796d34831db7d046b,"c48 Opus: hele puinhoop bedekt (ruw, grondgrens omlaag)"
+2026-10-06T18:26:24,tribune,3af84588576619b8b05fe74713f3ea8c0a07f0cd2a5f4eb2e1824e3d1eb1cd45,"c48 Opus: tribunetreden en looppad bedekt, reling kaal; minor: v7 treden worden helling met plooien"
+2026-10-06T18:27:04,boathouse_pierl,ed1f540d34eab384de7a4e1a93f89871d4eaae21b14c62134b8200036b48ecdd,"c39 Opus: loopdek bedekt, palen kapjes, geen gordijnen meer; minor: korte drape bij een paal (close v7)"
+2026-10-06T18:27:05,boathouse_pierr,40d35e6a985a6dc85445832fd6c14276f466a510a9083a689309ba0925e1736d,c39 Opus: loopdek en trap bedekt (trap wordt helling bij v7); minor: klein klontje aan een paal
+2026-10-06T18:27:05,house_1w01,241a3cb1215ad98aef98c643a27c3c24248ba938e6c491a2dd46eee9c5da5282,"c39 Opus: schilddak gesloten, schoorstenen kapjes, geen scheuren meer"
+2026-10-06T18:27:06,house_1w02,d7a518159f71198d2035f1e0e4c13be4edbd0a5fe38bddd7bdb319497dc32bf8,"c39 Opus: daken gesloten, antenne kaal, nette lip"
+2026-10-06T18:27:06,house_1w05_yellow,ebc13604bd537ec8fb7f80ad4bf23ad7b68bfef63526256e0faf12bb01bee481,c39 Opus: daken gesloten; minor: strook op de funderingsrichel met kleine hangertjes
+2026-10-06T18:27:07,house_1w05,3aef024b6ee4d5b1b4352d8a876028fc8e2c4c593e2330812d2d108f9eb90c1a,c39 Opus: daken gesloten; minor: strook op de funderingsrichel met kleine hangertjes
+2026-10-06T18:27:07,house_1w08,d1f34b8cbd15dd6d812cb879c650f62e18d81bc804678434db8adebf45ac74ad,"c39 Opus: daken gesloten, aanbouw schoon"
+2026-10-06T18:27:08,house_1w09_yellow,fdc82d3c67caa3d472f6da0e92d570448f40c76181751c065d9b7263415f0b13,c39 Opus: dak gesloten; minor: kleine deukjes in de laag bij v1
+2026-10-06T18:27:08,house_1w10_brown,9ba231e1ad1a003d2ef967f111664a759389599c9edb1c87c6b666d91b287016,c39 Opus: daken gesloten; minor: donker kruisvormig spoor op het aanbouwdak bij v1-v4
+2026-10-06T18:27:09,mil_guardhouse1,ca657c0ccbf302faace9c2aff311876fea86b5c438fa543e21b8d88dff0b780d,"c39 Opus: plat dak en dakrand bedekt, geen gekartelde gordijnen meer"
+2026-10-06T18:27:09,mine_conveyer1_10,b8c4462522f6ff20fd07a305b73e5d46b86798fa88c026af5d13be78279bb5c8,"c39 Opus: goot gevuld, dwarsbalken kapjes; minor: korte drape aan het stortuiteinde (close v7)"
+2026-10-06T18:27:10,tank_big,92ed425c974f39bd9cda4e8d2f5848ccb41b86bde1dc307667c3a0e4df84de49,"c39 Opus: dak, rand en voetrichel bedekt"
+2026-10-06T18:27:10,tank_medium_stairs,8f6f92f122b3b8297816a0e08192bd4d622a3c2adacce369287629c86577dc23,"c39 Opus: liggende tank deken op de bovenkant, platform bedekt, reling kaal"
+2026-10-06T18:27:11,tank_medium,8107ba0e54bc8d608a25c98a0498b9e86ea31ef018bbdb87d272b53c4a53a28d,"c39 Opus: liggende tank deken op de bovenkant, mangat kapje"
+2026-10-06T18:29:01,barn_wood2,99c94a9cac967e121d54806936eba94b5348f155dc2a7cc462b7465bab6941d5,"b1 Opus: zadeldak gesloten (ook v1), korte lip; minor: klein hoopje op het trapje aan de kopse kant"
+2026-10-06T18:29:02,house_2b03,3730d6965a2f15e30bfadda3e459dd61df9656d674a06bb1bf2f8fe5ce7d236e,"b1 Opus: schilddak gesloten, schoorstenen kapjes; minor: klein donker vinnetje aan een dakhoek (close v7)"
+2026-10-06T18:29:03,shed_open_sawmill,37b5624e0c1bbbae5d1984b74cb75f7c4858d309b674f923fdade220ed46ddba,"b1 Opus: lang zadeldak gesloten, onderbouw kaal"
+2026-10-06T18:29:03,tower_tc2_mid,7b5b452e82e8d7197d67e0b6c860a73252b1c9ce65c237ee7220e48e3020d2e3,"b1 Opus: ringplatform bedekt, buis kaal; minor: klontje op een beugel binnen de ring (close v7)"
+2026-10-06T18:29:03,tower_tc4_base,734245901f785fff96a4ee0f9af33848855a0bdcd30d60da8886ca1467d9c72e,"b1 Opus: vakwerk dunne richels, bovenplatform kussen; minor: puntjes op knooppunten"
+2026-10-06T18:29:04,tower_tc4_mid,7aee0b8a8c5cbcc5a1fc72f99fa9cab33c32957950c80cfa2001c8b15db39e10,"b1 Opus: vakwerk dunne richels, platform kussen; minor: puntjes op knooppunten"
+2026-10-06T18:29:04,wreck_c130j_2,53619631541f42cdfaea2777a8249f3650b37b0c18c87a9e248acb7bfbb01251,"b1 Opus: romp, vleugels en staart bedekt"
+2026-10-06T18:39:58,pipe_med_ground2,93d5e5dd9b36e4048e26e6170d4b600a6ae7a2ff3cc571e0215f594fce17cc08,"c49 Opus: hoofdbuis bedekt, dunne kruisbuizen kaal/dun (THIN .16), steun apart; minor: kleine klontjes op de voetplaat, korte lip over de bocht"
+2026-10-06T18:39:59,tank_small_gas,0158d4893a38f14bbd6bec11e763cbdf806a43164ff181fd078d1c1c055eb7fa,"c49 Opus: kap op de bovenste band, schoon tot v4 (v5-v7 = v4: ronde tank laat meer sneeuw afglijden); geen lobben, geen vlekken door de facetten"
+2026-10-06T18:39:59,wreck_trailer_cistern,1d5e10cee7a4f45c8ac4c8bbfeaa03726f687ccce6e9fde8c742c0827c6e2d73,"c49 Opus: kap op de tank tot v4 (ronde tank), banden kapjes; minor: korte lip aan de achterkant"
+2026-10-06T18:40:00,castle_wall1_20_nolc,43d4d34717485d3b304b8232416826d92698961cddfb11d3352cc50fbf2f4d16,"c50 Opus: alleen de muurkroon bedekt (kroonfilter), steenwand vrij van witte vlekken"
+2026-10-06T18:40:00,misc_hedgehog_concrete,0b4d103c1d2892e5ef856980ea9c664211b5a9d4b1746050b41e3d5929db405d,"c50 Opus: dunne kapjes op de balken tot v2 (steile balken), geen worsten meer; minor: kapjes volgen de balkranden"
+2026-10-06T18:40:01,tower_tc2_top,e1857c8ec4d4c59a68adff75925553370052dcd87cb043f53a352e295f04b6c3,"c50 Opus: antenne-armen kaal (THIN .15), platform kussen"
+2026-10-06T18:40:01,wall_cgry_end,41533440d28c5c44e9fe59c047840a2153627faa897d7b6de0ad9c0146b5606b,"c50 Opus: muurkap met korte lip; minor: brokjes op de steile breuklijn, klein krulletje aan de hoek"
+2026-10-06T18:40:34,rock_spike2,18b3f8ca17284142b9c09dde54e1fc25f01aa452107aabc2f180e7e8966d4aef,"c46 Opus: rotsblokken met plekken sneeuw, korte lip; minor: facetten en een breed vlak in close-up"
+2026-10-06T18:40:34,rock_bright_spike2,18b3f8ca17284142b9c09dde54e1fc25f01aa452107aabc2f180e7e8966d4aef,"c46 Opus: rotsblokken met plekken sneeuw, korte lip; minor: facetten en een breed vlak in close-up (lid van rock_spike2)"
+2026-10-06T18:40:35,pipe_small_l90,80e49283a7203bbcd7e3959dc9607ca74ff5fbac0d4d06c3df9f9167a7516353,"c47 Opus: richel volgt de bocht, steun apart; minor: zacht afgeronde lob aan de buiseinden"
+2026-10-06T18:40:35,pipe_small_u,84da6fe716389cc277233dbbc5c4a296d00c6bbe198165c31d92e411d7e374ec,"c47 Opus: richels op de U-buis, steunen apart; minor: lobben aan de buiseinden bij de steunen"
+2026-10-06T18:40:36,pipe_small2_8m,0ea8e26e3aed126a9f263d2cb9609745a79df05c6108aa85c1a39534b2ffdd6a,c47 Opus: richel op de buis; minor: klontje onder de buiseinden
+2026-10-06T18:40:36,pipe_small2_curve,75216d8207952d6ccc2376f5f7aed180408cd6cdc2097cf69e8a823c1b413c94,c47 Opus: buis en blok bedekt; minor: bultige kussens op de bochten
+2026-10-06T18:40:37,pipe_small2_ground,9e664d30cd8a32372c2da0ba29f30103529c580c60f9771c8c25337cab7b89d1,"c47 Opus: buis en blok bedekt; minor: bultig kussen op de bocht, korte lob aan het einde"
+2026-10-06T18:40:37,pipe_small2_high_24m,8bf0e32eb5782cd1326e43b2b708ceab4af375130c0a567a6cb5ab47560000e7,"c47 Opus: richel op de hoge buis, vakwerksteunen kaal; minor: klontje onder de buiseinden"
+2026-10-06T18:40:38,pipe_small2_high_curve,d13590fc74a4e7c69033861e9a4a326c2e1fa27bac9c7fcf610dbefd85d832cf,c47 Opus: kussen op de gebogen buis; minor: klontje onder de bocht bij de steun
+2026-10-06T18:40:38,pipe_small2_high_ground,a286df1a70612242660d2fae75c421cdc7eba7544fcddd4067f3f62b91b2f11d,"c47 Opus: kussen op de buisbocht, kapje op een fitting; minor: korte lip over de bocht"
+2026-10-06T18:49:17,tower_tc4_top,0c14ef607bdb28918343278a9678a6553394bd7d537c89014bd97a9a38968f7c,"c50 Opus: antennekruizen kaal (THIN .20), paaltop kapje, platform kussen"
+2026-10-06T20:10:42,houseblock_1f4,b407325a7bb19090901d75beb04a93c105cfdf14a35ed6843cf9432549437be1,"Hypatia recept; dakkap glad, geen driehoeken meer"
+2026-10-06T20:10:42,workshop3,2bbae8de34fae17a2a9ecd32a6224abb973493fcc14e5a3db4c3ac6133f3ddf0,"Hypatia recept; naad weg. minor: windveer gevel steekt bij v4 iets door, klein klompje op goot"
+2026-10-06T20:10:43,city_stand_news2,4374d8900a6d114822fe0378768c2d132c239a09ad29919561db0446fcc719ad,"Hypatia recept; geen sikkels op luifelsteunen, plat dak schoon"
+2026-10-06T20:11:10,barn_brick1,70fec3b1f1b7d939900f8b1bac7843ef692725b0469e57f397c87296ff1999fe,"big_tops ny_min .3 fix; steile dak nu volledig bedekt, lip schoon"
+2026-10-06T20:13:48,pipe_med_ground1,aed145015f25d677bc6fa9badfb7a6aa93820df2285cadacc98bde1bd519ff60,"THIN .16; kussen op buis. minor: zachte lob aan buiseinde, dunne balken kaal"
+2026-10-06T20:13:49,pipe_medl_cornerl,977f3b0e1e27aec191d141981dda7d5e106a428d3d746956b53f2a024b71e3fd,"THIN .16; kussen op buis. minor: ronde kapjes op korte stompjes, lob aan buiseinde"
+2026-10-06T20:13:49,pipe_medl_cornerr,ee66ec86b67f3ead49470d17fd47063beb148943711b9f063173afbe4d725ff3,THIN .16; kussen op buis. minor: kleine naad tussen twee buiskussens
+2026-10-06T20:13:50,pipe_medr_buildl,3a0f2f19201aaa6d55b00d6e175d5d29f550f841062aa5149faf31359bfffbb4,THIN .16; kussen op schuine buis volgt helling netjes
+2026-10-06T20:13:50,power_transformerstation_big,4d3c44fb90c024c1ba1f8e077672753a5067e18b611e6f379c191f8f722fccb7,"big_tops .08 THIN .16; balken en paaltoppen bedekt. minor: kapjes op isolatoren, bolle balkeinden boven palen"
+2026-10-06T20:14:56,rock_monolith1,ffbc43edea360e616d514e3ff3865aeb61987ed729635bdd9f120642805f3df0,"korte lip; kap goed. minor: een puntige druppel onder de lip bij v7, scherpe chips en witte strepen op wand bij v1/laag"
+2026-10-06T20:14:57,rock_bright_monolith1,ffbc43edea360e616d514e3ff3865aeb61987ed729635bdd9f120642805f3df0,"korte lip; kap goed. minor: een puntige druppel onder de lip bij v7, scherpe chips en witte strepen op wand bij v1/laag (lid van rock_monolith1)"

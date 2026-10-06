@@ -729,6 +729,14 @@ class SZ_TreeSwap
 	{
 		if (!it.m_Orig || !it.m_Hidden)
 			return;
+		// the whole transform as it was found: a map tree given back only its scale after a replacement of the
+		// same model at exactly its place (the Livonia summer twin of a willow) stayed invisible
+		vector om[4];
+		om[0] = it.m_T0;
+		om[1] = it.m_T1;
+		om[2] = it.m_T2;
+		om[3] = it.m_T3;
+		it.m_Orig.SetTransform(om);
 		float s = it.m_Scale;
 		if (s <= 0.01)
 			s = 1.0;
@@ -810,6 +818,9 @@ class SZ_TreeSwap
 		float sink = GroundSink(mat, replCentre, ModelBottom(model), origDepth, drop, depth);
 		if (sink > 0)
 			mat[3] = mat[3] - Vector(0, sink, 0);
+		// never at exactly the original's place: the engine took a replacement of the same model with the same
+		// transform for the map tree itself, and deleting it later left the map tree invisible (2 mm, unseen)
+		mat[3] = mat[3] - Vector(0, 0.002, 0);
 		repl.SetTransform(mat);
 		repl.Update();
 		HideOriginal(it);

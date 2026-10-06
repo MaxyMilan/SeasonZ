@@ -1637,7 +1637,10 @@ def _a6_plan(m):
     # addonfine (Opus): the layer thins out before the slope limit instead of ending in a row of beads (drips on rock)
     # (rock and rough models only: on a steep smooth roof the thinned layer broke up into pits)
     rough=getattr(m,'rough',False) or m.cls=='rock'
-    fade=np.clip((steep-angle)/A7_FADE,0,1) if A7_FADE>0 and rough else np.ones_like(angle); fade=fade*fade*(3-2*fade)
+    # (Opus, 6 Oct) _sz_fade: a vehicle's curved panels (bonnets, mudguards) thin out the same way; at full weight up
+    # to the limit the deep kernels sat as a bead on the guard's flank and hung down over grilles and tyres
+    fade=(np.clip((steep-angle)/A7_FADE,0,1) if A7_FADE>0 and (rough or getattr(m,'_sz_fade',False))
+          else np.ones_like(angle)); fade=fade*fade*(3-2*fade)
     if A7_CREVICE>0 and rough:
         # (Opus, 6 Oct) the steep walls of a narrow crevice in a rock's crown are in the mask, but their particles fade
         # out toward the slope limit: the cap sank into the crevice and left a dark slit at v1-v4 (stone4). Walls lying
@@ -1721,7 +1724,27 @@ def _thin_cells(m):
     if c is not None: return c
     M=m.tops(4,slope=False)
     r=max(1,int(round(A7_THIN/2/m.g)))
-    thin=M&~(H.dilate(H.erode(M,r),r+1)&M)
+    # (Opus, 6 Oct, c35) height aware: a handrail over a walkway or beside a stair's treads lies on their cells in
+    # plan; the plain opening of the mask saw one wide top and the rail kept its sausage (train_742, castle stairs).
+    # A cell is wide only with neighbours at about its own height (4 cm + a slope of 1.6 per step)
+    Z=np.where(M,m.Z,np.nan)
+    near={}
+    for dj,di in H.N8:
+        with np.errstate(invalid='ignore'):
+            near[dj,di]=np.abs(H.sh(Z,dj,di,np.nan)-Z)<=.04+1.6*m.g*(1.42 if dj and di else 1.)
+    core=M.copy()
+    for k in range(r):
+        out=core.copy()
+        for dj,di in (H.N8 if k%2==0 else H.N4):
+            out&=H.sh(core,dj,di,False)&near[dj,di]
+        core=out
+    wide=core
+    for k in range(r+1):
+        out=wide.copy()
+        for dj,di in (H.N8 if k%2==0 else H.N4):
+            out|=H.sh(wide,dj,di,False)&near[dj,di]&M
+        wide=out
+    thin=M&~wide
     m._sz_thin=thin
     return thin
 
@@ -1911,7 +1934,7 @@ def _a6_tile(plan,grid,tile,variants):
                 for b in range(max(0,tile[1]-yr),min(nb[1],tile[1]+2)):
                     for c in range(max(0,tile[2]-1),min(nb[2],tile[2]+2)):
                         key=(a*nb[1]+b)*nb[2]+c
-                        if key in cloud['groups']: neighbors.append(cloud['groups'][key])
+                        if key in cloud.get('groups',()): neighbors.append(cloud['groups'][key])
             density=np.zeros(fftshape,np.float32)
             if neighbors:
                 ids=np.concatenate(neighbors); pos=cloud['unit'][ids]-padded_start
@@ -2089,7 +2112,8 @@ def _a7_tile(plan,grid,tile,variants):
             for b in range(max(0,tile[1]-1),min(nb[1],tile[1]+2)):
                 for c in range(max(0,tile[2]-1),min(nb[2],tile[2]+2)):
                     k=(a*nb[1]+b)*nb[2]+c
-                    if k in cloud['groups']:neighbors.append(cloud['groups'][k])
+                    # (Opus, 6 Oct) a group without particles (H.separate on a part with no top) has no 'groups'
+                    if k in cloud.get('groups',()):neighbors.append(cloud['groups'][k])
         # a wide kernel (a deep pillow, R up to ~40 cm) is smooth at a fraction of its radius: its field is summed on
         # a coarser lattice aligned to the fine one (R/A7_COARSE) and interpolated back; a narrow one stays fine.
         # Every tile and lattice uses its own halo, so a shallow field no longer pays for the widest kernel.

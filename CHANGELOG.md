@@ -1,5 +1,34 @@
 # SeasonZ changelog
 
+## 0.5.1 (snow caps, second pass)
+
+Every cap was made again with a stricter generator, checked by geometric measurements on all 1,285 models and
+depths and by a visual review of every model.
+
+Snow caps
+- Tents, camouflage nets and polytunnels: the snow follows the shape of the whole sheet and ends in one soft line
+  down the canvas; no more hanging tongues along quilted tent walls, no blobs in the pockets of a net, and the snow
+  lies on the canvas under the tent poles instead of standing on them as posts. Canvas and the face of the dam
+  shed snow from about 47 degrees.
+- Stairs: every tread gets its own strip of snow with a rounded front; no false step halfway up each riser and no
+  torn sheet over the stairs.
+- Flat roofs with a parapet, kerbs and beam tops: the narrow level strips carry snow (the parapets of large flat
+  roofed blocks, schools and garages showed dark).
+- Stacks of pallets, logs, timbers and planks: each board and log has its own cap; the snow bridges the narrow gaps
+  between them instead of tearing into flaps and tents over them. Brick stacks are made on a finer grid.
+- Heaps of junk and rubble: the snow drapes over the small steps between their parts; boxes standing on a heap no
+  longer pull the snow up into a spike.
+- Earth mounds (bunker berms, blast covers, craters): the snow line follows the mound, not every lump of earth.
+- Fuselages, curved tanks and walls rising beside a roof: the snow ends along them in one line instead of a row of
+  small teeth; no more dark slits along the crease where a bunker dome meets its berm.
+- Lids, slabs and signs: the top of the snow runs out to its rounded edge without a dark band and dark corner
+  wedges; narrow tops (the top edge of a sign board) hold a strip of snow in proportion instead of a round sausage.
+- Small holes in a cover, pits between boards and bolt holes the grid fell into are bridged.
+
+Seasonal trees
+- A map tree that had been shown as its Livonia summer twin (willows, among others) no longer disappears when its
+  leaves turn in autumn.
+
 ## 0.5.0 (MVP release candidate)
 
 The mod is now called SeasonZ everywhere (mod folder `@SeasonZ`, key `SeasonZ.bikey`, profile folder
