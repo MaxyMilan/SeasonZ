@@ -646,8 +646,14 @@ A4_STRAT=False  # stratified particle heights in a column: less shot noise, a sm
 A7_SKIN=True    # deep caps keep the lifted surface-particle skin on the volume body
 A7_TAUBIN=1
 A7_COARSE=6     # wide kernels on a lattice of R/A7_COARSE (0: always the fine lattice)
+A7_FADE=12.     # the surface-particle density fades out over the last degrees before the slope limit (0: hard)
+A7_OVL=0.       # the lip hangs over its carrier's edge by at most this share of the depth (+1 cm); 0: no limit
+A7_OVK=.6       # ... rounded by a smooth intersection of this share of that limit
+A7_RISE=1.      # outside its carrier the floor rises this many metres per metre: the lip's underside slopes up
+                # like a cornice, so a bin or box gets a cap with a short lip, not a mushroom (0: level floor)
+A7_LEDGE=True   # a narrow ledge just below a higher top (a box rim, a frame strip) holds no bead of its own
 A7_FLOORBLUR=.25 # outside its carriers the floor is smoothed over this share of the kernel radius (0: nearest carrier)
-A7_FLOORK=.3    # rounding of the cut at the carrier's floor, as a share of the particle depth (0: 5 mm)
+A7_FLOORK=.5    # rounding of the cut at the carrier's floor, as a share of the particle depth (0: 5 mm)
 # addonfine (Opus, 6 Oct): the user's choice for deep snow is the addonfine look - soft round pillows that roll over
 # the edge. That is the surface-particle recipe (a6) at the full depth, kernel ~1.6x the depth; the floors, blocked
 # parts, sky test and tip rules keep out its drips, bridges and snow underneath. The a5 volume body remains for
@@ -752,6 +758,40 @@ def _drop_tips(m,mask):
     ny=np.bincount(lab.ravel(),weights=np.where(mask,m.NYF,0).ravel(),minlength=n+1)[:n]
     wide=np.zeros(n+1); np.maximum.at(wide,lab.ravel(),(2*H.distance(mask,6)*m.g).ravel())
     bad=(cnt*m.g*m.g<.006)&((ny/np.maximum(cnt,1)<math.cos(math.radians(20)))|(wide[:n]<.03))
+    if A7_LEDGE:
+        # a narrow strip (under 5 cm) 1.5-25 cm under a higher top within 8 cm: a box rim, a frame or trim strip just
+        # below a lid. It would carry a row of beads under the cap's lip; the cap's own lip covers that edge
+        Zm=np.where(mask,np.nan_to_num(m.Z,nan=-1e6),-1e6)
+        higher=H.maxf(Zm,max(1,int(math.ceil(.08/m.g))))-Zm
+        # the grid links a rim to its lid (one mask region): split it into levels - neighbours are one surface only if
+        # their step fits the slope - and measure each level's width as 2 x area / perimeter
+        tn=np.sqrt(np.clip(1-m.NYF**2,0,1))/np.maximum(m.NYF,.05)
+        Zf=np.nan_to_num(m.Z,nan=-1e6)
+        sx=mask[:,:-1]&mask[:,1:]&(np.abs(Zf[:,:-1]-Zf[:,1:])<=m.g*1.5*np.maximum(tn[:,:-1],tn[:,1:])+.008)
+        sz=mask[:-1]&mask[1:]&(np.abs(Zf[:-1]-Zf[1:])<=m.g*1.5*np.maximum(tn[:-1],tn[1:])+.008)
+        lev,nl=H.label(mask,sx,sz)
+        if nl:
+            le=np.where(mask,lev,nl); deg=np.zeros(mask.shape)
+            deg[:,:-1]+=sx; deg[:,1:]+=sx; deg[:-1]+=sz; deg[1:]+=sz
+            c2=np.bincount(le.ravel(),minlength=nl+1)[:nl]
+            per=np.bincount(le.ravel(),weights=np.where(mask,4-deg,0).ravel(),minlength=nl+1)[:nl]
+            # a ledge runs along a step up: a quarter of its outline or more borders a level 2-25 cm higher (bench
+            # slats at different heights are parted by gaps, so they never qualify)
+            up=np.zeros(mask.shape)
+            cx=mask[:,:-1]&mask[:,1:]&~sx; dx=Zf[:,1:]-Zf[:,:-1]
+            up[:,:-1]+=cx&(dx>.02)&(dx<.25); up[:,1:]+=cx&(-dx>.02)&(-dx<.25)
+            cz=mask[:-1]&mask[1:]&~sz; dz=Zf[1:]-Zf[:-1]
+            up[:-1]+=cz&(dz>.02)&(dz<.25); up[1:]+=cz&(-dz>.02)&(-dz<.25)
+            steps=np.bincount(le.ravel(),weights=np.where(mask,up,0).ravel(),minlength=nl+1)[:nl]
+            narrow=(2*c2*m.g/np.maximum(per,1)<.05)&(steps>.25*per)
+            mask=mask&~np.r_[narrow,False][le]
+        if (getattr(m,'rough',False) or m.cls=='rock') and nl:
+            # a small facet low on a rock's flank (one level, under 0.03 m2) with a higher top within 20 cm: it showed
+            # as a drip hanging under the main cap. Its share of snow slides into the main cap's lip
+            near=H.maxf(Zm,max(1,int(math.ceil(.2/m.g))))
+            own=np.full(nl+1,-1e6); np.maximum.at(own,le.ravel(),Zm.ravel())
+            hi_=np.full(nl+1,-1e6); np.maximum.at(hi_,le.ravel(),np.where(mask,near,-1e6).ravel())
+            mask=mask&~np.r_[(c2*m.g*m.g<.03)&(hi_[:nl]>own[:nl]+.03),False][le]
     return mask&~np.r_[bad,False][lab]
 
 
@@ -1455,6 +1495,10 @@ def _a6_plan(m):
     emit=mask|gap
     angle=np.degrees(np.arccos(np.clip(m.NYF,0,1)))
     taper=np.clip((steep-angle)/(steep-full),0,1); taper=taper*taper*(3-2*taper)
+    # addonfine (Opus): the layer thins out before the slope limit instead of ending in a row of beads (drips on rock)
+    # (rock and rough models only: on a steep smooth roof the thinned layer broke up into pits)
+    rough=getattr(m,'rough',False) or m.cls=='rock'
+    fade=np.clip((steep-angle)/A7_FADE,0,1) if A7_FADE>0 and rough else np.ones_like(angle); fade=fade*fade*(3-2*fade)
     stages={}; closed=mask.copy(); means={}
     for v in range(1,8):
         d=m.thick(v); base=min(d,A7_BASEMAX); height=base/.331
@@ -1463,7 +1507,7 @@ def _a6_plan(m):
         extra=(d-base)*taper*np.minimum(1,width/max(d,1e-9))
         stages[v]=dict(depth=d,base=base,height=height,R=.54*height,D=extra,width=width)
         if base not in means:
-            means[base]=np.where(emit,50/height**2*m.g*m.g/np.where(gap,1.,np.maximum(m.NYF,.1)),0.)
+            means[base]=np.where(emit,50/height**2*m.g*m.g/np.where(gap,1.,np.maximum(m.NYF,.1))*np.where(gap,1.,fade),0.)
     rng=np.random.default_rng(SEED); rounding=rng.random(mask.shape)
     counts={b:np.floor(lam+rounding).astype(int) for b,lam in means.items()}
     maximum=np.maximum.reduce(list(counts.values()))
@@ -1484,6 +1528,19 @@ def _a6_plan(m):
         clouds[b]=dict(P=np.column_stack((px[selected],sky[selected],pz[selected])),R=.54*b/.331,base=b)
     return dict(mask=mask,Z=Z,sink=sink,taper=taper,stages=stages,clouds=clouds,
                 bank_points=len(cols),rejected_points=int((~good).sum()),seed=SEED)
+
+
+_FFTSIZES=sorted({2**a*3**b*5**c for a in range(13) for b in range(8) for c in range(6) if 2**a*3**b*5**c<=8192})
+
+
+def _fftsize(n):
+    """the smallest 2^a 3^b 5^c length >= n (pocketfft is fast there; a power of two wasted up to half)"""
+    import bisect
+    return _FFTSIZES[bisect.bisect_left(_FFTSIZES,n)]
+
+
+def _ovl(base):
+    return A7_OVL*base+.01
 
 
 def _box2(A,r):
@@ -1530,22 +1587,27 @@ def _a6_grid(m,plan):
     mi=np.clip(mi,0,m.nu-1); mj=np.clip(mj,0,m.nv-1)
     M=valid&plan['mask'][mj[:,None],mi[None,:]]
     S=plan['Z'][mj[:,None],mi[None,:]]; sink=plan['sink'][mj[:,None],mi[None,:]]
-    source=np.arange(M.size).reshape(M.shape); floors={}; owners={}
+    source=np.arange(M.size).reshape(M.shape); floors={}; owners={}; dists={}
     for base,cloud in plan['clouds'].items():
         if base not in {s['base'] for s in plan['stages'].values()}: continue
-        radius=cloud['R']; reach=int(math.ceil(radius/g))
+        radius=cloud['R']
+        # columns beyond the lip limit hold no snow: the carrier search stops there (a 40 cm kernel would search far)
+        if A7_OVL>0: radius=min(radius,_ovl(base)*(1+A7_OVK)+2*g)
+        if A7_RISE>0: radius=min(radius,(1.4*base+.03)/A7_RISE+2*g)
+        reach=int(math.ceil(radius/g))
         # Local carrier inside the mask; nearest carrier outside. A maximum
         # height filter raises the floor above round/sloping supports and
         # slices away their cap. Never substitute a higher nearby carrier.
-        owner=np.where(M,source,-1)
+        owner=np.where(M,source,-1); dist=np.where(M,0.,np.inf)
         offsets=sorted((math.hypot(dj,di)*g,dj,di) for dj in range(-reach,reach+1)
                        for di in range(-reach,reach+1) if dj or di)
         for distance,dj,di in offsets:
             if distance>radius+1e-9: continue
             own=H.sh(np.where(M,source,-1),dj,di,-1)
-            take=(owner<0)&(own>=0); owner[take]=own[take]
+            take=(owner<0)&(own>=0); owner[take]=own[take]; dist[take]=distance
         floor=np.where(owner>=0,(S-sink).ravel()[np.maximum(owner,0)],-np.inf)
-        rb=int(math.ceil(A7_FLOORBLUR*radius/g))
+        if A7_RISE>0: floor=np.where((owner>=0)&~M,floor+A7_RISE*dist,floor)
+        rb=int(math.ceil(A7_FLOORBLUR*cloud['R']/g))
         if rb>0:
             # beside stair treads or roof planes of different heights the nearest carrier changes from one column to
             # the next: a hard floor there cut a vertical wall into the pillow. Outside the carriers the floor runs
@@ -1553,13 +1615,13 @@ def _a6_grid(m,plan):
             out=(owner>=0)&~M; val=np.where(out,floor,0.)
             num=_box2(val,rb); den=_box2(out.astype(float),rb)
             floor=np.where(out,num/np.maximum(den,1e-9),floor)
-        floors[base]=floor.T; owners[base]=owner
+        floors[base]=floor.T; owners[base]=owner; dists[base]=dist.T
     for s in plan['stages'].values():
         D=s['D'][mj[:,None],mi[None,:]]; owner=owners[s['base']]
         # The rolled lip inherits the extension of its carrying surface.
         s['lattice_D']=np.where(M,D,D.ravel()[np.maximum(owner,0)]).T
     return dict(origin=origin,pitch=pitch,shape=shape,core=core,nb=nb,maxR=maxR,
-                extra=extra,tiles=tiles,floors=floors)
+                extra=extra,tiles=tiles,floors=floors,dists=dists)
 
 
 def _a6_vertical_max(F,D,gy):
@@ -1630,7 +1692,14 @@ def _a6_tile(plan,grid,tile,variants):
 
 def _a6_hidden(m,V):
     inside=np.zeros(len(V),bool)
-    for k,p in enumerate(V):
+    # a vertex above the highest surface of its column (3x3 cells) lies outside every part: only the rest is tested
+    # (the top half of a dense cap; on a house that halves ~300k nearest-point queries)
+    Zt=getattr(m,'_sz_ztop',None)
+    if Zt is None: Zt=m._sz_ztop=H.maxf(np.nan_to_num(np.fmax(m.Z,getattr(m,'Zall',m.Z)),nan=-1e6),1)
+    i=np.rint((V[:,0]-m.u0)/m.g).astype(int); j=np.rint((V[:,2]-m.v0)/m.g).astype(int)
+    ok=(i>=0)&(i<m.nu)&(j>=0)&(j<m.nv); top=np.full(len(V),-1e6); top[ok]=Zt[j[ok],i[ok]]
+    test=np.flatnonzero(V[:,1]<=top+.01)
+    for k,p in zip(test.tolist(),V[test]):
         hit,n,_,_=m.bvh_all.find_nearest(Vector(p))
         if hit is not None: inside[k]=(Vector(p)-hit).dot(n)<-.005
     ids=np.flatnonzero(inside)
@@ -1768,7 +1837,7 @@ def _a7_tile(plan,grid,tile,variants):
         fa=np.maximum(1,np.floor(R/(A7_COARSE*pitch)).astype(int)) if A7_COARSE>0 else np.ones(3,int)
         cp=pitch*fa; lo=(start-1)//fa; hi=-(-(end+1)//fa); n=hi-lo+1
         halo=np.ceil(R/cp).astype(int)+2; pstart=lo-halo; full=n+2*halo
-        fftshape=tuple(1<<(int(q)-1).bit_length() for q in full)
+        fftshape=tuple(_fftsize(int(q)) for q in full)
         density=np.zeros(int(np.prod(fftshape)),np.float32)
         if neighbors:
             ids=np.concatenate(neighbors); pos=cloud['unit'][ids]/fa-pstart
@@ -1808,6 +1877,11 @@ def _a7_tile(plan,grid,tile,variants):
         yy=grid['origin'][1]+np.arange(start[1],end[1]+1)*pitch[1]
         # a deep pillow curls under to its support: the cut along the floor is rounded, no flat shelf with a hard rim
         current=_smin(current,yy[None,:,None]-floor[:,None,:],max(.005,A7_FLOORK*stage['base']))
+        if A7_OVL>0:
+            # a pillow hangs over its carrier's edge by about a third of its depth at most: a post, bin or box keeps
+            # a cap, not a mushroom. A smooth intersection, so the lip stays round
+            o=_ovl(stage['base']); D=grid['dists'][stage['base']][sl]
+            current=_smin(current,(o-D)[:,None,:],A7_OVK*o)
         current=np.where(np.isfinite(floor)[:,None,:],current,-grid['maxR'])
         # Nested 3D isosurfaces, including the switch from surface to volume.
         # This is a union of fields, not a vertical extrusion or a height rewrite.
@@ -1824,20 +1898,29 @@ def _a7_tile(plan,grid,tile,variants):
 
 
 def _a7_raster(V,F,grid):
-    """QA-only vertical samples of the actual triangles; never builds a cap."""
+    """QA-only vertical samples of the actual triangles; never builds a cap (vectorised: all cells under all triangles
+    at once, in chunks; the highest triangle wins)."""
     x0,z0,g,nx,nz=grid; Y=np.full((nz,nx),-np.inf); tid=np.full((nz,nx),-1,np.int32)
-    for k,t in enumerate(V[F]):
-        a,b,c=t; den=(b[2]-c[2])*(a[0]-c[0])+(c[0]-b[0])*(a[2]-c[2])
-        if abs(den)<1e-14:continue
-        i0=max(0,int(math.ceil((t[:,0].min()-x0)/g-1e-7))); i1=min(nx-1,int(math.floor((t[:,0].max()-x0)/g+1e-7)))
-        j0=max(0,int(math.ceil((t[:,2].min()-z0)/g-1e-7))); j1=min(nz-1,int(math.floor((t[:,2].max()-z0)/g+1e-7)))
-        if i1<i0 or j1<j0:continue
-        x=x0+np.arange(i0,i1+1)[None,:]*g; z=z0+np.arange(j0,j1+1)[:,None]*g
-        u=((b[2]-c[2])*(x-c[0])+(c[0]-b[0])*(z-c[2]))/den
-        w=((c[2]-a[2])*(x-c[0])+(a[0]-c[0])*(z-c[2]))/den
-        hit=(u>=-1e-7)&(w>=-1e-7)&(u+w<=1+1e-7); y=u*a[1]+w*b[1]+(1-u-w)*c[1]
-        sub=Y[j0:j1+1,i0:i1+1]; ids=tid[j0:j1+1,i0:i1+1]; take=hit&(y>sub)
-        sub[take]=y[take];ids[take]=k
+    if not len(F): return Y,tid
+    t=V[F]; a,b,c=t[:,0],t[:,1],t[:,2]
+    den=(b[:,2]-c[:,2])*(a[:,0]-c[:,0])+(c[:,0]-b[:,0])*(a[:,2]-c[:,2])
+    i0=np.maximum(0,np.ceil((t[:,:,0].min(1)-x0)/g-1e-7).astype(np.int64)); i1=np.minimum(nx-1,np.floor((t[:,:,0].max(1)-x0)/g+1e-7).astype(np.int64))
+    j0=np.maximum(0,np.ceil((t[:,:,2].min(1)-z0)/g-1e-7).astype(np.int64)); j1=np.minimum(nz-1,np.floor((t[:,:,2].max(1)-z0)/g+1e-7).astype(np.int64))
+    w=np.maximum(i1-i0+1,0); h=np.maximum(j1-j0+1,0); n=np.where(np.abs(den)>=1e-14,w*h,0)
+    ids=np.flatnonzero(n); Yf=Y.ravel(); Tf=tid.ravel()
+    cum=np.cumsum(n[ids]); lo=0
+    while lo<len(ids):
+        hi=int(np.searchsorted(cum,(cum[lo-1] if lo else 0)+2000000,side='right')); hi=max(hi,lo+1)
+        k=ids[lo:hi]; cnt=n[k]; tot=int(cnt.sum()); lo=hi
+        kk=np.repeat(k,cnt); off=np.arange(tot)-np.repeat(np.cumsum(cnt)-cnt,cnt)
+        i=i0[kk]+off%w[kk]; j=j0[kk]+off//w[kk]; x=x0+i*g; z=z0+j*g
+        A,B,C,D=a[kk],b[kk],c[kk],den[kk]
+        u=((B[:,2]-C[:,2])*(x-C[:,0])+(C[:,0]-B[:,0])*(z-C[:,2]))/D
+        v=((C[:,2]-A[:,2])*(x-C[:,0])+(A[:,0]-C[:,0])*(z-C[:,2]))/D
+        hit=(u>=-1e-7)&(v>=-1e-7)&(u+v<=1+1e-7)
+        y=(u*A[:,1]+v*B[:,1]+(1-u-v)*C[:,1])[hit]; f=(j*nx+i)[hit]; kk=kk[hit]
+        np.maximum.at(Yf,f,y)
+        top=y>=Yf[f]; Tf[f[top]]=kk[top]
     return Y,tid
 
 
