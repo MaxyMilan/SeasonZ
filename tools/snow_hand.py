@@ -1914,6 +1914,7 @@ class Model:
         hh = np.zeros((n_st, k))
         RS = np.zeros((n_st, k))
         H0 = np.zeros((n_st, k))
+        miss = np.zeros((n_st, k), bool)
         PC = np.zeros((n_st, 3))
         DV = np.zeros((n_st, k, 3))
         for j, s in enumerate(S):
@@ -1928,8 +1929,10 @@ class Model:
                 o = Vec(tuple(pc + dv * (2.5 * r_ + 0.05)))
                 loc, nr_, idx, dd = bva.ray_cast(o, Vec(tuple(-dv)), 2.5 * r_ + 0.05)
                 if loc is None:
+                    # (nothing along this line: past a broken or splintered end, no wood to hold snow)
                     rs_ = r_
-                    blocked = False
+                    blocked = True
+                    miss[j, q] = True
                 else:
                     hit_own = int(self.part_t[self._all_t[idx]]) == own
                     rs_ = float(np.dot(np.array(loc) - pc, dv))
@@ -1995,7 +1998,10 @@ class Model:
         if n_st >= 3:
             for q in range(k):
                 hs[:, q] = np.minimum(hs[:, q], np.convolve(np.pad(hs[:, q], 1, mode='edge'), [0.25, 0.5, 0.25], 'valid'))
-        has = hs.max(1) > 0.003
+        # (a station is on the log only where every line of the profile finds wood: at a splintered end the snow
+        # ends, rounded, at the last whole station, no lip over the broken wood)
+        sup = ~miss.any(1)
+        has = (hs.max(1) > 0.003) & sup
         # the top's distance from the centre line smoothed along the log and round it (the facets of a hewn log
         # come through as folds in the snow otherwise); never closer than the surface under it
         k3 = np.array([0.25, 0.5, 0.25])
@@ -2016,9 +2022,12 @@ class Model:
             while j < n_st and has[j]:
                 j += 1
             j1 = j - 1
-            # (a piece cut off by shelter runs on to the sheltered station, its snow at nothing there)
-            ja = j0 - 1 if j0 > 0 else j0
-            jb = j1 + 1 if j1 < n_st - 1 else j1
+            # (a piece cut off by shelter runs on to the sheltered station, its snow at nothing there; at the log's
+            # end or where the wood breaks off it rounds off over its last station)
+            ext0 = j0 > 0 and bool(sup[j0 - 1])
+            ext1 = j1 < n_st - 1 and bool(sup[j1 + 1])
+            ja = j0 - 1 if ext0 else j0
+            jb = j1 + 1 if ext1 else j1
             if jb - ja < 1 or S[j1] - S[j0] < 0.02:
                 continue
             j0, j1 = ja, jb
@@ -2028,8 +2037,8 @@ class Model:
             # the stations of this piece, four more in each of the log's own ends (the snow rounds off over it in
             # even steps, no fold)
             Sp = S[j0:j1 + 1]
-            te0 = ends and j0 == 0
-            te1 = ends and j1 == n_st - 1
+            te0 = ends and not ext0
+            te1 = ends and not ext1
             extra = []
             for f_ in (0.02, 0.07, 0.15, 0.26, 0.4, 0.57, 0.77):
                 if te0:

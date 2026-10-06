@@ -10,7 +10,7 @@ POSTS = [0,1]
 
 def build(m, v):
     out = [m.log(p, v) for p in LOGS]
-    for R, Zc in m.regions(m.tops(v, parts=POSTS), v):
+    for R, Zc in m.regions(m.tops(v, parts=POSTS), v, min_area=0.0012):
         out.append(m.blanket(R, Zc, v))
     return H.join(out)
 

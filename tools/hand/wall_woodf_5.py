@@ -13,7 +13,7 @@ def build(m, v):
     out = []
     for p in LOGS:
         out.append(m.log(p, v))
-    for R, Zc in m.regions(m.tops(v, parts=POSTS), v):
+    for R, Zc in m.regions(m.tops(v, parts=POSTS), v, min_area=0.0012):
         out.append(m.blanket(R, Zc, v))
     return H.join(out)
 
