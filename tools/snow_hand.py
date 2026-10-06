@@ -3355,6 +3355,44 @@ def fence_auto(m, v):
     return join(out)
 
 
+def through(m, parts):
+    """(Opus, 6 Oct, e1) the given parts let the snow through and hold none (once per model): they leave the height
+    raster and the occlusion. A wreck's tilted wheel (wreck_hmmwv) grew a lobe; a chair's frame bars punched holes in
+    its seat's pillow (misc_chair_camp2)"""
+    if getattr(m, '_sz_see', None) is None:
+        sel = np.isin(m.part_t, tuple(int(p) for p in parts))
+        m.occ_t = m.occ_t & ~sel
+        m.good_t = m.good_t & ~sel
+        m._raster()
+        m._bvh()
+        m._sz_see = tuple(int(p) for p in parts)
+    return m._sz_see
+
+
+def fence_only(m, v, keep):
+    """(Opus, 6 Oct, e1) fence_auto over the parts in keep only; every other part (target boards, barbed wire, stuck-on
+    decals) lets the snow through and holds none. misc_range_line: the upright target boards counted as tops with
+    1 dm2 and grew vertical sheets, the decals crumbs (misc_obstacle_crawl did this by hand for its wire)"""
+    keep = set(int(p) for p in keep)
+    if getattr(m, '_sz_see', None) is None:
+        sel = ~np.isin(m.part_t, sorted(keep))
+        m.occ_t = m.occ_t & ~sel
+        m.good_t = m.good_t & ~sel
+        m._raster()
+        m._bvh()
+        m._sz_see = tuple(sorted(set(range(int(m.part_t.max()) + 1)) - keep))
+    if not hasattr(m, '_sz_fence'):
+        m.kind = 1
+        fence_auto(m, v)
+        f = lambda L: [p for p in L if p in keep]
+        logs, beams, cush, strips, big = (f(L) for L in m._sz_fence)
+        m._sz_fence = (logs, beams, cush, strips, big)
+        m._sz_parts = tuple(big)
+        m._sz_block = tuple(logs + beams + strips)
+        m.reset()
+    return fence_auto(m, v)
+
+
 def auto(m, variant, **style):
     """the plain recipe: every surface the snow reaches, each region its blanket"""
     logs = [p for p in range(int(m.part_t.max()) + 1) if m.is_log(p)]

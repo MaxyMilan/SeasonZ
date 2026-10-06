@@ -7,4 +7,5 @@ import snow_hand as H
 
 
 def build(m, v):
-    return H.wreck(m, v, LEDGES=[0.08, 0.8])
+    # (e1b) reach 80 cm alone kept the cowl: 20 cm wide and 0.3 m2 it counted as a major top. Minor up to 0.5 m2 / 30 cm
+    return H.wreck(m, v, LEDGES=[0.08, 0.8, 0.5, 0.3])
