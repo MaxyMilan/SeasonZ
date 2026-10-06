@@ -2979,6 +2979,10 @@ def build(m, variant):
     r = recipe(m.name)
     if r is not None:
         return r.build(m, variant)
+    if os.environ.get('SZ_DEFAULT', 'addon') == 'addon':
+        # the volumetric metaball cap (snow_addon) is the default since v0.5.1; SZ_DEFAULT=auto for the old blanket
+        import snow_addon as A
+        return A.build(m, variant)
     return auto(m, variant)
 
 def inside_loops(P, loops):
