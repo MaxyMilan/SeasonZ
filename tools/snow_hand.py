@@ -3098,6 +3098,11 @@ def build(m, variant):
     r = recipe(m.name)
     if r is not None:
         return r.build(m, variant)
+    if m.name.startswith('sign_'):
+        # (Opus, 6 Oct) road signs: their 4 mm plates and 6 cm posts are under the lattice of the volumetric cap and
+        # stayed bare; snow_signs builds the edge ridge and post caps on their own faces
+        import snow_signs
+        return snow_signs.build_auto(m, variant)
     if os.environ.get('SZ_DEFAULT', 'addon') == 'addon':
         # the volumetric metaball cap (snow_addon) is the default since v0.5.1; SZ_DEFAULT=auto for the old blanket
         return hybrid(m, variant)

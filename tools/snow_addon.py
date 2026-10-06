@@ -1701,6 +1701,8 @@ def _dens(base):
 
 
 A7_ROCKFILL=True
+A7_WALLCAP=2500        # a fence or wall (kind 1, placed by the thousand): its cap's LOD0 triangles at most
+A7_WALLCAP_ROUGH=2500  # ... a rough one (a rubble or field-stone wall): its lumps need more, or they read as facets
 A7_CREVICE=0.    # rocks: a crevice this narrow is bridged at its rim's height from the first depth on (0: off;
                  # stone4's 'hole' was a 30-40 cm step face at 66-76 degrees, bare rock by right; tried .15 in c24)
 A7_BANDH=1.      # band: a column's own snow reaches this many depths (+1 cm) above its carrier; 0: no band
@@ -2284,7 +2286,8 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
             # small props stay smooth up close: the tolerance also shrinks with the size of the cap
             V=_a3_taubin(V,F,passes=A7_TAUBIN if m.thick(v)>.06 else 1); steps['taubin']=time.perf_counter()-t0; t0=time.perf_counter()
             # (a fence or wall (kind 1) is placed by the thousand: its caps 2500 triangles at most)
-            V,F=_err_decimate(V,F,min(_cap_budget(area),2500) if getattr(m,'kind',0)==1 else _cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
+            wallcap=(A7_WALLCAP_ROUGH if (getattr(m,'rough',False) or m.cls=='rock') else A7_WALLCAP)
+            V,F=_err_decimate(V,F,min(_cap_budget(area),wallcap) if getattr(m,'kind',0)==1 else _cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
             steps['decimate']=time.perf_counter()-t0; t0=time.perf_counter()
             # crumbs, knobs and floating balls go (under 0.01 m2, narrower than 4 cm, or touching nothing)
             V,F,pruned=_a4_prune(m,V,F); steps['prune']=time.perf_counter()-t0; t0=time.perf_counter()
