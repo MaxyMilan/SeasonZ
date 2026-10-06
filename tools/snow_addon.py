@@ -144,10 +144,27 @@ def _source_points(m,xy):
     return y,ny,part
 
 
-def _boundary(F,n):
+def _rowkey(A):
+    """one int64 per row of small non-negative ints (fast 1-d unique instead of np.unique(axis=0)); None if it overflows"""
+    A=np.asarray(A,np.int64); base=int(A.max(initial=0))+1
+    if base**A.shape[1]>=2**62: return None
+    k=np.zeros(len(A),np.int64)
+    for j in range(A.shape[1]): k=k*base+A[:,j]
+    return k
+
+
+def _edges(F):
+    """the unique undirected edges of a triangle list"""
     e=np.sort(np.concatenate((F[:,[0,1]],F[:,[1,2]],F[:,[2,0]])),axis=1)
-    e,c=np.unique(e,axis=0,return_counts=True)
-    out=np.zeros(n,bool); out[np.unique(e[c==1])]=True
+    k=_rowkey(e)
+    if k is None: return np.unique(e,axis=0,return_counts=True)
+    u,i,c=np.unique(k,return_index=True,return_counts=True)
+    return e[i],c
+
+
+def _boundary(F,n):
+    e,c=_edges(F)
+    out=np.zeros(n,bool); out[e[c==1].ravel()]=True
     return out
 
 
@@ -366,13 +383,14 @@ def _a3_weld(V,F,eps,edge_keys=None):
     if edge_keys is not None:
         # Weld by the exact global lattice edge, not by Euclidean proximity.
         # Distance welding merged distinct sides of very thin contact volumes.
-        _,inv=np.unique(edge_keys,axis=0,return_inverse=True)
-        count=np.bincount(inv); vv=np.zeros((len(count),3))
-        np.add.at(vv,inv,V); vv/=count[:,None]
+        k=_rowkey(edge_keys)
+        _,inv=np.unique(edge_keys,axis=0,return_inverse=True) if k is None else np.unique(k,return_inverse=True)
+        inv=inv.ravel(); count=np.bincount(inv)
+        vv=np.column_stack([np.bincount(inv,weights=V[:,i],minlength=len(count)) for i in range(3)])/count[:,None]
         ff=inv[F]
         good=(ff[:,0]!=ff[:,1])&(ff[:,1]!=ff[:,2])&(ff[:,2]!=ff[:,0])
-        ff=ff[good]
-        _,ind=np.unique(np.sort(ff,axis=1),axis=0,return_index=True)
+        ff=ff[good]; k=_rowkey(np.sort(ff,axis=1))
+        _,ind=np.unique(np.sort(ff,axis=1),axis=0,return_index=True) if k is None else np.unique(k,return_index=True)
         return G._compact(vv,ff[np.sort(ind)])
     import bmesh
     import bpy
@@ -508,13 +526,13 @@ def _a3_prune(m,V,F):
 
 
 def _a3_taubin(V,F,passes=3):
-    fixed=_boundary(F,len(V)); original=V.copy()
-    e=np.unique(np.sort(np.concatenate((F[:,[0,1]],F[:,[1,2]],F[:,[2,0]])),axis=1),axis=0)
-    degree=np.bincount(e.ravel(),minlength=len(V))
+    fixed=_boundary(F,len(V)); original=V.copy(); n=len(V)
+    e,_=_edges(F)
+    degree=np.bincount(e.ravel(),minlength=n)
+    a=np.concatenate((e[:,0],e[:,1])); b=np.concatenate((e[:,1],e[:,0]))
     for _ in range(passes):
         for strength in (.5,-.53):
-            total=np.zeros_like(V)
-            np.add.at(total,e[:,0],V[e[:,1]]); np.add.at(total,e[:,1],V[e[:,0]])
+            total=np.column_stack([np.bincount(a,weights=V[b,i],minlength=n) for i in range(3)])
             V+=strength*(total/np.maximum(degree[:,None],1)-V)
             V[fixed]=original[fixed]
     return V
@@ -621,12 +639,28 @@ A4_THRESHOLDS={.015:5.794341351653021,.018:5.790033662412078,.025:5.810858150911
                .23:5.6747710055212455}
 
 
+A4_RMAX=.07     # cap of the volume kernel radius (m)
+A7_OVH=0.       # addonfine lip: how far a deep cap rolls out over a free edge, as a share of its depth (0: off)
+A7_OVMAX=.07    # ... at most this far (m)
+A4_STRAT=False  # stratified particle heights in a column: less shot noise, a smoother deep cap
+A7_SKIN=True    # deep caps keep the lifted surface-particle skin on the volume body
+A7_TAUBIN=1
+A7_COARSE=6     # wide kernels on a lattice of R/A7_COARSE (0: always the fine lattice)
+A7_FLOORBLUR=.25 # outside its carriers the floor is smoothed over this share of the kernel radius (0: nearest carrier)
+A7_FLOORK=.3    # rounding of the cut at the carrier's floor, as a share of the particle depth (0: 5 mm)
+# addonfine (Opus, 6 Oct): the user's choice for deep snow is the addonfine look - soft round pillows that roll over
+# the edge. That is the surface-particle recipe (a6) at the full depth, kernel ~1.6x the depth; the floors, blocked
+# parts, sky test and tip rules keep out its drips, bridges and snow underneath. The a5 volume body remains for
+# A7_BASEMAX < depth.
+A7_BASEMAX=1.   # surface particles (the addonfine recipe) carry the cap up to this depth; a volume body above it
+
+
 def _a4_radius(d):
-    return float(np.clip(.6*d,.025,.07))
+    return float(np.clip(.6*d,.025,A4_RMAX))
 
 
 def _a4_threshold(d):
-    if round(d,6) in A4_THRESHOLDS: return A4_THRESHOLDS[round(d,6)]
+    if round(d,6) in A4_THRESHOLDS: return A4_THRESHOLDS[round(d,6)]*A4_C/24.
     # Integral of the cubic kernel over the slab, evaluated at its top.
     # Calibrated values replace this continuum estimate after coupon tests.
     t=min(1.,(d+.005)/_a4_radius(d))
@@ -691,16 +725,33 @@ def _repose(Z,h,M,g,hmin):
     return np.where(M,np.minimum(h,np.maximum(T-Z,hmin)),h)
 
 
+def _sky_open(m,mask):
+    """the share of the sky a top sees: nine rays (straight up and eight at 25 degrees); snow falls within about that
+    cone, so a board seen only through the slot between two pallet boards, or a log deep in a pile, gets little"""
+    if getattr(m,'_sz_sky',None) is not None and m._sz_sky.shape==mask.shape: return m._sz_sky
+    a=math.radians(25.); dirs=[Vector((0.,1.,0.))]+[Vector((math.sin(a)*math.cos(t),math.cos(a),math.sin(a)*math.sin(t)))
+                                                     for t in np.linspace(0,2*math.pi,8,endpoint=False)]
+    out=np.ones(mask.shape); jj,ii=np.nonzero(mask); Z=np.nan_to_num(m.Z,nan=0.); bvh=m.bvh_all
+    for j,i in zip(jj.tolist(),ii.tolist()):
+        o=Vector((m.u0+i*m.g,float(Z[j,i])+.004,m.v0+j*m.g))
+        out[j,i]=sum(bvh.ray_cast(o,d,60.)[0] is None for d in dirs)/9.
+    m._sz_sky=out
+    return out
+
+
 def _drop_tips(m,mask):
-    """small separate tops (under 0.006 m2) hold snow only when nearly flat (a post top, under 20 degrees): the slanted
-    point of a picket or a pointed finial gets no bead"""
+    """tops that hold no cap: less than 45% of the sky open; and small separate tops (under 0.006 m2) unless they are
+    nearly flat (under 20 degrees) and at least 3 cm wide - a post top keeps its cap, the slanted point or the 2 cm
+    edge of a picket gets no bead"""
+    mask=mask&(_sky_open(m,mask)>=.45)
     lx=mask[:,:-1]&mask[:,1:]; lz=mask[:-1,:]&mask[1:,:]
     labels,n=H.label(mask,lx,lz)
     if not n: return mask
     lab=np.where(mask,labels,n)
     cnt=np.bincount(lab.ravel(),minlength=n+1)[:n]
     ny=np.bincount(lab.ravel(),weights=np.where(mask,m.NYF,0).ravel(),minlength=n+1)[:n]
-    bad=(cnt*m.g*m.g<.006)&(ny/np.maximum(cnt,1)<math.cos(math.radians(20)))
+    wide=np.zeros(n+1); np.maximum.at(wide,lab.ravel(),(2*H.distance(mask,6)*m.g).ravel())
+    bad=(cnt*m.g*m.g<.006)&((ny/np.maximum(cnt,1)<math.cos(math.radians(20)))|(wide[:n]<.03))
     return mask&~np.r_[bad,False][lab]
 
 
@@ -763,10 +814,11 @@ def _a4_plan(m,calibration=False,seed=SEED):
     owner=np.where(base,flat,-1)
     distance=np.where(base,0.,np.inf)
     final_closed=closed.copy()
-    rr=int(math.ceil(.04/g))+1
+    reach=max(.04,A7_OVMAX if A7_OVH>0 else 0.)
+    rr=int(math.ceil(reach/g))+1
     offsets=sorted((math.hypot(dj,di)*g,dj,di) for dj in range(-rr,rr+1) for di in range(-rr,rr+1) if dj or di)
     for ds,dj,di in offsets:
-        if ds-.5*g>.04: continue
+        if ds-.5*g>reach: continue
         candidate=H.sh(np.where(base,flat,-1),dj,di,-1)
         # a5 (Opus): bridged gaps (between bench slats) get bridge columns too, else the cap dips over each gap
         use=(~base)&(owner<0)&(candidate>=0)
@@ -788,6 +840,9 @@ def _a4_plan(m,calibration=False,seed=SEED):
     px=m.u0+(ii+rng.uniform(-.5,.5,len(cols)))*g
     pz=m.v0+(jj+rng.uniform(-.5,.5,len(cols)))*g
     q=rng.random(len(cols))
+    if A4_STRAT:
+        starts=np.cumsum(np.r_[0,count.ravel()[:-1]]); rank=np.arange(len(cols))-starts[cols]
+        q=(rank+q)/np.maximum(count.ravel()[cols],1)
     own=owner.ravel()[cols]; oj,oi=np.unravel_index(own,base.shape)
     primary=base.ravel()[cols]
     S=Z.ravel()[own].copy()
@@ -807,15 +862,20 @@ def _a4_plan(m,calibration=False,seed=SEED):
         if d in cache:
             clouds[v]=cache[d]; continue
         hp=np.where(primary,s['h'].ravel()[own],s['pillow_h'].ravel()[own])
-        lower=np.where(primary,-sink.ravel()[own],np.maximum(.3*hp,4*outside))
-        span=np.maximum(0,hp-lower)
+        lower=np.where(primary,-sink.ravel()[own],np.maximum(.3*hp,4*outside)); top=hp
+        if A7_OVH>0 and d>.06+1e-9:
+            # addonfine (Opus): the rolled lip - an elliptic tube along a free edge that bulges A7_OVH of the depth
+            # out at half height and curls back to the edge at the top and at the support
+            ov=np.minimum(A7_OVH*hp,A7_OVMAX); e=np.sqrt(np.clip(1-(outside/np.maximum(ov,1e-6))**2,0,1))
+            lower=np.where(primary,lower,.5*hp*(1-e)); top=np.where(primary,hp,.5*hp*(1+e))
+        span=np.maximum(0,top-lower)
         lam=A4_C*g*g*span/s['R']**3
         weight=lam/np.maximum(max_lambda.ravel()[cols],1e-15)
         # a5 (Opus): a slab thinner than the kernel sums to less field at its top; weight it up by the kernel
         # integral ratio so the iso surface still sits on S+h and a thin layer stays whole
         weight=weight*_a5_boost(hp,d,s['R'])
         py=S+lower+q*span
-        good=alive&(hp>1e-6)&(span>1e-6)&(primary|(outside<=.04))
+        good=alive&(hp>1e-6)&(span>1e-6)&(primary|(outside<=reach))
         good&=(parts<0)|(py>=sky-sink.ravel()[own]-.001)
         P=np.column_stack((px[good],py[good],pz[good]))
         cloud=dict(P=P,weight=weight[good].astype(np.float32),R=s['R'],depth=d,
@@ -1105,8 +1165,9 @@ def _err_decimate(V,F,cap,tol,floor=200):
     obj=bpy.data.objects.new('sz_err_dec',me); bpy.context.scene.collection.objects.link(obj)
     mod=obj.modifiers.new('dec','DECIMATE'); mod.use_collapse_triangulate=True
     S=V[np.random.default_rng(5).choice(len(V),min(4000,len(V)),replace=False)]
+    state=[len(F)]
     def run(n):
-        mod.ratio=min(1.,n/len(F))
+        mod.ratio=min(1.,n/state[0])
         res=bpy.data.meshes.new_from_object(obj.evaluated_get(bpy.context.evaluated_depsgraph_get()))
         res.calc_loop_triangles()
         v=np.empty(len(res.vertices)*3); res.vertices.foreach_get('co',v)
@@ -1118,7 +1179,12 @@ def _err_decimate(V,F,cap,tol,floor=200):
         b=BVHTree.FromPolygons(v.tolist(),f.tolist(),all_triangles=True)
         d=np.array([b.find_nearest(Vector(q))[3] or 1e9 for q in S])
         return float(np.percentile(d,99.5))
-    hi=min(cap,len(F)); best=run(hi) if hi<len(F) else (V,F)
+    hi=min(cap,len(F))
+    if len(F)>3*hi:
+        # one pass to three times the cap first: the search below then re-evaluates a light mesh, not the dense one
+        v0,f0=run(3*hi); me2=bpy.data.meshes.new('sz_err_dec2'); me2.from_pydata(v0.tolist(),[],f0.tolist())
+        obj.data=me2; bpy.data.meshes.remove(me); me=me2; state[0]=len(f0)
+    best=run(hi) if hi<state[0] else (V,F)
     if err(*best)<=tol:
         lo=floor
         for _ in range(7):
@@ -1391,7 +1457,7 @@ def _a6_plan(m):
     taper=np.clip((steep-angle)/(steep-full),0,1); taper=taper*taper*(3-2*taper)
     stages={}; closed=mask.copy(); means={}
     for v in range(1,8):
-        d=m.thick(v); base=min(d,.06); height=base/.331
+        d=m.thick(v); base=min(d,A7_BASEMAX); height=base/.331
         closed|=_a4_close(mask,Z,d,m.g)
         width=2*H.distance(closed,int(math.ceil(max(.3,d)/m.g))+2)*m.g
         extra=(d-base)*taper*np.minimum(1,width/max(d,1e-9))
@@ -1418,6 +1484,15 @@ def _a6_plan(m):
         clouds[b]=dict(P=np.column_stack((px[selected],sky[selected],pz[selected])),R=.54*b/.331,base=b)
     return dict(mask=mask,Z=Z,sink=sink,taper=taper,stages=stages,clouds=clouds,
                 bank_points=len(cols),rejected_points=int((~good).sum()),seed=SEED)
+
+
+def _box2(A,r):
+    """2-d box sum of half width r (two passes: a tent), zero outside"""
+    for _ in range(2):
+        for ax in (0,1):
+            c=np.cumsum(np.pad(A,[(r+1,r) if a==ax else (0,0) for a in (0,1)]),axis=ax)
+            A=np.take(c,np.arange(2*r+1,c.shape[ax]),axis=ax)-np.take(c,np.arange(0,c.shape[ax]-2*r-1),axis=ax)
+    return A
 
 
 def _a6_grid(m,plan):
@@ -1470,6 +1545,14 @@ def _a6_grid(m,plan):
             own=H.sh(np.where(M,source,-1),dj,di,-1)
             take=(owner<0)&(own>=0); owner[take]=own[take]
         floor=np.where(owner>=0,(S-sink).ravel()[np.maximum(owner,0)],-np.inf)
+        rb=int(math.ceil(A7_FLOORBLUR*radius/g))
+        if rb>0:
+            # beside stair treads or roof planes of different heights the nearest carrier changes from one column to
+            # the next: a hard floor there cut a vertical wall into the pillow. Outside the carriers the floor runs
+            # smoothly from one to the other (only outside columns are averaged: a lip keeps its own carrier's level)
+            out=(owner>=0)&~M; val=np.where(out,floor,0.)
+            num=_box2(val,rb); den=_box2(out.astype(float),rb)
+            floor=np.where(out,num/np.maximum(den,1e-9),floor)
         floors[base]=floor.T; owners[base]=owner
     for s in plan['stages'].values():
         D=s['D'][mj[:,None],mi[None,:]]; owner=owners[s['base']]
@@ -1626,15 +1709,16 @@ def _a7_plan(m):
         keep=np.isin(m.PART,allowed) if allowed is not None else ~np.isin(m.PART,excluded)
         m.tops=lambda *a,**kw:original(*a,**kw)&keep
     try:
-        surface=_a6_plan(m); volume=_a4_plan(m)
+        surface=_a6_plan(m)
+        volume=_a4_plan(m) if any(s['depth']>s['base']+1e-9 for s in surface['stages'].values()) else None
     finally:
         m.tops=original
     clouds={b:dict(c,threshold=THRESHOLD) for b,c in surface['clouds'].items()}
     stages={}
     for v,s in surface['stages'].items():
         d=s['depth']; base=s['base']; skin_key=base; volume_key=None
-        blend=float(np.clip((d-.06)/.02,0,1)); blend=blend*blend*(3-2*blend)
-        if d>.06+1e-9:
+        blend=float(np.clip((d-base)/.02,0,1)); blend=blend*blend*(3-2*blend)
+        if d>base+1e-9:
             vc=volume['clouds'][v]; volume_key=('volume',v); clouds[volume_key]=dict(vc)
             skin_key=('skin',v); skin=dict(surface['clouds'][base]); P=skin['P'].copy()
             ii=np.clip(np.rint((P[:,0]-m.u0)/m.g).astype(int),0,m.nu-1)
@@ -1644,11 +1728,11 @@ def _a7_plan(m):
             # at 6 cm; the full A5 cloud still supplies the 3D body.
             h=volume['stages'][v]['h']
             # a soft knee where the body thins below the skin (k 3 cm): the flank runs on smoothly instead of a step
-            x=h-.06; uplift=blend*np.minimum(.03*np.logaddexp(0,x/.03),1.15*(d-.06))
+            x=h-base; uplift=blend*np.minimum(.03*np.logaddexp(0,x/.03),1.15*(d-base))
             P[:,1]+=uplift[jj,ii]
             skin.update(P=P,threshold=THRESHOLD); clouds[skin_key]=skin
         stages[v]=dict(s,D=np.zeros_like(s['D']),skin_key=skin_key,volume_key=volume_key,blend=blend)
-    return dict(surface,clouds=clouds,stages=stages,volume_bank_points=volume['bank_points'],
+    return dict(surface,clouds=clouds,stages=stages,volume_bank_points=volume['bank_points'] if volume else 0,
                 bench_allowed_parts=list(allowed) if allowed is not None else None,blocked_parts=list(blocked))
 
 
@@ -1669,33 +1753,47 @@ def _a7_grid(m,plan):
 def _a7_tile(plan,grid,tile,variants):
     pitch=grid['pitch']; core=grid['core']; nb=grid['nb']
     start=np.array(tile)*core; end=np.minimum(start+core,grid['shape']-1); length=end-start+1
-    halo=np.ceil(grid['maxR']/pitch).astype(int)+3
-    full=length+2*halo; fftshape=tuple(1<<(int(n)-1).bit_length() for n in full)
-    padded_start=start-halo; fields={}; outputs={}; cropped=0
+    fields={}; outputs={}; cropped=0
     def field(key):
         if key in fields:return fields[key]
-        cloud=plan['clouds'][key]; neighbors=[]
+        cloud=plan['clouds'][key]; R=cloud['R']; thr=cloud['threshold']; neighbors=[]
         for a in range(max(0,tile[0]-1),min(nb[0],tile[0]+2)):
             for b in range(max(0,tile[1]-1),min(nb[1],tile[1]+2)):
                 for c in range(max(0,tile[2]-1),min(nb[2],tile[2]+2)):
                     k=(a*nb[1]+b)*nb[2]+c
                     if k in cloud['groups']:neighbors.append(cloud['groups'][k])
-        density=np.zeros(fftshape,np.float32)
+        # a wide kernel (a deep pillow, R up to ~40 cm) is smooth at a fraction of its radius: its field is summed on
+        # a coarser lattice aligned to the fine one (R/A7_COARSE) and interpolated back; a narrow one stays fine.
+        # Every tile and lattice uses its own halo, so a shallow field no longer pays for the widest kernel.
+        fa=np.maximum(1,np.floor(R/(A7_COARSE*pitch)).astype(int)) if A7_COARSE>0 else np.ones(3,int)
+        cp=pitch*fa; lo=(start-1)//fa; hi=-(-(end+1)//fa); n=hi-lo+1
+        halo=np.ceil(R/cp).astype(int)+2; pstart=lo-halo; full=n+2*halo
+        fftshape=tuple(1<<(int(q)-1).bit_length() for q in full)
+        density=np.zeros(int(np.prod(fftshape)),np.float32)
         if neighbors:
-            ids=np.concatenate(neighbors); pos=cloud['unit'][ids]-padded_start
+            ids=np.concatenate(neighbors); pos=cloud['unit'][ids]/fa-pstart
             good=np.all((pos>=0)&(pos<full-1),axis=1); pos=pos[good];ids=ids[good]
-            ijk=np.floor(pos).astype(int); frac=pos-ijk
+            ijk=np.floor(pos).astype(np.int64); frac=(pos-ijk).astype(np.float32)
+            base_w=cloud['weight'][ids].astype(np.float32) if 'weight' in cloud else np.ones(len(ids),np.float32)
+            idx=[];ws=[]
             for a in (0,1):
                 for b in (0,1):
                     for c in (0,1):
-                        w=(frac[:,0] if a else 1-frac[:,0])*(frac[:,1] if b else 1-frac[:,1])*(frac[:,2] if c else 1-frac[:,2])
-                        if 'weight' in cloud:w=w*cloud['weight'][ids]
-                        np.add.at(density,tuple((ijk+np.array((a,b,c))).T),w)
-        f=np.fft.irfftn(np.fft.rfftn(density)*_a4_kernel_fft(cloud['R'],tuple(pitch),fftshape),s=fftshape).astype(np.float32)-cloud['threshold']
-        sl=tuple(slice(int(h-1),int(h+n+1)) for h,n in zip(halo,length)); f=f[sl]
-        gradient=np.sqrt(sum(a*a for a in np.gradient(f,*pitch)))
-        sdf=np.clip(f/np.maximum(gradient,.01*cloud['threshold']/cloud['R']),-cloud['R'],cloud['R'])
-        fields[key]=sdf[1:-1,1:-1,1:-1].copy();return fields[key]
+                        idx.append(np.ravel_multi_index(((ijk[:,0]+a),(ijk[:,1]+b),(ijk[:,2]+c)),fftshape))
+                        ws.append(base_w*(frac[:,0] if a else 1-frac[:,0])*(frac[:,1] if b else 1-frac[:,1])*(frac[:,2] if c else 1-frac[:,2]))
+            if len(ids):density+=np.bincount(np.concatenate(idx),weights=np.concatenate(ws),minlength=density.size).astype(np.float32)
+        density=density.reshape(fftshape)
+        f=np.fft.irfftn(np.fft.rfftn(density)*_a4_kernel_fft(R,tuple(cp),fftshape),s=fftshape).astype(np.float32)-thr
+        f=f[tuple(slice(int(h-1),int(h+q+1)) for h,q in zip(halo,n))]
+        gradient=np.sqrt(sum(g_*g_ for g_ in np.gradient(f,*cp)))
+        sdf=np.clip(f/np.maximum(gradient,.01*thr/R),-R,R)[1:-1,1:-1,1:-1]
+        if np.any(fa>1):
+            for ax in range(3):
+                x=np.arange(start[ax],end[ax]+1)/fa[ax]-lo[ax]; i0=np.clip(np.floor(x).astype(int),0,sdf.shape[ax]-2)
+                t=(x-i0).astype(np.float32); shp=[1,1,1]; shp[ax]=-1; t=t.reshape(shp)
+                sdf=np.take(sdf,i0,axis=ax)*(1-t)+np.take(sdf,i0+1,axis=ax)*t
+        else: sdf=sdf[1:-1,1:-1,1:-1]
+        fields[key]=np.ascontiguousarray(sdf,dtype=np.float32);return fields[key]
     previous=None
     for v in range(1,max(variants)+1):
         stage=plan['stages'][v]; skin=field(stage['skin_key']); current=skin
@@ -1703,11 +1801,13 @@ def _a7_tile(plan,grid,tile,variants):
             body=field(stage['volume_key'])
             # smooth union (k 4 cm): where the thick body thins out onto the skin the surface rounds over, no step
             k=.04; hh=np.clip(.5+.5*(body-skin)/k,0,1); smax=skin+(body-skin)*hh+k*hh*(1-hh)
+            if not A7_SKIN: smax=body
             current=skin+stage['blend']*(smax-skin)
         sl=(slice(int(start[0]),int(end[0])+1),slice(int(start[2]),int(end[2])+1))
         floor=grid['floors'][stage['base']][sl]
         yy=grid['origin'][1]+np.arange(start[1],end[1]+1)*pitch[1]
-        current=_smin(current,yy[None,:,None]-floor[:,None,:],.005)
+        # a deep pillow curls under to its support: the cut along the floor is rounded, no flat shelf with a hard rim
+        current=_smin(current,yy[None,:,None]-floor[:,None,:],max(.005,A7_FLOORK*stage['base']))
         current=np.where(np.isfinite(floor)[:,None,:],current,-grid['maxR'])
         # Nested 3D isosurfaces, including the switch from surface to volume.
         # This is a union of fields, not a vertical extrusion or a height rewrite.
@@ -1836,7 +1936,7 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
         inside=_a6_hidden(m,V); hidden=np.all(inside[F],axis=1); V,F=G._compact(V,F[~hidden])
         if len(F):
             # small props stay smooth up close: the tolerance also shrinks with the size of the cap
-            V=_a3_taubin(V,F,passes=1);V,F=_err_decimate(V,F,_cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
+            V=_a3_taubin(V,F,passes=A7_TAUBIN if m.thick(v)>.06 else 1);V,F=_err_decimate(V,F,_cap_budget(area),min(_err_tol(m.thick(v)),.004+.002*math.sqrt(area)))
             # crumbs, knobs and floating balls go (under 0.01 m2, narrower than 4 cm, or touching nothing)
             V,F,pruned=_a4_prune(m,V,F)
             V,guard=_a7_growth_guard(m,V,F,previous)

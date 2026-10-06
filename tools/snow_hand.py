@@ -2971,6 +2971,10 @@ def hybrid(m, variant):
     if hand is not None and len(hand[1]) > 400:
         # the crescents are built fine; thin them to the same 2.5 mm the volumetric caps keep (a rail is a long ridge)
         hand = A._err_decimate(np.asarray(hand[0], float), np.asarray(hand[1], np.int64), 4000, .0025)
+    if hand is not None and len(hand[1]):
+        # crumbs of crescent on sheltered log ends and side details go, as on the volumetric caps
+        hv, hf, _ = A._a4_prune(m, np.asarray(hand[0], float), np.asarray(hand[1], np.int64))
+        hand = (hv, hf) if len(hf) else None
     return join([hand, A.build(m, variant)])
 
 
