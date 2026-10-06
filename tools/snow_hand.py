@@ -2947,6 +2947,44 @@ class Model:
 
 
 
+def separate(m, v, groups):
+    """one addonfine cap per group of parts, each its own field: (Opus, 6 Oct) a pallet leaning on another one shared
+    one field with it and its deep pillow flowed down over the high edge onto the lower pallet (marshmallow). groups:
+    [(parts, blocked parts)], the caps of all seven depths of each group built once and kept on the model"""
+    import snow_addon as A
+    key = tuple((tuple(p), tuple(b or ())) for p, b in groups)
+    if getattr(m, '_sz_sep_key', None) != key:
+        caches = []
+        for parts, block in groups:
+            m._sz_rails = ([], [])
+            m._sz_parts = tuple(parts)
+            m._sz_block = tuple(block or ())
+            for att in ('_snow_a7_cache', '_sz_sky'):
+                if hasattr(m, att):
+                    delattr(m, att)
+            A.prepare_a7(m, tuple(range(1, 8)))
+            caches.append(m._snow_a7_cache)
+        m._sz_sep, m._sz_sep_key = caches, key
+    out = []
+    for c in m._sz_sep:
+        m._snow_a7_cache = c
+        out.append(A.build(m, v))
+    return join(out)
+
+
+def post_tops(m, v, posts, logs, min_area=0.0012, reach=0.03):
+    """small blankets on the sawn tops of fence posts (wall_woodf family); (Opus, 6 Oct) a post top a rail rests on or
+    passes over shows only a sliver beside the rail: its blanket stood out as a white flange at the crossing by v7. A
+    region within reach of a cell whose top is one of the logs is left to the log's ridge"""
+    out = []
+    near = dilate(np.isin(m.PART, list(logs)) & m.valid, max(1, int(round(reach / m.g))))
+    for R_, Zc in m.regions(m.tops(v, parts=posts), v, min_area=min_area):
+        if (R_ & near).any():
+            continue
+        out.append(m.blanket(R_, Zc, v))
+    return out
+
+
 def join(meshes):
     Vs, Fs, k = [], [], 0
     for msh in meshes:
@@ -2969,8 +3007,9 @@ DECK_GAP = 0.12
 RIDGE_W = 1.1
 
 
-def _sky_share(m, p, n=160):
-    """the share of part p's upward faces (by projected area) that a vertical ray from above reaches first"""
+def _sky_share(m, p, n=160, slant=False):
+    """the share of part p's upward faces (by projected area) that a vertical ray from above reaches first; slant: or
+    that see the sky along one of the slanted rays of a log's shelter test (_sky_dirs)"""
     from mathutils import Vector as Vec
     sel = np.nonzero(m.part_t == p)[0]
     if not len(sel):
@@ -2988,10 +3027,18 @@ def _sky_share(m, p, n=160):
     top = float(m.V[:, 1].max()) + 1.0
     down = Vec((0.0, -1.0, 0.0))
     seen = 0
+    dirs = [d for d in _sky_dirs() if abs(d[1]) < 0.999] if slant else []
     for q in P:
         hit = m.bvh_all.ray_cast(Vec((float(q[0]), top, float(q[2]))), down, 1e3)
         if hit[0] is not None and int(m.part_t[m._all_t[hit[2]]]) == int(p) and hit[0].y > q[1] - 0.01:
             seen += 1
+        elif dirs and hit[0] is not None and hit[0].y > q[1] + 0.2:
+            # (Opus, 6 Oct) the lowest rail of wall_forfieldfen_2 lies 30 cm right under the middle one: no vertical ray
+            # reaches it, the slanted sky does (the snow it gets is scaled by log()'s own shelter test). Only under a
+            # cover more than 20 cm up: the logs deep in a pile, touching the ones above, stay out
+            o = Vec((float(q[0]), float(q[1]) + 0.004, float(q[2])))
+            if any(m.bvh_all.ray_cast(o, d, 60.0)[0] is None for d in dirs):
+                seen += 1
     return seen / float(n)
 
 
@@ -3008,7 +3055,7 @@ def hybrid(m, variant):
         # only through the slots, went to the crescents and - blocked for the cap - cut V-notches into the pillow over
         # every slot. A board less than half seen from above stays with the cap (sky-tested there); a log (its crescent
         # has its own shelter test: the lower rails of a fence under the top one) only when nearly hidden (under 10%)
-        logs = [p for p in logs if _sky_share(m, p) >= 0.1]
+        logs = [p for p in logs if _sky_share(m, p, slant=True) >= 0.1]
         beams = [p for p in beams if _sky_share(m, p) >= 0.5]
         m._sz_rails = (logs, beams)
         if logs or beams:

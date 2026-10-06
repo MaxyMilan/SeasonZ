@@ -1,10 +1,15 @@
-"""misc_pallets1: stacked or leaning euro pallets. The top boards lie 6-10 cm apart: as separate beams each got a sausage of
-its own. One deck instead: every board goes to the addonfine cap (snow_addon via hybrid), whose pillow bridges the gaps as
-the snow deepens; boards seen only through the slots get none (sky test in snow_addon._drop_tips)."""
+"""misc_pallets1: a euro pallet lying flat (top deck 11-16, blocks 19-21, bottom deck 0-5 on stringers 8-10) with a second one
+leaning on it at about 27 degrees (deck 22-27; stringers 28, 29 and boards 30-32 behind it).
+
+Each deck its own addonfine cap (H.separate): the leaning deck's pillow rolls over its edges, the strip of the lying deck in
+front of its high edge gets its own pillow, and the two never flow into one (c20-c22: the leaning cap poured down 35-40 cm
+over its high edge onto the lying deck, and the slot under the leaning pallet looked glued shut). The lower parts stay bare;
+boards seen only through the slots get nothing (sky test)."""
 import snow_hand as H
+
+GROUPS = [((22, 23, 24, 25, 26, 27), ()), ((11, 12, 13, 14, 15, 16), ())]
 
 
 def build(m, v):
-    m._sz_rails = ([], [])
-    return H.hybrid(m, v)
+    return H.separate(m, v, GROUPS)
 

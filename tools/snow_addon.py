@@ -652,7 +652,9 @@ A7_OVK=.6       # ... rounded by a smooth intersection of this share of that lim
 A7_RISE=1.      # outside its carrier the floor rises this many metres per metre: the lip's underside slopes up
                 # like a cornice, so a bin or box gets a cap with a short lip, not a mushroom (0: level floor)
 A7_LEDGE=True   # a narrow ledge just below a higher top (a box rim, a frame strip) holds no bead of its own
+A7_LEDGEW=.05   # ... narrower than this (2 x area / outline)
 A7_FLOORBLUR=.25 # outside its carriers the floor is smoothed over this share of the kernel radius (0: nearest carrier)
+A7_LIPDROP=.3   # the smoothed floor under a lip stays within this share of the depth (+5 mm) of its carrier; 0: free
 A7_FLOORK=.1    # rounding of the cut at the carrier's floor, as a share of the particle depth (0: 5 mm)
 # addonfine (Opus, 6 Oct): the user's choice for deep snow is the addonfine look - soft round pillows that roll over
 # the edge. That is the surface-particle recipe (a6) at the full depth, kernel ~1.6x the depth; the floors, blocked
@@ -785,7 +787,7 @@ def _drop_tips(m,mask):
             cz=mask[:-1]&mask[1:]&~sz; dz=Zf[1:]-Zf[:-1]
             up[:-1]+=cz&(dz>.02)&(dz<.25); up[1:]+=cz&(-dz>.02)&(-dz<.25)
             steps=np.bincount(le.ravel(),weights=np.where(mask,up,0).ravel(),minlength=nl+1)[:nl]
-            narrow=(2*c2*m.g/np.maximum(per,1)<.05)&(steps>.25*per)
+            narrow=(2*c2*m.g/np.maximum(per,1)<A7_LEDGEW)&(steps>.25*per)
             mask=mask&~np.r_[narrow,False][le]
         if (getattr(m,'rough',False) or m.cls=='rock') and nl:
             # a small facet low on a rock's flank (one level, under 0.03 m2) with a higher top within 20 cm: it showed
@@ -1630,13 +1632,23 @@ def _a6_plan(m):
             Zh=_inpaint(np.where(mask|gap,np.where(gap,Zfill,Z),np.nan),hole)
             ok=hole&np.isfinite(Zh); Zfill=np.where(ok,Zh,Zfill); gap=gap|ok
             mask_floor=mask|ok; Z_floor=np.where(ok,Zh,Z); sink=np.where(ok,.003,sink)
-    emit=mask|gap
     angle=np.degrees(np.arccos(np.clip(m.NYF,0,1)))
     taper=np.clip((steep-angle)/(steep-full),0,1); taper=taper*taper*(3-2*taper)
     # addonfine (Opus): the layer thins out before the slope limit instead of ending in a row of beads (drips on rock)
     # (rock and rough models only: on a steep smooth roof the thinned layer broke up into pits)
     rough=getattr(m,'rough',False) or m.cls=='rock'
     fade=np.clip((steep-angle)/A7_FADE,0,1) if A7_FADE>0 and rough else np.ones_like(angle); fade=fade*fade*(3-2*fade)
+    if A7_CREVICE>0 and rough:
+        # (Opus, 6 Oct) the steep walls of a narrow crevice in a rock's crown are in the mask, but their particles fade
+        # out toward the slope limit: the cap sank into the crevice and left a dark slit at v1-v4 (stone4). Walls lying
+        # below the line between well-carrying cells less than A7_CREVICE apart emit at full weight at that line's height
+        good=mask&(fade>=.5)
+        crev=_a4_close(good,Z,2*A7_CREVICE,m.g)&~good&mask
+        if crev.any():
+            Zc=_inpaint(np.where(good,Z,np.nan),crev)
+            ok=crev&np.isfinite(Zc)&(Zc>Z+.01)
+            Zfill=np.where(ok,Zc,Zfill); gap=gap|ok
+    emit=mask|gap
     stages={}; closed=mask.copy(); means={}
     for v in range(1,8):
         d=m.thick(v); base=min(d,A7_BASEMAX); height=base/.331
@@ -1689,7 +1701,13 @@ def _dens(base):
 
 
 A7_ROCKFILL=True
+A7_CREVICE=0.    # rocks: a crevice this narrow is bridged at its rim's height from the first depth on (0: off;
+                 # stone4's 'hole' was a 30-40 cm step face at 66-76 degrees, bare rock by right; tried .15 in c24)
 A7_BANDH=1.      # band: a column's own snow reaches this many depths (+1 cm) above its carrier; 0: no band
+A7_LEVELW=0.     # ... and at most this many times its level's width (a narrow ledge); 0: no width limit
+A7_BANDSTEP=.04  # ... and only toward a carrier at least this much higher
+A7_LEVELMIN=.08  # ... but never under 8 cm: a bin's rim 3 cm under its lid stays inside the lid's pillow (the band
+                 # cut a trench through it), a pallet strip 14 cm under the next pallet is parted from its cap
 A7_MINLAYER=.25 # every carrier keeps a layer of this share of the depth (8-20 mm), 0: none
 
 
@@ -1781,6 +1799,15 @@ def _a6_grid(m,plan):
     # (and only between different parts: a pallet over a pallet, a table top over its bench. On one rock the band cut
     # the cap of a higher facet over a lower one into a flap)
     PG=np.where(M,m.PART[mj[:,None],mi[None,:]],-1)
+    # (Opus, 6 Oct) a narrow level - the strip of a lower pallet showing beside the one on top, a frame ledge - holds
+    # no more snow than about its width (2 x area / outline): its band cap stops there, so a deep cap above no longer
+    # merges down onto it as a curtain within the first 10 cm of its edge. Wide levels (roofs, decks) are unchanged
+    LW=np.full(M.shape,np.inf)
+    if A7_LEVELW>0 and _nl:
+        degl=np.zeros(M.shape); degl[:,:-1]+=lx; degl[:,1:]+=lx; degl[:-1]+=lz; degl[1:]+=lz
+        le=np.where(M,lev,_nl); ca=np.bincount(le.ravel(),minlength=_nl+1)[:_nl]
+        pe=np.bincount(le.ravel(),weights=np.where(M,4-degl,0).ravel(),minlength=_nl+1)[:_nl]
+        LW=np.where(M,np.r_[2*ca*g/np.maximum(pe,1),np.inf][le],np.inf)
     for base,cloud in plan['clouds'].items():
         if base not in {s['base'] for s in plan['stages'].values()}: continue
         radius=cloud['R']
@@ -1798,7 +1825,7 @@ def _a6_grid(m,plan):
         # cap onto a board lower down the stack, a table top onto its bench): in a column whose own snow tops out at
         # its carrier + hcap, the lowest underside a higher neighbour's lip may have (its floor rising with distance)
         # is kept apart from it; between the two no snow (only where they are apart: on stair treads at v7 they merge)
-        hcap=A7_BANDH*base+.01; up=np.full(M.shape,np.inf); owncap=np.where(M,S+hcap,np.nan)
+        hcap=np.minimum(A7_BANDH*base,np.maximum(A7_LEVELW*LW,A7_LEVELMIN))+.01; up=np.full(M.shape,np.inf); owncap=np.where(M,S+hcap,np.nan)
         for distance,dj,di in offsets:
             if distance>radius+1e-9: continue
             own=H.sh(np.where(M,source,-1),dj,di,-1)
@@ -1809,6 +1836,9 @@ def _a6_grid(m,plan):
                 ln=H.sh(lev,dj,di,-1); lo_=np.where(owner>=0,lev.ravel()[np.maximum(owner,0)],-2)
                 pn=H.sh(PG,dj,di,-1); po=np.where(owner>=0,PG.ravel()[np.maximum(owner,0)],-2)
                 hi=np.isfinite(zc)&(zc>owncap)&(ln>=0)&(ln!=lo_)&(pn>=0)&(pn!=po)
+                # (Opus, 6 Oct) only a HIGHER carrier: deck boards side by side at one height (separate parts and
+                # levels across their gaps) were cut into terraces where a neighbour's rising floor passed their cap
+                hi&=(H.sh(SF,dj,di,np.nan)-np.where(owner>=0,SF.ravel()[np.maximum(owner,0)],np.nan))>A7_BANDSTEP
                 up=np.where(hi,np.minimum(up,zc),up)
         floor=np.where(owner>=0,(S-sink).ravel()[np.maximum(owner,0)],-np.inf)
         rb=int(math.ceil(A7_FLOORBLUR*cloud['R']/g))
@@ -1818,7 +1848,12 @@ def _a6_grid(m,plan):
             # smoothly from one to the other (only outside columns are averaged: a lip keeps its own carrier's level)
             out=(owner>=0)&~M; val=np.where(out,floor,0.)
             num=_box2(val,rb); den=_box2(out.astype(float),rb)
-            floor=np.where(out,num/np.maximum(den,1e-9),floor)
+            # (Opus, 6 Oct) ... but a lip sinks at most 30% of the depth under its own carrier: beside a pallet stack
+            # the floors of carriers 20-40 cm lower pulled the top cap's lip down the side as a curtain. Between stair
+            # treads the lower tread's own pillow still fills up to the upper one
+            blurred=num/np.maximum(den,1e-9)
+            if A7_LIPDROP>0: blurred=np.maximum(blurred,floor-(A7_LIPDROP*base+.005))
+            floor=np.where(out,blurred,floor)
         # the rise comes after the smoothing: smoothed, the rising floor lifted a deep pillow's underside off the edge
         # (a wide kernel averages far, high columns) and the thinner depths' lips showed under it as a flange
         if A7_RISE>0: floor=np.where((owner>=0)&~M,floor+A7_RISE*dist,floor)
