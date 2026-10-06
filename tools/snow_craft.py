@@ -42,7 +42,9 @@ ROUGH = re.compile(r'^(dead_pile|dead_massgrave|garbage_pile|misc_bagfence|roadb
 # stacks of boards, logs and timbers: each board or log gets its own cap on the fine grid of a fence, with its
 # rounded ends, and the snow bridges the narrow gaps between them (as one blanket or a heap it tore into flaps
 # and tents over the gaps)
-BOARDS = re.compile(r'^(misc_pallets|misc_woodpile|misc_timbers)')
+# (Opus, 6 Oct: pallets and woodpiles are no longer 'wall' (1.5-6.5 cm): a pallet deck or a log pile holds the full
+# depth like any prop, its logs a crescent as deep as they are wide; only timbers keep the fence table)
+BOARDS = re.compile(r'^(misc_timbers)')
 # small stacks with a fine structure (bricks on a pallet): the normal cover on a fine grid
 FINE = re.compile(r'^(cihly)')
 # smooth sheets the snow slides off sooner than off a roof (tent canvas, foil, nets, the smooth concrete face of a

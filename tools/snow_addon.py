@@ -740,7 +740,9 @@ def _sky_open(m,mask):
     out=np.ones(mask.shape); jj,ii=np.nonzero(mask); Z=np.nan_to_num(m.Z,nan=0.); bvh=m.bvh_all
     for j,i in zip(jj.tolist(),ii.tolist()):
         o=Vector((m.u0+i*m.g,float(Z[j,i])+.004,m.v0+j*m.g))
-        out[j,i]=sum(bvh.ray_cast(o,d,60.)[0] is None for d in dirs)/9.
+        # (Opus, 6 Oct) straight up blocked: no snow, however much of the slanted sky is open (a bus stop's bench under
+        # its roof, the inside of a pipe mouth, a pallet board under the deck)
+        out[j,i]=0. if bvh.ray_cast(o,dirs[0],60.)[0] is not None else sum(bvh.ray_cast(o,d,60.)[0] is None for d in dirs)/9.
     m._sz_sky=out
     return out
 
@@ -1204,7 +1206,8 @@ def _err_decimate(V,F,cap,tol,floor=200):
     me=bpy.data.meshes.new('sz_err_dec'); me.from_pydata(V.tolist(),[],F.tolist())
     obj=bpy.data.objects.new('sz_err_dec',me); bpy.context.scene.collection.objects.link(obj)
     mod=obj.modifiers.new('dec','DECIMATE'); mod.use_collapse_triangulate=True
-    S=V[np.random.default_rng(5).choice(len(V),min(4000,len(V)),replace=False)]
+    pick=np.random.default_rng(5).choice(len(V),min(4000,len(V)),replace=False); S=V[pick]
+    NS=_smooth_normals(V,F,_vnormals(V,F),3)[pick] if A7_NTOL>0 else None
     state=[len(F)]
     def run(n):
         mod.ratio=min(1.,n/state[0])
@@ -1217,8 +1220,20 @@ def _err_decimate(V,F,cap,tol,floor=200):
     def err(v,f):
         if not len(f): return 1e9
         b=BVHTree.FromPolygons(v.tolist(),f.tolist(),all_triangles=True)
-        d=np.array([b.find_nearest(Vector(q))[3] or 1e9 for q in S])
-        return float(np.percentile(d,99.5))
+        hits=[b.find_nearest(Vector(q)) for q in S]
+        d=np.array([h[3] if h[3] is not None else 1e9 for h in hits])
+        e=float(np.percentile(d,99.5))
+        if A7_NTOL>0 and e<=tol:
+            # (Opus, 6 Oct) shading: the smooth normal the simplified cap shows at each sample against the dense cap's.
+            # Distance alone let long flat triangles cross a rounded pillow - with smooth shading they read as facets
+            vn=_vnormals(v,f); ok=np.array([h[2] is not None for h in hits])
+            if ok.any():
+                idx=np.array([h[2] if h[2] is not None else 0 for h in hits]); loc=np.array([tuple(h[0]) if h[0] is not None else (0,0,0) for h in hits])
+                tri=v[f[idx]]; bc=_bary(loc,tri); n=(bc[:,:,None]*vn[f[idx]]).sum(1)
+                n/=np.maximum(np.linalg.norm(n,axis=1)[:,None],1e-12)
+                ang=np.degrees(np.arccos(np.clip((n*NS).sum(1),-1,1)))[ok]
+                if float(np.nanpercentile(ang,95))>A7_NTOL: return 1e9
+        return e
     hi=min(cap,len(F))
     if len(F)>3*hi:
         # one pass to three times the cap first: the search below then re-evaluates a light mesh, not the dense one
@@ -1233,7 +1248,65 @@ def _err_decimate(V,F,cap,tol,floor=200):
             if err(*cand)<=tol: hi,best=mid,cand
             else: lo=mid
     bpy.data.objects.remove(obj,do_unlink=True); bpy.data.meshes.remove(me)
-    return best
+    return _beautify(*best) if A7_BEAUTY else best
+
+
+A7_NTOL=20.     # the simplified cap's smooth normals stay within this many degrees of the dense cap's (95th pct); 0: off
+
+
+A7_BEAUTY=True  # edge flips after the decimation: fewer slivers, whose smooth shading read as facets
+
+
+def _beautify(V,F):
+    """rotate edges toward evenly shaped triangles (vertices stay where they are)"""
+    import bmesh, bpy
+    if not len(F): return V,F
+    me=bpy.data.meshes.new('sz_beauty'); me.from_pydata(V.tolist(),[],F.tolist())
+    bm=bmesh.new(); bm.from_mesh(me)
+    bmesh.ops.beautify_fill(bm,faces=list(bm.faces),edges=list(bm.edges),method='ANGLE')
+    bmesh.ops.triangulate(bm,faces=list(bm.faces))
+    bm.to_mesh(me); bm.free(); me.calc_loop_triangles()
+    v=np.empty(len(me.vertices)*3); me.vertices.foreach_get('co',v)
+    f=np.empty(len(me.loop_triangles)*3,np.int32); me.loop_triangles.foreach_get('vertices',f)
+    bpy.data.meshes.remove(me)
+    v=v.reshape(-1,3); f=f.reshape(-1,3).astype(np.int64)
+    # keep the original winding: the summed normal points the same way
+    if np.cross(v[f[:,1]]-v[f[:,0]],v[f[:,2]]-v[f[:,0]])[:,1].sum()*np.cross(V[F[:,1]]-V[F[:,0]],V[F[:,2]]-V[F[:,0]])[:,1].sum()<0:
+        f=f[:,[0,2,1]]
+    return v,f
+
+
+def _smooth_normals(V,F,N,it):
+    e=np.concatenate((F[:,[0,1]],F[:,[1,2]],F[:,[2,0]])); a=np.concatenate((e[:,0],e[:,1])); b=np.concatenate((e[:,1],e[:,0]))
+    for _ in range(it):
+        S=np.column_stack([np.bincount(a,weights=N[b,c],minlength=len(V)) for c in range(3)])+N
+        N=S/np.maximum(np.linalg.norm(S,axis=1)[:,None],1e-12)
+    return N
+
+
+def _vnormals(V,F):
+    """area-weighted vertex normals"""
+    t=V[F]; n=np.cross(t[:,1]-t[:,0],t[:,2]-t[:,0]); out=np.zeros_like(V)
+    for k in range(3):
+        for c in range(3): out[:,c]+=np.bincount(F[:,k],weights=n[:,c],minlength=len(V))
+    return out/np.maximum(np.linalg.norm(out,axis=1)[:,None],1e-12)
+
+
+def _bary(P,T):
+    """barycentric coordinates of points P (n,3) in triangles T (n,3,3), clipped to the triangle"""
+    a,b,c=T[:,0],T[:,1],T[:,2]; v0=b-a; v1=c-a; v2=P-a
+    d00=(v0*v0).sum(1); d01=(v0*v1).sum(1); d11=(v1*v1).sum(1); d20=(v2*v0).sum(1); d21=(v2*v1).sum(1)
+    den=np.maximum(d00*d11-d01*d01,1e-20); y=(d11*d20-d01*d21)/den; z=(d00*d21-d01*d20)/den
+    bc=np.clip(np.column_stack((1-y-z,y,z)),0,1); return bc/np.maximum(bc.sum(1)[:,None],1e-12)
+
+
+def _floor_faces(m,V,F,mask):
+    """faces looking down (ny < -0.7) that lie 0-3 cm under the carrier of their column (in the emission mask)"""
+    if not len(F): return np.zeros(0,bool)
+    t=V[F]; c=t.mean(1); n=np.cross(t[:,1]-t[:,0],t[:,2]-t[:,0]); n/=np.maximum(np.linalg.norm(n,axis=1)[:,None],1e-15)
+    i=np.clip(np.rint((c[:,0]-m.u0)/m.g).astype(int),0,m.nu-1); j=np.clip(np.rint((c[:,2]-m.v0)/m.g).astype(int),0,m.nv-1)
+    Z=np.nan_to_num(m.Z,nan=-1e6)[j,i]
+    return (n[:,1]<-.7)&mask[j,i]&(c[:,1]<Z+.002)&(c[:,1]>Z-.03)
 
 
 def _side_knob(m,V,F):
@@ -1560,6 +1633,7 @@ def _dens(base):
 
 
 A7_ROCKFILL=True
+A7_BANDH=1.      # band: a column's own snow reaches this many depths (+1 cm) above its carrier; 0: no band
 A7_MINLAYER=.25 # every carrier keeps a layer of this share of the depth (8-20 mm), 0: none
 
 
@@ -1636,9 +1710,18 @@ def _a6_grid(m,plan):
     S=plan['Z'][mj[:,None],mi[None,:]]; sink=plan['sink'][mj[:,None],mi[None,:]]
     # the minimum layer (see _a7_tile): the carrier's surface, its sink and a taper to nothing over 4 cm at the edge
     dM=H.distance(M,int(math.ceil(.04/g))+2)*g
+    # (only up to about 45 degrees: on a steeper flank, a round log's side, the vertical layer of each column stood out
+    # as a comb of steps where the particle surface runs thinner)
+    nyl=m.NYF[mj[:,None],mi[None,:]]; ws=np.clip((nyl-math.cos(math.radians(50)))/(math.cos(math.radians(35))-math.cos(math.radians(50))),0,1)
     minlayer=dict(lo=np.where(M,S-sink,np.nan).T.astype(np.float32),top=np.where(M,S,np.nan).T.astype(np.float32),
-                  w=np.where(M,np.clip(dM/.04,0,1),0.).T.astype(np.float32))
-    source=np.arange(M.size).reshape(M.shape); floors={}; owners={}; dists={}
+                  w=np.where(M,np.clip(dM/.04,0,1)*ws,0.).T.astype(np.float32))
+    source=np.arange(M.size).reshape(M.shape); floors={}; owners={}; dists={}; bands={}
+    SF=np.where(M,S-sink,np.nan)
+    # levels: carriers joined by a continuous surface (a roof plane, both slopes of a ridge) are one level; the band
+    # only parts different levels (a sloping roof crumpled where its own upper slope counted as a higher carrier)
+    Sf=np.where(M,S,np.nan); stepmax=g*math.tan(math.radians(A5_STEEP))+.008
+    lx=M[:,:-1]&M[:,1:]&(np.abs(Sf[:,:-1]-Sf[:,1:])<=stepmax); lz=M[:-1]&M[1:]&(np.abs(Sf[:-1]-Sf[1:])<=stepmax)
+    lev,_nl=H.label(M,lx,lz); lev=np.where(M,lev,-1)
     for base,cloud in plan['clouds'].items():
         if base not in {s['base'] for s in plan['stages'].values()}: continue
         radius=cloud['R']
@@ -1652,10 +1735,21 @@ def _a6_grid(m,plan):
         owner=np.where(M,source,-1); dist=np.where(M,0.,np.inf)
         offsets=sorted((math.hypot(dj,di)*g,dj,di) for dj in range(-reach,reach+1)
                        for di in range(-reach,reach+1) if dj or di)
+        # the band (Opus, 6 Oct): a higher carrier's lip may not reach down onto a lower carrier's own snow (a pallet's
+        # cap onto a board lower down the stack, a table top onto its bench): in a column whose own snow tops out at
+        # its carrier + hcap, the lowest underside a higher neighbour's lip may have (its floor rising with distance)
+        # is kept apart from it; between the two no snow (only where they are apart: on stair treads at v7 they merge)
+        hcap=A7_BANDH*base+.01; up=np.full(M.shape,np.inf); owncap=np.where(M,S+hcap,np.nan)
         for distance,dj,di in offsets:
             if distance>radius+1e-9: continue
             own=H.sh(np.where(M,source,-1),dj,di,-1)
             take=(owner<0)&(own>=0); owner[take]=own[take]; dist[take]=distance
+            if A7_BANDH>0:
+                owncap[take]=(S+hcap).ravel()[own[take]]
+                zc=H.sh(SF,dj,di,np.nan)+A7_RISE*distance
+                ln=H.sh(lev,dj,di,-1); lo_=np.where(owner>=0,lev.ravel()[np.maximum(owner,0)],-2)
+                hi=np.isfinite(zc)&(zc>owncap)&(ln>=0)&(ln!=lo_)
+                up=np.where(hi,np.minimum(up,zc),up)
         floor=np.where(owner>=0,(S-sink).ravel()[np.maximum(owner,0)],-np.inf)
         rb=int(math.ceil(A7_FLOORBLUR*cloud['R']/g))
         if rb>0:
@@ -1669,12 +1763,13 @@ def _a6_grid(m,plan):
         # (a wide kernel averages far, high columns) and the thinner depths' lips showed under it as a flange
         if A7_RISE>0: floor=np.where((owner>=0)&~M,floor+A7_RISE*dist,floor)
         floors[base]=floor.T; owners[base]=owner; dists[base]=dist.T
+        if A7_BANDH>0: bands[base]=(np.where(np.isfinite(up),owncap,np.nan).T.astype(np.float32),up.T.astype(np.float32))
     for s in plan['stages'].values():
         D=s['D'][mj[:,None],mi[None,:]]; owner=owners[s['base']]
         # The rolled lip inherits the extension of its carrying surface.
         s['lattice_D']=np.where(M,D,D.ravel()[np.maximum(owner,0)]).T
     return dict(origin=origin,pitch=pitch,shape=shape,core=core,nb=nb,maxR=maxR,
-                extra=extra,tiles=tiles,floors=floors,dists=dists,minlayer=minlayer)
+                extra=extra,tiles=tiles,floors=floors,dists=dists,minlayer=minlayer,bands=bands)
 
 
 def _a6_vertical_max(F,D,gy):
@@ -1936,6 +2031,13 @@ def _a7_tile(plan,grid,tile,variants):
             fm=np.where(np.isfinite(lo)[:,None,:]&(hm>1e-4)[:,None,:],fm,-1.)
             current=np.maximum(current,fm)
         current=_smin(current,yy[None,:,None]-floor[:,None,:],max(.005,A7_FLOORK*stage['base']))
+        if stage['base'] in grid.get('bands',{}):
+            cap,up=(b_[sl] for b_ in grid['bands'][stage['base']]); bm=np.isfinite(cap)
+            if bm.any():
+                kb=max(.005,.15*stage['base'])
+                lower=_smin(current,np.where(bm,cap,1e3)[:,None,:]-yy[None,:,None],kb)
+                upper=_smin(current,yy[None,:,None]-np.where(bm,up,-1e3)[:,None,:],kb)
+                current=np.where(bm[:,None,:],np.maximum(lower,upper),current)
         if A7_OVL>0:
             # a pillow hangs over its carrier's edge by about a third of its depth at most: a post, bin or box keeps
             # a cap, not a mushroom. A smooth intersection, so the lip stays round
@@ -2076,7 +2178,12 @@ def prepare_a7(m,variants=tuple(range(1,8)),workers=4):
         steps={}; t0=time.perf_counter()
         V,F=_a3_weld(*mesh,1e-6,edge_keys=np.vstack(keys[v]));keys[v].clear();raw_count=len(F)
         report('a7_cleanup',v,raw_count); steps['weld']=time.perf_counter()-t0; t0=time.perf_counter()
-        inside=_a6_hidden(m,V); hidden=np.all(inside[F],axis=1); V,F=G._compact(V,F[~hidden])
+        inside=_a6_hidden(m,V); hidden=np.all(inside[F],axis=1)
+        # (Opus, 6 Oct) the cut along the floor under a single-sided sheet (a doghouse roof: 3 mm sink, under the 5 mm
+        # buried test) stayed: the cap was closed, had no foot and the prune dropped it whole. Downward faces just under
+        # the carrier of their own column are that cut
+        hidden|=_floor_faces(m,V,F,plan['mask'])
+        V,F=G._compact(V,F[~hidden])
         steps['hidden']=time.perf_counter()-t0; t0=time.perf_counter()
         if len(F):
             # small props stay smooth up close: the tolerance also shrinks with the size of the cap

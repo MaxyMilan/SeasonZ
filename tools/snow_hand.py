@@ -1954,7 +1954,9 @@ class Model:
             ax = Vt[0]
             pr = (P - c0) @ Vt.T
             ext = np.ptp(pr, axis=0)
-            if ext[0] >= 0.3 and ext[1] <= 0.3 and ext[2] <= 0.3 and ext[0] >= 4.0 * ext[1] and \
+            # (Opus, 6 Oct: up to 45 cm thick and 3.5 times as long: the 32-39 cm logs of a forest woodpile went to the
+            # metaball cap and hung blobs over their ends)
+            if ext[0] >= 0.3 and ext[1] <= 0.45 and ext[2] <= 0.45 and ext[0] >= 3.5 * ext[1] and \
                     0.55 <= ext[2] / max(ext[1], 1e-9) <= 1.8 and abs(ax[1]) < 0.77:
                 A_, B_, C_ = self.V[self.T[sel, 0]], self.V[self.T[sel, 1]], self.V[self.T[sel, 2]]
                 n = np.cross(B_ - A_, C_ - A_)
@@ -2137,12 +2139,15 @@ class Model:
                 fs = np.minimum(fs, np.convolve(np.pad(fs, 1, mode='edge'), [0.25, 0.5, 0.25], 'valid'))
         hs = np.minimum(hh, H0 * fs[:, None])
         da = max(1e-3, rmed * float(phis[1] - phis[0])) if k > 1 else 1.0
+        # (the taller round-off only on fence rails (class wall, at most 6.5 cm): on a 30 cm log in 23 cm of snow its
+        # steep flanks broke into a comb of vertical ribs)
+        lr_ = LOG_ROUND if self.kind == 1 else 0.85
         for _ in range(n_st + k):
             h0_ = hs
             hs = np.minimum(hs, np.vstack([hs[1:], hs[-1:] + 1e9]) + 0.7 * dsl)
             hs = np.minimum(hs, np.vstack([hs[:1] + 1e9, hs[:-1]]) + 0.7 * dsl)
-            hs = np.minimum(hs, np.hstack([hs[:, 1:], hs[:, -1:] + 1e9]) + LOG_ROUND * da)
-            hs = np.minimum(hs, np.hstack([hs[:, :1] + 1e9, hs[:, :-1]]) + LOG_ROUND * da)
+            hs = np.minimum(hs, np.hstack([hs[:, 1:], hs[:, -1:] + 1e9]) + lr_ * da)
+            hs = np.minimum(hs, np.hstack([hs[:, :1] + 1e9, hs[:, :-1]]) + lr_ * da)
             if np.allclose(h0_, hs):
                 break
         if n_st >= 3:
@@ -2964,6 +2969,32 @@ DECK_GAP = 0.12
 RIDGE_W = 1.1
 
 
+def _sky_share(m, p, n=160):
+    """the share of part p's upward faces (by projected area) that a vertical ray from above reaches first"""
+    from mathutils import Vector as Vec
+    sel = np.nonzero(m.part_t == p)[0]
+    if not len(sel):
+        return 0.0
+    A_, B_, C_ = m.V[m.T[sel, 0]], m.V[m.T[sel, 1]], m.V[m.T[sel, 2]]
+    w = 0.5 * np.cross(B_ - A_, C_ - A_)[:, 1]
+    up = w > 1e-9
+    if not up.any():
+        return 0.0
+    rng = np.random.default_rng(p)
+    k = rng.choice(np.nonzero(up)[0], size=n, p=w[up] / w[up].sum())
+    r1, r2 = rng.random(n), rng.random(n)
+    s1 = np.sqrt(r1)
+    P = (1 - s1)[:, None] * A_[k] + (s1 * (1 - r2))[:, None] * B_[k] + (s1 * r2)[:, None] * C_[k]
+    top = float(m.V[:, 1].max()) + 1.0
+    down = Vec((0.0, -1.0, 0.0))
+    seen = 0
+    for q in P:
+        hit = m.bvh_all.ray_cast(Vec((float(q[0]), top, float(q[2]))), down, 1e3)
+        if hit[0] is not None and int(m.part_t[m._all_t[hit[2]]]) == int(p) and hit[0].y > q[1] - 0.01:
+            seen += 1
+    return seen / float(n)
+
+
 def hybrid(m, variant):
     """the default: round rails and logs and straight beams get the hand-built crescents (log, beam), every other top
     the volumetric cap of snow_addon (a7) with those parts left out; a fence rail holds a clean continuous ridge where
@@ -2973,6 +3004,12 @@ def hybrid(m, variant):
         n = int(m.part_t.max()) + 1
         logs = [p for p in range(n) if m.is_log(p)]
         beams = [p for p in range(n) if p not in logs and m.is_beam(p)]
+        # (Opus, 6 Oct) a rail is a rail only where the sky sees it: the battens under a table top or bench seat, seen
+        # only through the slots, went to the crescents and - blocked for the cap - cut V-notches into the pillow over
+        # every slot. A board less than half seen from above stays with the cap (sky-tested there); a log (its crescent
+        # has its own shelter test: the lower rails of a fence under the top one) only when nearly hidden (under 10%)
+        logs = [p for p in logs if _sky_share(m, p) >= 0.1]
+        beams = [p for p in beams if _sky_share(m, p) >= 0.5]
         m._sz_rails = (logs, beams)
         if logs or beams:
             m._sz_exclude = tuple(logs + beams)
