@@ -1507,7 +1507,7 @@ def _a6_plan(m):
         extra=(d-base)*taper*np.minimum(1,width/max(d,1e-9))
         stages[v]=dict(depth=d,base=base,height=height,R=.54*height,D=extra,width=width)
         if base not in means:
-            means[base]=np.where(emit,50/height**2*m.g*m.g/np.where(gap,1.,np.maximum(m.NYF,.1))*np.where(gap,1.,fade),0.)
+            means[base]=np.where(emit,_dens(base)*50/height**2*m.g*m.g/np.where(gap,1.,np.maximum(m.NYF,.1))*np.where(gap,1.,fade),0.)
     rng=np.random.default_rng(SEED); rounding=rng.random(mask.shape)
     counts={b:np.floor(lam+rounding).astype(int) for b,lam in means.items()}
     maximum=np.maximum.reduce(list(counts.values()))
@@ -1537,6 +1537,16 @@ def _fftsize(n):
     """the smallest 2^a 3^b 5^c length >= n (pocketfft is fast there; a power of two wasted up to half)"""
     import bisect
     return _FFTSIZES[bisect.bisect_left(_FFTSIZES,n)]
+
+
+A7_DENSK=2.     # deep caps: particle density (and threshold) x (1 + A7_DENSK) at 23 cm, x1 at 5 cm
+
+
+def _dens(base):
+    """addonfine's density gives one lump per few particles in the kernel: on a 15 m roof the deep cap turned pitted
+    (each depth's own lumps crossing in the nested union). More particles with a proportionally higher threshold
+    keep the mean surface and calm the noise (1/sqrt of the factor)"""
+    return 1.+A7_DENSK*float(np.clip((base-.05)/.18,0,1))
 
 
 def _ovl(base):
@@ -1771,10 +1781,9 @@ def _a7_plan(m):
     # parts a recipe or snow_hand.hybrid hands elsewhere (_sz_exclude: rails/logs/beams with their own crescents) or
     # the only parts that hold snow (_sz_parts); blocked parts also get no spill from a neighbouring kernel
     allowed=getattr(m,'_sz_parts',None); excluded=tuple(getattr(m,'_sz_exclude',None) or ())
-    bench=getattr(m,'name','')=='misc_bench4'
-    if allowed is None and bench:
-        allowed=(10,11,16,17,18,19) # front/seat boards plus uppermost back board
-    blocked=excluded+((12,13,14,15) if bench else ())
+    # a recipe (tools/hand) names the parts that hold snow (_sz_parts) and the parts that must not receive any, not even
+    # a neighbour's spill (_sz_block: the curve into a bench's backrest)
+    blocked=excluded+tuple(getattr(m,'_sz_block',None) or ())
     original=m.tops
     if allowed is not None or excluded:
         keep=np.isin(m.PART,allowed) if allowed is not None else ~np.isin(m.PART,excluded)
@@ -1784,7 +1793,7 @@ def _a7_plan(m):
         volume=_a4_plan(m) if any(s['depth']>s['base']+1e-9 for s in surface['stages'].values()) else None
     finally:
         m.tops=original
-    clouds={b:dict(c,threshold=THRESHOLD) for b,c in surface['clouds'].items()}
+    clouds={b:dict(c,threshold=THRESHOLD*_dens(b)) for b,c in surface['clouds'].items()}
     stages={}
     for v,s in surface['stages'].items():
         d=s['depth']; base=s['base']; skin_key=base; volume_key=None
@@ -1801,7 +1810,7 @@ def _a7_plan(m):
             # a soft knee where the body thins below the skin (k 3 cm): the flank runs on smoothly instead of a step
             x=h-base; uplift=blend*np.minimum(.03*np.logaddexp(0,x/.03),1.15*(d-base))
             P[:,1]+=uplift[jj,ii]
-            skin.update(P=P,threshold=THRESHOLD); clouds[skin_key]=skin
+            skin.update(P=P,threshold=THRESHOLD*_dens(base)); clouds[skin_key]=skin
         stages[v]=dict(s,D=np.zeros_like(s['D']),skin_key=skin_key,volume_key=volume_key,blend=blend)
     return dict(surface,clouds=clouds,stages=stages,volume_bank_points=volume['bank_points'] if volume else 0,
                 bench_allowed_parts=list(allowed) if allowed is not None else None,blocked_parts=list(blocked))
