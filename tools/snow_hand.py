@@ -1052,8 +1052,12 @@ class Model:
                 if new.any():
                     Se, _ = extend(Sf, M2, new)
                     Ze, _ = extend(Zf2, M2, new)
+                    # Closing a joint may span a steep face omitted by tops().
+                    # Respect the real surface both as a blocker and a floor.
+                    new &= ~np.isfinite(Zm) | (Zm < Se - 0.003)
+                    Mcl = M2 | new
                     Sf = np.where(new, Se, Sf)
-                    Zf2 = np.where(new, Ze, Zf2)
+                    Zf2 = np.where(new, np.fmax(Ze, Zm), Zf2)
                 M, S, Zs = Mcl, np.where(Mcl, Sf, 0.0), np.where(Mcl, Zf2, 0.0)
         if rim == 'round':
             # deeper snow smooths the hollows of its outline (the notches between slat ends, the step where a slat
@@ -1087,6 +1091,36 @@ class Model:
         Sn = maxf(np.where(M, S, -np.inf), 2)
         Zn_ = maxf(np.where(M, Zs, -np.inf), 2)
         Wm = band & np.isfinite(Sn) & (Zmv > Zn_ + 0.7 * (Sn - Zn_))
+        # A height map of upward surfaces misses a slat's projecting lower lip.
+        # Treat an unburied down-facing lip as a plan obstacle, before making
+        # the outline and triangles; lowering a few finished vertices cannot
+        # keep the intervening facets off its underside.
+        lip_mask = np.zeros(M.shape, bool)
+        if not taper:
+            if not hasattr(self, '_down_lips'):
+                zd = np.full(self.Z.shape, -np.inf)
+                ti = np.full(self.Z.shape, -1, dtype=np.int64)
+                self._fill(zd, ti, self.good_t & (self.n_t[:, 1] < -0.3))
+                self._down_lips = zd, np.where(ti >= 0, self.part_t[np.maximum(ti, 0)], -1)
+            zd, pd = (a[sl] for a in self._down_lips)
+            reach = max(3, int(math.ceil((float(over) + 0.04) / g)))
+            sn = maxf(np.where(M, S, -np.inf), reach)
+            zn = maxf(np.where(M, Zs, -np.inf), reach)
+            lips = (zd > zn + 0.003) & np.isfinite(sn)
+            # The selected support parts are already accounted for by the
+            # surface field. Here we need the unselected neighbouring parts.
+            support_parts = np.unique(self.PART[sl][R[sl]])
+            for p in np.setdiff1d(np.unique(pd[lips]), support_parts):
+                if p < 0:
+                    continue
+                # A face already emerging through the snow is buried. A
+                # separate overhang has no exposed top below this snow level.
+                ptop = minf(np.where(self.PART[sl] == p, Zmv, np.inf), max(1, int(round(0.04 / g))))
+                lip_mask |= dilate(lips & (pd == p) & (ptop >= sn - 0.015), 1)
+            # The original sky-visible support remains an anchor. Projected
+            # lips constrain extrapolation around it, not its own top cells.
+            lip_mask &= ~dilate(R[sl], 2)
+            Wm |= lip_mask
         kw = int(math.ceil(0.25 / g)) + 3
         Wd = (distance(~Wm, kw) - 0.5) * g if Wm.any() else np.full(M.shape, 10.0)
         # ---------- the smooth measure of inside (gaussian; a wall counts as inside: full snow against it) ----------
@@ -1238,10 +1272,18 @@ class Model:
             Ys = gauss3(np.where(inR, Yr, 0.0), rs2) / nrm_
             if sfx.any():
                 Yd = Zx + gauss3(np.where(inR, Yr - Zx, 0.0), rs2) / nrm_
-                Ys = Ys * (1.0 - sfx) + Yd * sfx
+                sw = sfx * np.clip(-DE / (2.0 * g), 0.0, 1.0)
+                Ys = Ys * (1.0 - sw) + Yd * sw
             Ys = np.where(M, np.maximum(Ys, Zx + 0.3 * Hx), Ys)
             Ys = np.maximum(Ys, Ybr + 0.002)
-            Yr = np.where(inR, Ys, Yr)
+            support_floor = np.where(M & np.isfinite(Zm), Zm + 0.003, -np.inf)
+            Ys = np.maximum(Ys, support_floor)
+            for _ in range(3):
+                Ys = np.maximum(gauss3(np.where(inR, Ys, 0.0), rs2) / nrm_, support_floor)
+            # Smoothed contours need samples on both sides of their boundary.
+            # Mixing smoothed interior heights with the old exterior profile
+            # in a bilinear cell produces a dip at an otherwise round corner.
+            Yr = np.where(dilate(inR, 2), Ys, Yr)
         inD = F > 0
         cand_t = []
         Rc = np.zeros((0, 2))
@@ -1455,6 +1497,8 @@ class Model:
             _, ui = np.unique((Rp // st_).astype(np.int64), axis=0, return_index=True)
             cand_t.append(clear_of_rings(Rp[np.sort(ui)], max(0.6, 0.3 * spe / g)))
 
+        corner_fill = np.zeros((0, 2))
+
         def tri(cand, emin):
             C = np.vstack([c for c in cand if len(c)]) if any(len(c) for c in cand) else np.zeros((0, 2))
             if len(C):
@@ -1465,6 +1509,8 @@ class Model:
                 q = 0.6
                 _, ui = np.unique(np.round(C / q).astype(np.int64), axis=0, return_index=True)
                 C = C[np.sort(ui)]
+            if len(corner_fill):
+                C = np.vstack([C, corner_fill])
             pts = [tuple(p) for p in Pb] + [tuple(p) for p in C]
             edges = []
             k0 = 0
@@ -1583,6 +1629,60 @@ class Model:
                     return None
             if os.environ.get('SZ_DEBUG'):
                 print('  refine: %d passes, points %d' % (_it + 1, len(P2t)), flush=True)
+        # Height error alone misses a visible normal jump across a long or
+        # skinny facet. Refine where the continuous field disagrees with the
+        # two facets of a fold; keep the boundary and its rounded profile.
+        if not taper:
+            for _ in range(4):
+                yy = bilinear(Yr, P2t[:, 0], P2t[:, 1])
+                vv = np.column_stack([P2t[:, 0] * g, yy, P2t[:, 1] * g])
+                ff = Trt.copy()
+                nn = np.cross(vv[ff[:, 1]] - vv[ff[:, 0]], vv[ff[:, 2]] - vv[ff[:, 0]])
+                nn *= np.where(nn[:, 1] < 0, -1.0, 1.0)[:, None]
+                nn /= np.maximum(np.linalg.norm(nn, axis=1), 1e-15)[:, None]
+                ee = np.sort(np.concatenate([ff[:, [0, 1]], ff[:, [1, 2]], ff[:, [2, 0]]]), axis=1)
+                ids = np.tile(np.arange(len(ff)), 3)
+                order = np.lexsort((ee[:, 1], ee[:, 0]))
+                ee, ids = ee[order], ids[order]
+                same = np.all(ee[1:] == ee[:-1], axis=1)
+                ea, eb, edges_ = ids[:-1][same], ids[1:][same], ee[:-1][same]
+                ca = np.sum(nn[ea] * nn[eb], axis=1)
+                opp = ff[eb].sum(1) - edges_.sum(1)
+                valley = np.sum(nn[ea] * (vv[opp] - vv[edges_[:, 0]]), axis=1) > 1e-6
+                bad = (nn[ea, 1] > 0.7) & (nn[eb, 1] > 0.7) & (ca < np.where(valley, math.cos(math.radians(22)), math.cos(math.radians(32))))
+                if not bad.any():
+                    break
+                faces_ = np.unique(np.concatenate([ea[bad], eb[bad]]))
+                cp = P2t[ff[faces_]].mean(1)
+                cy = yy[ff[faces_]].mean(1)
+                err = np.abs(bilinear(Yr, cp[:, 0], cp[:, 1]) - cy)
+                cp = cp[err > 0.0005]
+                if not len(cp):
+                    break
+                old_mesh = P2t, Trt, bmt
+                cand_t.append(cp)
+                P2t, Trt, bmt = tri(cand_t, emin)
+                new_y = bilinear(Yr, P2t[:, 0], P2t[:, 1])
+                new_v = np.column_stack([P2t[:, 0] * g, new_y, P2t[:, 1] * g])
+                new_f = Trt.copy()
+                n_ = np.cross(new_v[new_f[:, 1]] - new_v[new_f[:, 0]], new_v[new_f[:, 2]] - new_v[new_f[:, 0]])
+                new_f[n_[:, 1] < 0] = new_f[n_[:, 1] < 0][:, [0, 2, 1]]
+                old_f = ff.copy()
+                old_n = np.cross(vv[old_f[:, 1]] - vv[old_f[:, 0]], vv[old_f[:, 2]] - vv[old_f[:, 0]])
+                old_f[old_n[:, 1] < 0] = old_f[old_n[:, 1] < 0][:, [0, 2, 1]]
+                old_score = fold_score(vv, old_f, np.zeros(len(vv), dtype=int))
+                if fold_score(new_v, new_f, np.zeros(len(new_v), dtype=int)) >= old_score - 1e-9:
+                    cand_t.pop()
+                    P2t, Trt, bmt = old_mesh
+                    break
+        # Three shared rim tips give a top and underside in exactly the same
+        # plane with opposite winding. Give that corner an interior sample so
+        # its top and underside can enclose thickness instead of z-fighting.
+        if not taper:
+            corner_tri = np.all(np.isin(Trt, bmt[~Bwall]), axis=1)
+            if corner_tri.any():
+                corner_fill = P2t[Trt[corner_tri]].mean(1)
+                P2t, Trt, bmt = tri(cand_t, emin)
         zt, Ht, det, ot, st_ = fields(P2t)
         Yt = bilinear(Yr, P2t[:, 0], P2t[:, 1])
         Xw = lambda P2: (self.u0 + (P2[:, 0] + ia) * g, self.v0 + (P2[:, 1] + ja) * g)
@@ -1712,6 +1812,26 @@ class Model:
                 return A + dv * (hits[0] + 0.006)
             return A + dv * min(hits[0] + 0.006, 0.5 * (hits[0] + hits[1]))
 
+        # A wall contact changes the footprint after the CDT. Limit a move
+        # before it crosses an incident triangle and turns the top inside out.
+        top_adj = collections.defaultdict(list)
+        for tri_ in Tt:
+            for q_ in tri_:
+                top_adj[int(q_)].append(tri_)
+
+        def wall_top(q_, target):
+            old = np.asarray(Vl[q_])
+            ids_ = np.asarray(top_adj[q_], dtype=np.int64)
+            cur = np.asarray(Vl)[ids_]
+            nxt = cur.copy()
+            nxt[ids_ == q_] = target
+            def area(a_):
+                return np.cross(a_[:, 1] - a_[:, 0], a_[:, 2] - a_[:, 0])[:, 1]
+            a0, a1 = area(cur), area(nxt)
+            bad = a1 < 0.5 * a0
+            fraction = min(1.0, float(np.min(0.5 * a0[bad] / np.maximum(a0[bad] - a1[bad], 1e-15)))) if bad.any() else 1.0
+            return tuple(old + fraction * (np.asarray(target) - old))
+
         # ---------- the curtain down a wall (and rough stone's thin edge) ----------
         FRS = (0.66, 0.33)
         k0 = 0
@@ -1743,9 +1863,17 @@ class Model:
                         x = float(np.clip(dd - 0.01 + (0.005 if nrw.y > -0.3 else -0.003), 0.0, 0.08)) if loc is not None \
                             else (xs[-1] if xs else 0.006)
                         x = min(x, 0.025 + 0.6 * hgt) if xcap is None else min(x, xcap + 0.003)
+                        # The horizontal hit can be behind the lip's leading
+                        # edge. Keep the whole wall strip outside its footprint.
+                        if lip_mask.any() and x > 0:
+                            for step_ in np.linspace(0.0, x, max(2, int(math.ceil(x / (0.25 * g))) + 1)):
+                                qi, qj = self.ij(pt[0] + nx_ * step_, pt[2] + nz_ * step_)
+                                if bilinear(lip_mask.astype(float), qi - ia, qj - ja) > 0.05:
+                                    x = max(0.0, step_ - 0.25 * g)
+                                    break
                         xcap = x
                         xs.append(x)
-                    Vl[vt] = (pt[0] + nx_ * xs[0], pt[1], pt[2] + nz_ * xs[0])
+                    Vl[vt] = wall_top(vt, (pt[0] + nx_ * xs[0], pt[1], pt[2] + nz_ * xs[0]))
                     for fr, x in zip(FRS, xs[1:3]):
                         q_ = resolve(Vl[vt], (pt[0] + nx_ * x, ys + hgt * fr, pt[2] + nz_ * x))
                         Vl.append(tuple(q_))
