@@ -1081,3 +1081,48 @@ time,name,sha256,note
 2026-10-06T21:50:47,medical_tent_shower,de36c307e3db609c070004965ae1cdb47cb972ac3b4bbc7fbf7fafbdd96c4e29,Volta recept (dak delen + ledges): tentdak bedekt. minor: blokkige kussens tussen de framebuizen
 2026-10-06T21:56:08,ruin_doorwall,d2d4d8c42ef773aa81e30b71af8c1828d3bc9d931daaa103309e4f4fa9907e5c,"ruw + helling 55 + ledges: kroon en treden bedekt, geen splinters meer. minor: twee kleine scherfjes op een breukvlak"
 2026-10-06T21:58:23,house_1w09,aa8222b0e505d269bf27a5279821e3a9e2443155deab2f4b938e425db37945ea,"dak gesloten bedekt, schoorsteenkap, nette lip. minor: enkele kleine bultjes op het dak bij v1-v2"
+2026-10-06T22:08:14,wall_stone2d,3c1fc5af86e8724265e54b65231a133947d0e185d73ace0e192390287a76d1b0,"kind 0 (prop-dieptes, zoals wall_stoned): kussentjes op de stenen, vanaf v4 een doorlopende zachte rug"
+2026-10-06T22:08:55,garage_row_big,93fd98432d48e82ad48c6a26afdc9806aff046586704f4e4289e8781e21e6ebf,"plat dak bedekt, nette lip. minor: kapjes op wandlampen"
+2026-10-06T22:08:56,sawmill_illuminanttower,0ff0d7782976fcb2030b4fe3215f6bd4f124a06e7ab7258149f6b430d4ccffd4,"platform bedekt, reling dun. minor: bolle kappen op de lampen"
+2026-10-06T22:08:56,pier_concrete2_end,b3d257e7896c46963980cce182cb39343f4656334ca69d18f03b2a982cc9b06d,pierkop gesloten bedekt
+2026-10-06T22:08:57,pier_wooden1,50131afd0242c35c38ae33452710a89657662e3132f6fd9a266ef6ab0afeedd5,"steigerdek gesloten bedekt, korte lip"
+2026-10-06T22:09:19,castle_wall1_end2_nolc,0194c531f15ef2c7e1c9cdf8b4504584998c858c9f1730c08a15f29b5dafe03f,kroonregel: kroon bedekt. minor: klontjes op lagere treden van de breuk
+2026-10-06T22:09:19,house_2b02,fa1bab2b2553616c1e9194e6822c830291a5ab4afe17abb3d1b11bed3eda9097,"schilddak bedekt, schoorsteenkapjes, nette lip. minor: licht gekreukt dak bij v1"
+2026-10-06T22:09:20,houseblock_2f8,ea34bc78fdbb82db1c6f3c63e0ed29b903c07dda4b9cd45bf773c8ee16fe2362,"dak bedekt, nette hoeken"
+2026-10-06T22:09:20,pier_crane_b,01e1a9539e8eb4a0c715b61e37abdd4b3a52f9198f1661f89ce9ce7b656d30a9,cabine en giek bedekt. minor: klont op het haakblok
+2026-10-06T22:09:21,houseblock_3f1,623f9eab9c35f1b6bbd8e1999f1132892adeb5fb4961601fe3d566ff9d126ac1,"dak bedekt, nette hoeken"
+2026-10-06T22:09:34,houseblock_1f_corner,c042d61a275b8554f38aa08dbfa0d2087d376f44c2e4fb8f1b7752a7e8598883,"daken bedekt, nette hoeken"
+2026-10-06T22:09:34,pier_concrete1_r30,1da6a131ea99a17a1db72da0143acea0ad1c181323df12258f9491d9e1fb016d,"pierdek bedekt, korte lip"
+2026-10-06T22:09:34,houseblock_2f3,0dc725895508cf45be5dae9fb7871369b1f81a2c8de5c46d8c0f41eef0c9574f,"daken bedekt, nette hoeken"
+2026-10-06T22:09:35,rail_concreteramp,9530f47911190c973453641242eb53c30eeceda8bd4ea89cac1a7ca554537f38,"laadperron bedekt, korte lip"
+2026-10-06T22:09:35,ship_big_backb,9431f2a0af3d4b3985a6e85fed3663ef88c224883f7a46f550a090c75403e324,dekken bedekt. minor: witte schuine plaat bij een sloep
+2026-10-06T22:09:36,ship_big_castle,79c786a109dc51db9c14913cfd7b3adbea63eb9b54b0cd16db7cfa1150b49d22,dekken en opbouw bedekt. minor: witte gebogen romp van een sloep
+2026-10-06T22:11:04,mine_rail_tram,f4ca1684f80f1b590884053ade4aabed75985390d069c5547e120e1f777eb391,"Russell recept: sneeuwlaag op de bodem van de bak, schone randkap"
+2026-10-06T22:11:04,misc_through_trailer,f27d9d7b5c4ba25d6e235bb7bfb8ef889f84e82a7d0d3d7bd46bdbceb1a70baf,"Russell recept (velden per deel): sneeuw in de trog en op de rand, geen klodder op de dissel"
+2026-10-06T22:11:05,wall_gate_cgry,b948d70d72079fb7671668ce0e80e336c039b55acca3b05a5dc0e5ee74cd8bce,"Russell recept (velden per dakhelft, SKYMIN .1): doorlopende kap. minor: lichte deuk bij de nok"
+2026-10-06T22:11:05,wreck_offroad02_aban2,645c97f88bf4bf2a7e25c5f977fb3c23c5d30d58de2abe1683294b7957b92063,"Russell recept: bullbar kaal (uitgesloten), motorkap en dak schoon bedekt"
+2026-10-06T22:11:19,mil_fortified_nest_watchtower,2df78fb9d4e5a33b777e25cdfbee4429531e46d2da7dd82e224961a148514493,"Volta/Russell recept (velden per net, ledges, kroon): dak en zandzakken bedekt. minor: sneeuw op de plooien van het afhangende camonet onder de dakrand"
+2026-10-06T22:37:58,airfield_lamp,013bf6146235c76306dd658232ddca3e7263c17b4e46d34808af49ed50eae4a7,kussentjes op de lampkasten. minor: bolle kap
+2026-10-06T22:37:59,castle_bastion_nolc,36a14c0091c93ffa716dff4446811accd37c20030824c2048e600f278d427cc4,"kroonregel: kroon bedekt, korte lip"
+2026-10-06T22:37:59,fuelstation_shed,f591af3c151d7c842bbc82099ee9555113ccc5b608082d83b8e7516ac113cbd6,luifeldak bedekt. minor: knopje op bordje
+2026-10-06T22:38:00,garage_big,1568f9e3320f6b388d0cfc2745dbef65db0145f919860a2a70e18cc7e2da7ce5,"dak bedekt, nette lip"
+2026-10-06T22:38:00,houseblock_3f2,63b3f544f27a1a796039cd530b12e6e0af9b28bc722ff91bd2f5c72319b50401,"dak bedekt, nette hoeken"
+2026-10-06T22:38:00,mil_barracks2,5b4c9cb6335d232435ac10d2cf549599f5769579eb8bd3452affff475f896d5c,"dak bedekt, schoorsteenkapjes"
+2026-10-06T22:38:01,pier_concrete1_cornerout,cf08e3a0942e9520dd1816b6bb3795f35d2a1dc0160990f670fa0081e2a81599,pierdek bedekt
+2026-10-06T22:38:02,rail_bridge_40,d5158d1f139708ad9817a98fa6b4f59968679c82a069a649ae6f2e2458d3ad37,"brugdek en landhoofden bedekt, vakwerk kaal"
+2026-10-06T22:38:02,rail_warehouse_small,96a1d5087809f30f9714b67c33896e96dda2fa80f491bdc0cb4694a46842bf0d,dak en laadperron bedekt
+2026-10-06T22:43:46,house_2w03,a75541645a1a299471aea3af272cdfc9f14389caaccb8b5b41f6ba29b92b02d3,"deken-recept (H.auto): schilddak bij elke diepte gesloten bedekt, nette goot, dunne strookjes op lijsten. minor: weinig zichtbare groei v1-v7"
+2026-10-06T22:43:46,house_2w03_brown,96f4492f96c74322b3ab282674dd5d4b7581193676e882248c15698a8353d3cf,"deken-recept (H.auto): schilddak bij elke diepte gesloten bedekt, nette goot, dunne strookjes op lijsten. minor: weinig zichtbare groei v1-v7"
+2026-10-06T22:48:22,castle_stairs_nolc,3c427b7a0726b531a2bd296ff80fe05cdc1ee10faf60372799e6090fb31c473a,"b1 standaard: treden, bordes en leuning dicht van v1 tot v7; minor: kapje op een paaltop van het bordes wat bolvormig"
+2026-10-06T22:48:22,cementworks_hall1,c4bcb4b26dbefb6750848b77be92dedbca89d9c0702dcc3af7fba805fec26a81,"b1 standaard: beide dakvlakken en de lichtstraat dicht, nette overhang aan de goot, geen druppels"
+2026-10-06T22:48:23,cementworks_hall2_grey,b653d96c44e61cc6990efc52fddd31d4cd53b67d6e16922584841f09195b9119,"b1 standaard: plat dak en aanbouw dicht, strakke rand op de hoeken"
+2026-10-06T22:48:23,mil_barracks3,31fe951e5d80ebe57220f29e7d353b6fa7f0be1e552597776c1cd84a53b8dd9e,"b1 standaard: dak en nok dicht v1-v7, schoorsteenkap; minor: doorschijnende grijze strook in c3 is een renderartefact (mesh: niets boven 2,3 m behalve de schoorsteen, niets onder de dakrand)"
+2026-10-06T22:48:24,pier_concrete1_l30,e8ba9d1fd1c0dd3cf4b80cd2c312932371b0fea07de69a51cc948f3a1a824e29,"b1 standaard: kap op de pijlertop met golvende rand; de a-camera kijkt naast de top, c2/c3/l tonen hem schoon"
+2026-10-06T22:48:24,prison_wall_small,82d888393a164ff372b46a20e2c1294fc294b0913dcf79985c86b2f4273fa519,b1 standaard: muurkap dicht om de prikkeldraadpalen heen
+2026-10-06T22:48:25,ruin_house_total,9fcddd5f271730e18922b84b94899c89901684f2d657c199f857c5dd617a2f5f,"b1 standaard: muurtoppen en puin met sneeuw, breuklijnen gevolgd; minor: lint over een schuine breukrand"
+2026-10-06T22:48:25,ruin_houseblock_total,76d084791f1078b8337510b6e04c907235e1cc3c88f9c84bedc745596e2ae22b,b1 standaard: puinhoop raakt dicht bedekt bij v7; minor: enkele facetten op puinkappen in close-up
+2026-10-06T22:48:26,village_policestation,68dc51423726feb3f9d44f134381d60f008a6303a5ebaacc15d2efc3fb84b9e3,"b1 standaard: plat dak binnen de reling, ronde opbouw met kap, luifel boven de deur"
+2026-10-06T22:48:27,house_2w03,a75541645a1a299471aea3af272cdfc9f14389caaccb8b5b41f6ba29b92b02d3,"c71 H.auto: schilddak dicht van v1 tot v7, kraag op de lijst eronder, geen scheuren of sterren op de hoeken"
+2026-10-06T22:48:27,house_2w03_brown,96f4492f96c74322b3ab282674dd5d4b7581193676e882248c15698a8353d3cf,"c71 H.auto: zelfde model als house_2w03, zelfde schone kap"
+2026-10-06T22:55:32,tent_boxwooden,44e0a5da6c9ebc23662e57e5e2b33848d48e36f252cb7275dbaa344b1a2fdbdc,"Expansion: zelfde geometrie als misc_boxwooden (driehoekshash op 1 cm), diens goedgekeurde kap (lid van misc_boxwooden)"
+2026-10-06T22:55:32,tent_table,5de55f119ae66b0ed4bea2a300964f6ff107b37f4c44e71950831f1bf7887745,"Expansion: zelfde geometrie als misc_table_camp (driehoekshash op 1 cm), diens goedgekeurde kap (lid van misc_table_camp)"
