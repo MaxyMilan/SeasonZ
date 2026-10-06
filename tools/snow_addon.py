@@ -1254,7 +1254,7 @@ def _err_decimate(V,F,cap,tol,floor=200):
 A7_NTOL=20.     # the simplified cap's smooth normals stay within this many degrees of the dense cap's (95th pct); 0: off
 
 
-A7_BEAUTY=True  # edge flips after the decimation: fewer slivers, whose smooth shading read as facets
+A7_BEAUTY=False # edge flips after the decimation: fewer slivers, whose smooth shading read as facets
 
 
 def _beautify(V,F):
@@ -1722,6 +1722,9 @@ def _a6_grid(m,plan):
     Sf=np.where(M,S,np.nan); stepmax=g*math.tan(math.radians(A5_STEEP))+.008
     lx=M[:,:-1]&M[:,1:]&(np.abs(Sf[:,:-1]-Sf[:,1:])<=stepmax); lz=M[:-1]&M[1:]&(np.abs(Sf[:-1]-Sf[1:])<=stepmax)
     lev,_nl=H.label(M,lx,lz); lev=np.where(M,lev,-1)
+    # (and only between different parts: a pallet over a pallet, a table top over its bench. On one rock the band cut
+    # the cap of a higher facet over a lower one into a flap)
+    PG=np.where(M,m.PART[mj[:,None],mi[None,:]],-1)
     for base,cloud in plan['clouds'].items():
         if base not in {s['base'] for s in plan['stages'].values()}: continue
         radius=cloud['R']
@@ -1748,7 +1751,8 @@ def _a6_grid(m,plan):
                 owncap[take]=(S+hcap).ravel()[own[take]]
                 zc=H.sh(SF,dj,di,np.nan)+A7_RISE*distance
                 ln=H.sh(lev,dj,di,-1); lo_=np.where(owner>=0,lev.ravel()[np.maximum(owner,0)],-2)
-                hi=np.isfinite(zc)&(zc>owncap)&(ln>=0)&(ln!=lo_)
+                pn=H.sh(PG,dj,di,-1); po=np.where(owner>=0,PG.ravel()[np.maximum(owner,0)],-2)
+                hi=np.isfinite(zc)&(zc>owncap)&(ln>=0)&(ln!=lo_)&(pn>=0)&(pn!=po)
                 up=np.where(hi,np.minimum(up,zc),up)
         floor=np.where(owner>=0,(S-sink).ravel()[np.maximum(owner,0)],-np.inf)
         rb=int(math.ceil(A7_FLOORBLUR*cloud['R']/g))
