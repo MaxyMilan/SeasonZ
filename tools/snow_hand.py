@@ -3132,6 +3132,53 @@ def hybrid(m, variant):
     return join([hand, A.build(m, variant)])
 
 
+def fence_auto(m, v):
+    """(Opus, 6 Oct) a fence or gate without a recipe of its own, built as the hand recipes of its family: a round rail
+    its log crescent, a flat rail its beam ridge, every sawn plank or post top (a four-cornered cut) its cushion
+    (snow_parts), anything else with a real top (150 cm2 or more: a pillar, a coping) the addonfine pillow. In the
+    volumetric cap alone the thin top rails of gates and the plank tops of fence ends stayed bare (r10)"""
+    import snow_addon as A
+    from snow_parts import cushion
+    if not hasattr(m, '_sz_fence'):
+        n = int(m.part_t.max()) + 1
+        logs = [p for p in range(n) if m.is_log(p) and _sky_share(m, p, slant=True) >= 0.1]
+        beams = [p for p in range(n) if p not in logs and m.is_beam(p) and _sky_share(m, p) >= 0.5]
+        rest = [p for p in range(n) if p not in logs and p not in beams and part_top_area(m, p) > 0.0002]
+        cush = [p for p in rest if cushion(m, p, 4) is not None]
+        strips, big = [], []
+        seen = set(int(x) for x in np.unique(m.PART[m.valid]) if x >= 0)
+        for p in sorted(seen | set(rest)):
+            if p in cush or p in logs or p in beams:
+                continue
+            # (a gate's top rail - a diamond or round bar with no face looking up, so no 'top' of its own - is what the
+            # sky sees of the gate: a long strip 3-8 cm wide seen from above gets a ridge, unless it leans like a brace;
+            # a post with a pointed or bevelled head the pillow)
+            js, iis = np.nonzero((m.PART == p) & m.valid)
+            if len(js) >= 3:
+                X = np.column_stack(m.xz(iis, js)).astype(float)
+                _, _, Vt = np.linalg.svd(X - X.mean(0), full_matrices=False)
+                pr = (X - X.mean(0)) @ Vt.T
+                ext = np.ptp(pr, axis=0)
+                if ext[0] >= 0.3 and ext[1] <= 0.085:
+                    if abs(float(np.polyfit(pr[:, 0], m.Z[js, iis], 1)[0])) <= 0.45:
+                        strips.append(p)
+                    continue
+            if part_top_area(m, p) >= 0.002:
+                big.append(p)
+        m._sz_fence = (logs, beams, cush, strips, big)
+        m._sz_rails = ([], [])
+        m._sz_parts = tuple(big)
+        m._sz_block = tuple(logs + beams + strips)
+    logs, beams, cush, strips, big = m._sz_fence
+    out = [m.log(p, v) for p in logs] + [m.beam(p, v) for p in beams] + [cushion(m, p, v) for p in cush]
+    for p in strips:
+        own = (m.PART == p) & m.valid & (m.Z >= m.ground + 0.25)
+        out += [m.ridge(R_, v) for R_, Zc in m.regions(own, v, close=0.0, min_area=0.002)]
+    if big:
+        out.append(A.build(m, v))
+    return join(out)
+
+
 def auto(m, variant, **style):
     """the plain recipe: every surface the snow reaches, each region its blanket"""
     logs = [p for p in range(int(m.part_t.max()) + 1) if m.is_log(p)]
@@ -3168,6 +3215,8 @@ def build(m, variant):
         return snow_signs.build_auto(m, variant)
     if os.environ.get('SZ_DEFAULT', 'addon') == 'addon':
         # the volumetric metaball cap (snow_addon) is the default since v0.5.1; SZ_DEFAULT=auto for the old blanket
+        if m.kind == 1 and os.environ.get('SZ_FENCEAUTO'):
+            return fence_auto(m, variant)
         bt = float(os.environ.get('SZ_BIGTOPS') or 0)
         if bt > 0 and m.kind != 1:
             # (Opus, 6 Oct) a run of buildings: only parts with at least this much top (m2) hold snow; brackets,
