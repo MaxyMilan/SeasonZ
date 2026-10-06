@@ -2992,6 +2992,21 @@ def big_tops(m, v, min_top):
     return hybrid(m, v)
 
 
+def consts(m, v, fn=None, **c):
+    """build with some snow_addon constants changed for this model only, restored afterwards (a mass build runs many
+    models in one process): (Opus, 6 Oct) e.g. A7_OVL for a block whose deep pillow rolled out as a mushroom, A7_BANDH=0
+    for a roof of battens the band cut into terraces. fn: the builder (default hybrid)"""
+    import snow_addon as A
+    old = {k: getattr(A, k) for k in c}
+    for k, x in c.items():
+        setattr(A, k, x)
+    try:
+        return (fn or hybrid)(m, v)
+    finally:
+        for k, x in old.items():
+            setattr(A, k, x)
+
+
 def post_tops(m, v, posts, logs, min_area=0.0012, reach=0.03):
     """small blankets on the sawn tops of fence posts (wall_woodf family); (Opus, 6 Oct) a post top a rail rests on or
     passes over shows only a sliver beside the rail: its blanket stood out as a white flange at the crossing by v7. A
@@ -3062,6 +3077,30 @@ def _sky_share(m, p, n=160, slant=False):
     return seen / float(n)
 
 
+def _thin_ridges(m, variant, rails):
+    """(Opus, 6 Oct) the strips snow_addon leaves out as too narrow for its kernel (A7_THIN: handrails, thin bars) get
+    a ridge as high as they are wide (ridge: straight strips only; a curl stays bare rather than grow a sausage). Not
+    where a wider top lies within 10 cm (its lip covers a gutter or trim) or a log/beam crescent runs"""
+    import snow_addon as A
+    if A.A7_THIN <= 0 or m.kind == 1:
+        return []
+    thin = A._thin_cells(m)
+    if not thin.any():
+        return []
+    T = thin & m.tops(variant)
+    allowed = getattr(m, '_sz_parts', None)
+    if allowed is not None:
+        T &= np.isin(m.PART, list(allowed))
+    blocked = tuple(getattr(m, '_sz_block', None) or ()) + tuple(rails)
+    if blocked:
+        T &= ~dilate(np.isin(m.PART, list(blocked)) & m.valid, max(1, int(round(0.02 / m.g))))
+    wide = m.tops(4, slope=False) & ~thin
+    T &= ~dilate(wide, max(1, int(math.ceil(0.10 / m.g))))
+    if not T.any():
+        return []
+    return [m.ridge(R_, variant) for R_, Zc in m.regions(T, variant, close=0.0, min_area=0.002)]
+
+
 def hybrid(m, variant):
     """the default: round rails and logs and straight beams get the hand-built crescents (log, beam), every other top
     the volumetric cap of snow_addon (a7) with those parts left out; a fence rail holds a clean continuous ridge where
@@ -3081,7 +3120,7 @@ def hybrid(m, variant):
         if logs or beams:
             m._sz_exclude = tuple(logs + beams)
     logs, beams = m._sz_rails
-    hand = join([m.log(p, variant) for p in logs] + [m.beam(p, variant) for p in beams])
+    hand = join([m.log(p, variant) for p in logs] + [m.beam(p, variant) for p in beams] + _thin_ridges(m, variant, logs + beams))
     if hand is not None and len(hand[1]) > 400:
         # the crescents are built fine; thin them to the same 2.5 mm the volumetric caps keep (a rail is a long ridge)
         # (a fence (class wall) is placed thousands of times: its crescents get 1500 triangles at most)
@@ -3118,13 +3157,22 @@ def build(m, variant):
     r = recipe(m.name)
     if r is not None:
         return r.build(m, variant)
-    if m.name.startswith('sign_'):
+    if m.name.startswith('trailsign_') or m.name.startswith('trailmap_'):
+        # (Opus, 6 Oct) the hiking trail signs: a little pitched roof over an open gable; the roof's lip hung down across
+        # the gable openings as ribbed curtains by v4-v7 (r10). A short lip: 15% of the depth (+1 cm), sinking 1.6 cm
+        return consts(m, variant, A7_OVL=0.15, A7_LIPDROP=0.05)
+    if m.name.startswith('sign_') or m.name.startswith('bilboard_'):
         # (Opus, 6 Oct) road signs: their 4 mm plates and 6 cm posts are under the lattice of the volumetric cap and
         # stayed bare; snow_signs builds the edge ridge and post caps on their own faces
         import snow_signs
         return snow_signs.build_auto(m, variant)
     if os.environ.get('SZ_DEFAULT', 'addon') == 'addon':
         # the volumetric metaball cap (snow_addon) is the default since v0.5.1; SZ_DEFAULT=auto for the old blanket
+        bt = float(os.environ.get('SZ_BIGTOPS') or 0)
+        if bt > 0 and m.kind != 1:
+            # (Opus, 6 Oct) a run of buildings: only parts with at least this much top (m2) hold snow; brackets,
+            # antennas, handles and bolts grew knobs and pendants under the roof's lip (m1 houses)
+            return big_tops(m, variant, bt)
         return hybrid(m, variant)
     return auto(m, variant)
 

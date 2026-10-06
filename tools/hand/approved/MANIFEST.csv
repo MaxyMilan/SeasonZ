@@ -500,3 +500,184 @@ time,name,sha256,note
 2026-10-06T15:36:05,container_2d,7b4128b9a068640ab49a05e06a46c87c20663c7341c7473ffae18e7c10c21ad0,"c31 recept H.big_tops (>=150 cm2): dakkussen rolt schoon over de deurzijde, grendels/hendels kaal, randjes op blootliggende lagere containerranden; groeit v1-v7"
 2026-10-06T15:36:05,container_1d,489d08084f7687640cf53ac498ab71e94b4cb36d8319d9b9a498de329d25ade0,"c31 recept H.big_tops (>=150 cm2): dakkussen rolt schoon over de deurzijde, grendels/hendels kaal, randjes op blootliggende lagere containerranden; groeit v1-v7"
 2026-10-06T15:36:05,container_1aoh,bf2b4d83bd11bc38c46ace56f9eb248615e8762e9045c166685bbf48a5035c02,"c31 recept H.big_tops (>=150 cm2): dakkussen rolt schoon over de deurzijde, grendels/hendels kaal, randjes op blootliggende lagere containerranden; groeit v1-v7"
+2026-10-06T15:36:50,wall_garbcont,be195a9ea311cfcf6c451d22c8041ade7f267feed4fdff73700b15a92e65a509,"r10: rug op de muurkap rolt over beide randen, groeit v1-v7"
+2026-10-06T15:36:50,wall_cyel_5,11f47c6a16960b65fab695739ebde01293e7f1e14f52fe1f26e4eaa6763672cb,"r10: rug op de muurkap rolt over de afdekrand, groeit v1-v7"
+2026-10-06T15:36:50,wall_indvar1_pole,b4f851431a3641ac092c56b0d7a3fbe15fce062491246dfdc492220b4990ea23,"r10: pijlerkap rolt over de afdekrand, groeit v1-v7"
+2026-10-06T15:36:50,wall_wood2_5_d,2a63eaed02c680534c2eb79e5e3cdd09b3400023201ea9493b4f6b190b80f22e,"r10: paalkap vanaf v1, gebroken planken kaal"
+2026-10-06T15:36:50,shed_w2,962f5f2f56c5a38d95697d7fa1a481c47aa4fbc4828d37af9c3a6d285fd6eae2,"r10: dakkussen rolt over de rand, rug op de schuin geleunde plank, groeit v1-v7"
+2026-10-06T15:37:23,roadblock_bags_long,bb62287b1ea88ab9b58830845cc308a860dee95ca5803b8d506db7cbc3485f91,"r10: kussen op de zandzakkenwal rolt over de rand, zakken eronder kaal, groeit v1-v7"
+2026-10-06T15:37:24,tank_small_rusty,718216a3385a010b7a9951602a843dfddcc3d2b1efeaa8493e2a16ecaed8bd0f,"r10: kap over de bovenkant van de liggende tank met mangatdeksel ingesneeuwd, flanken kaal, groeit v1-v7"
+2026-10-06T15:37:24,tank_small_white,718216a3385a010b7a9951602a843dfddcc3d2b1efeaa8493e2a16ecaed8bd0f,"r10: kap over de bovenkant van de liggende tank met mangatdeksel ingesneeuwd, flanken kaal, groeit v1-v7 (lid van tank_small_rusty)"
+2026-10-06T15:37:24,wall_indcnc_end_3,0b2bbc5b63f681aeb36416a67f3f6849cb4753644bf88b483531107fe6fd655d,"r10: kappen op de losse paneelstukken, rollen over de randen, groeien v1-v7"
+2026-10-06T15:37:24,shed_w1,25d6a19b2c7cec0db13c2237f710e3d286335a2c0a48f5b7742b605b49f3a9d3,"r10: dakkussen en apart kussen op het lage afdakje, geen samenvloeien, groeit v1-v7"
+2026-10-06T15:37:24,misc_bagfence_3m,4f471b56c6ae359bf06b1c6396fe78e65b12eba9e0a143eac85a2395b139bcba,"r10: kussen op de zakkenrij rolt over de rand, groeit v1-v7"
+2026-10-06T15:39:11,container_1a,0e7413f43a3655c024e7ca44fb1644c7c0a3853742f4e42e959e03e83aa0a5e5,"c31 recept H.big_tops: dakkussen rolt schoon over de deurzijde, grendels/hendels kaal, groeit v1-v7"
+2026-10-06T15:39:11,container_1b,6e640749891c79fa5ec5ba426525e824f5422e3ddcd127b116fc7119d913a8a8,"c31 recept H.big_tops: dakkussen rolt schoon over de deurzijde, grendels/hendels kaal, groeit v1-v7"
+2026-10-06T15:39:11,container_1moh,0d40cdd8bb69b987b5ccccf37bbd1dd389b44de3e52424808250640c895c7b7c,"c31 recept H.big_tops: dakkussen rolt schoon over de deurzijde, grendels/hendels kaal, groeit v1-v7"
+2026-10-06T15:40:17,wall_indfnc_corner,ddb2dd1207950c6bbfa88afeb3b58dd311f39b06a3c4e3dd337cd5d1edca8ad7,"r10: kap op het geknikte paaleinde, groeit v1-v7"
+2026-10-06T15:40:17,roadblock_bags_curve,52f9a74540497248d3c6ac17c3c0659e2f325cb7dfd1d2ba5267f2d73db6fc1e,"r10: kussen op de gebogen zandzakkenwal rolt over de rand, groeit v1-v7; minor: kleine vinnetjes in de kap bij v7 (close c2)"
+2026-10-06T15:40:17,pipe_small_ground2,a724ddd416a5795f7787f1a5cf1364314fbd3ad2eefb062f0972cd96f3457ad3,"r10: rug op de liggende buis met ronde eindjes, groeit v1-v7"
+2026-10-06T15:40:17,water_station,d3d69b61ffc0a40db14c6df9eec503c3d05c190ecb84cb37b4a8d43bc1a994f6,"r10: dakkussen binnen de opstaande rand, rug op de rand, kapjes op de zijbuisjes; groeit v1-v7"
+2026-10-06T15:40:18,tenement_small_entry,814b56f8a86c0ad47799df002a6ecf3582efcaa878df923bbdfc1f02a113a14c,"r10: v1-v3 ruggen per trede, vanaf v4 een gladde helling met ruggen op de zijwangen; groeit v1-v7"
+2026-10-06T15:40:18,container_2e,95ccb4f31d3ec6db717eb96a79621260b204928671d2395df9ee0ee076665d34,c31 recept H.big_tops: dakkussen en strook op de onderste containerrand; minor: trapje in de bovenlip (laag v7)
+2026-10-06T15:42:08,misc_trailroof_small,e930fe95e659ed265960ae3e848c99691a77bc7a52e8f69bc8a6c97662ea891e,"r10: dakkussen rolt over de rand, bank en tafel onder het dak kaal, groeit v1-v7"
+2026-10-06T15:42:08,stone5_trail_r,e7de5e747009a9db3cd6c80c41fc57b589a92ef922dbee10748d8c33d0202fe0,"r10: kussen over de rots, groeit v1-v7; minor: brede lip bij v7"
+2026-10-06T15:42:08,stone5_trail_g,e7de5e747009a9db3cd6c80c41fc57b589a92ef922dbee10748d8c33d0202fe0,"r10: kussen over de rots, groeit v1-v7; minor: brede lip bij v7 (lid van stone5_trail_r)"
+2026-10-06T15:42:08,stone5_trail_b,e7de5e747009a9db3cd6c80c41fc57b589a92ef922dbee10748d8c33d0202fe0,"r10: kussen over de rots, groeit v1-v7; minor: brede lip bij v7 (lid van stone5_trail_r)"
+2026-10-06T15:42:08,stone5_trail_y,e7de5e747009a9db3cd6c80c41fc57b589a92ef922dbee10748d8c33d0202fe0,"r10: kussen over de rots, groeit v1-v7; minor: brede lip bij v7 (lid van stone5_trail_r)"
+2026-10-06T15:42:08,misc_well_pump_yellow,bc750f4b45368385951d061c4752a78a4093f230df6dbe8680ad72e1849f2755,"r10: kussen op het putdeksel, kapje op de pompkop; minor: klontje op de tuit bij v7"
+2026-10-06T15:42:36,misc_carousel,e1b057b76d93798790471e75fa4780b7e686544421ee5d464981bd3a34044b75,r10: kussen op de ronde vloerrand en kapje op de mastkop; stangen kaal; groeit v1-v7
+2026-10-06T15:42:36,misc_table_camp_small,88431715137f56a4d70c787ed0397e6cba43548f9515d5668ae3dbbb3eed83a8,"r10: kussen op het tafelblad rolt over de rand, poten kaal; groeit v1-v7"
+2026-10-06T15:42:36,misc_bagfence_corner,e9182d83228616142b1d39e3837d5a5ed55920860a60fa9974eaac22cc83ede5,r10: kussen op de zakkenwal rolt over de rand; groeit v1-v7
+2026-10-06T15:42:36,misc_cover_small,70c3c724fc582daea938b0932db4d4f1696f347f7a994cb0cd1a805438fe1efd,"r10: kussens op de rotsruggen, flanken kaal; groeit v1-v7"
+2026-10-06T15:42:37,misc_range_pistol,74d327deaab098ce3e0240372445c1ddbf98c2c302a10a76b40ec7de07e10388,r10: kapjes op paaltoppen en ruggen op de liggers; doelen kaal
+2026-10-06T15:42:37,monument_wall,1ff2b9b655b94ee3347118f0755db89bf1a65092fccf29858fef51f27f5c0af6,r10: rug op de muurkap en strook op de sokkel; groeit v1-v7
+2026-10-06T15:42:37,swan_white_cab,200b0fd266e218c070076590b10ecc6b54cc1bca9195285626c1614373674cf0,r10: kussen op de boot en kapje op de hals; minor: dikke kap op de kop bij v7
+2026-10-06T15:46:17,house_2b01,4834fe1e20aeab4247ac08534f7f09546843e6fd51973b7bd1e20e23f13d779a,minor: kleine facetjes aan dakhoeken bij v7; dak rolt mooi over de goot
+2026-10-06T15:46:17,ruin_corner2,d76155e8a581139153dde50842ef213c4ad6268f691afac15e76928dc1fc5f43,minor: kussens op gebroken muurtop wat hoekig bij v7
+2026-10-06T15:46:18,workshop2,ad12ab85ec413196f11ff0aaa4e38e3b506c81662c4302c794897e2e9d885722,minor: klein puntflapje aan een dakhoek naast de goot bij v7
+2026-10-06T15:46:18,guardhouse,d8f35375aa1ee54ccaa0c108d5800e4cdc7e961d88a8e5fe30e5da2423123fde,minor: klein splintertje bij een dakhoek bij v7
+2026-10-06T15:46:19,platform2_stairs_30_walll,9b6cfe0381b7dd5b0815d336858b07f6e548344987409cf9bc4ebb165e92c0f0,minor: twee dunne splintertjes onder de bovenrand bij v4
+2026-10-06T15:46:19,platform1_stairs_30_walll,9b6cfe0381b7dd5b0815d336858b07f6e548344987409cf9bc4ebb165e92c0f0,minor: twee dunne splintertjes onder de bovenrand bij v4 (lid van platform2_stairs_30_walll)
+2026-10-06T15:46:19,wall_indvar1_5_2,22ce22890d16ff9f60f6228fdbdc3b3ed6f42c17c597a7212602eef5d96150ef,minor: enkele kleine tandjes aan de onderrand van de muurrug bij v7
+2026-10-06T15:46:19,busstation_roof_long,d2bbda567bbd412fe283afdfb771490703eaef00165074dd3843e9b02eec554a,"kussen groeit gelijkmatig, nette rand; v1 wat zwaar (7,9k)"
+2026-10-06T15:46:20,wall_fenw_7_d,68f57228d899fc72b4780e7cf4adce47acaf41b3081adf3a16454ee5b8e4cda5,"paaltop-dekentje bescheiden en rond, groeit mee"
+2026-10-06T15:46:20,cihly4,95184d967558b53d6fcc1ec0d208f42c174a706e69c29e874130bf38852a0979,kussen op stenenpallet rolt over de rand
+2026-10-06T15:49:41,farm_manurepile,,SKIP een mesthoop is warm: sneeuw smelt erop; de grondsneeuw ligt eromheen
+2026-10-06T15:49:42,misc_tirepile,,SKIP gestapelde banden: een kap zou als laken over de gaten van de banden liggen
+2026-10-06T15:49:42,misc_tirepile_group,,SKIP gestapelde banden: een kap zou als laken over de gaten van de banden liggen
+2026-10-06T15:49:42,misc_tirepile_large,,SKIP gestapelde banden: een kap zou als laken over de gaten van de banden liggen
+2026-10-06T15:49:42,dead_massgrave,,SKIP hoop lichamen: een kap zou als laken de ruimtes tussen ledematen overbruggen
+2026-10-06T15:49:43,dead_pile1,,SKIP hoop lichamen: een kap zou als laken de ruimtes tussen ledematen overbruggen
+2026-10-06T15:49:43,dead_pile2,,SKIP hoop lichamen: een kap zou als laken de ruimtes tussen ledematen overbruggen
+2026-10-06T15:49:43,dead_pile3,,SKIP hoop lichamen: een kap zou als laken de ruimtes tussen ledematen overbruggen
+2026-10-06T15:49:44,dead_pile4,,SKIP hoop lichamen: een kap zou als laken de ruimtes tussen ledematen overbruggen
+2026-10-06T15:49:44,mil_blastcover2_grass,,SKIP alleen grasplukjes op de bunker (die heeft een eigen kap): sneeuw op sprieten wordt scherven
+2026-10-06T15:49:44,mil_reinforcedtank2_grass_top,,SKIP alleen grasplukjes op de bunker (die heeft een eigen kap): sneeuw op sprieten wordt scherven
+2026-10-06T15:49:44,mil_reinforcedtank1_grass,,SKIP alleen grasplukjes op de bunker (die heeft een eigen kap): sneeuw op sprieten wordt scherven
+2026-10-06T15:52:01,pier_tube_small,226104d2b351fac06f049b28b9749f880914ea29e41c9f2056229fbf64203634,paaltop-dekentje rond en groeit mee
+2026-10-06T15:52:02,misc_timbers1,376258564ad287d79d2e2925382afccdd0b18e5486b2c1a321a757acc5bf80b1,minor: kleine plakjes op enkele kopse kanten (v1/v7)
+2026-10-06T15:52:02,wall_indcnch_10,9d46dc69327320c4c69b2e4b988713c820b4f07607eaa851bb729b4b113a7a00,minor: klein vlekje onder de afgebroken hoek v4-v7
+2026-10-06T15:52:02,houseblock_1f1,7e325a2381155d01ef045440c5a340359fe6d072faf7a7c05c33ee18e757793f,minor: kleine scheurtjes in de dakrand bij v1
+2026-10-06T15:52:03,houseblock_1f3,e893420a3b110130d149d8ea4770a9994a3613c8963dbf19c9cc842cee540575,minor: kleine hoekige plooitjes langs de voorgoot bij v7
+2026-10-06T15:52:03,power_transformer_build,77e18982f1fecc951e9a376473633ef1965792172089a32b4f75b3bdabce4ed0,"dakkussens groeien mooi, nette randen"
+2026-10-06T15:52:04,rubble_wood2,c0b02cf92af1c5468c1c980ad664f484a8c08857e580c971dd5dd059b944d97f,minor: fijne zaagtand onder brede planken bij v7; zwaar (10k)
+2026-10-06T15:52:04,hbarrier_round,d8ef9e63e20e53799db2a05e652a6ac86d178e29129cdfbf3db0490f6c8df1cc,minor: kleine plooien op de eindkorf en de naad bij v7
+2026-10-06T15:52:04,pier_crane_rails_end,8a0a32b5054f33650f2cbc1e9ad59e072abbe2f0b8ce0d7c2ab2f6c93e247fd7,"beide stootblokken nette ronde kap, groeit mee"
+2026-10-06T15:56:59,misc_haybale_decayed,d4d4aa00e6dc24e4a140ba196c5bdec865f9c0cdc36fb0d7639e3424aa9495d4,"minor: kleine druppels aan de voorkant bij v1, facetjes aan het vergane eind bij v7"
+2026-10-06T15:56:59,wall_wood3_4_end,337eebcaa2f9521c8ebb7b1c3b3aad42702f513d1073ef8eb7e54d37476975b4,minor: bovenregel achter de latten blijft kaal; paalkapjes en onderregel goed
+2026-10-06T15:56:59,misc_concretepipe,051f7b7a1838647fb075dc8a4032caa95c9fdc1158e988d040d04d09a26b902e,minor: klein puntje aan de hoek van het buiseinde bij v7
+2026-10-06T15:57:00,cemetery_grave1,91f2c2bfb7d4294226375cb63069368f170cb383c48d1894ce38c291d87e0a13,minor: smalle sokkelrand blijft kaal; kussen op het graf goed
+2026-10-06T15:57:00,cemetery_grave3,c1f5dec81a7b44dd578da2e9471fe92ca8d7a9d6d53e3fe71f474d4947b1084c,minor: kleine vouw op het kussen bij v7
+2026-10-06T15:57:00,garbage_pile3,323b8a5248a4df376c17f5d6f434596695c7bfa5feed6e44741727bcfad2c23a,minor: hoekige kapjes op de banden bij v7; deken over de rommel overtuigend
+2026-10-06T15:57:01,stone2,e0a59c25d29e76518d2470a224ca15c3f493c18e2de14d17d563a8401a2bfbd2,"minor: rafelige plekken bij v1, hangende lob aan de onderkant bij v7"
+2026-10-06T15:57:01,wall_railing_endr,dbf8146850ed1d2c165597e3da80170e95bdac0c288a441bc8956aa04507e44e,dunne leuning: smalle rug verzadigt vroeg (kalibratie: ok)
+2026-10-06T15:57:01,wall_railing_1_endr,dbf8146850ed1d2c165597e3da80170e95bdac0c288a441bc8956aa04507e44e,dunne leuning: smalle rug verzadigt vroeg (kalibratie: ok) (lid van wall_railing_endr)
+2026-10-06T15:57:01,wall_indfnc_3_hole,ec67f731aabd9b307f9b92d33c632d2034e0386a5dff729a4e4ad2d6d3c57cbb,minor: klein tongetje bij de knik van de schuine paalkop
+2026-10-06T15:58:07,misc_bench2,fa2ed09084aa2991a5202444df2a1d53cf61ee118d2b5c5c3c239e82f681ff3d,"minor: lichte naad langs de kier tussen de twee zitplanken (1,5 cm hoogteverschil) bij v1-v4; kussen v7 mooi"
+2026-10-06T15:59:32,misc_woodpile_forest1,a18bd3844e5d553e2f05cd0cb5dd2cbb6a60497d6525d0243a9c43bab6159dab,"minor: recept FORCE_LOGS; ruggen op alle stammen, kap op de knoestige bovenste stam onderbroken bij takstompen, enkele kruimels op kopse kanten"
+2026-10-06T16:00:29,rock_apart2,393bc56e43e9add87ae8832119dd478bb475c9ca96ed8c3e04ed117fb82d4442,minor: klein gaatje in de kap op het rechterblok bij v7; rafelige plekken bij v1 passen bij rots
+2026-10-06T16:00:29,rock_apart1,fb8aca3ecce790a8f25d53c2cfcd88de88c9ee8437c37f1aab4f6218d6b5209e,minor: spikkels op richeltjes van de steile zuil (realistisch voor rots)
+2026-10-06T16:00:29,rock_bright_apart1,fb8aca3ecce790a8f25d53c2cfcd88de88c9ee8437c37f1aab4f6218d6b5209e,minor: spikkels op richeltjes van de steile zuil (realistisch voor rots) (lid van rock_apart1)
+2026-10-06T16:00:30,platform1_block,20ed4e5191fb66d3c1f7ab1e0895b5f6631bb915e8cdadd32a9e01f3b137bfe9,minor: kleine putjes in de kap langs de voorrand bij v1-v3
+2026-10-06T16:00:30,platform2_block,20ed4e5191fb66d3c1f7ab1e0895b5f6631bb915e8cdadd32a9e01f3b137bfe9,minor: kleine putjes in de kap langs de voorrand bij v1-v3 (lid van platform1_block)
+2026-10-06T16:00:31,shed_open_small,a1c3058cd0ac43a95adfb8d4e158095dbb5196ab97d64a9448a0b1fb0a170cee,minor: klein lobje bij de hoekpaal bij v7; dakkap verder goed
+2026-10-06T16:00:31,hbarrier_6m,f5ccf0db9b12561163ec360a8ee286a3f385643a5c4b1608d8cbe8011114b3ef,minor: kuiltje in de kap bij v7; bolle kussens op de korven overtuigend
+2026-10-06T16:00:32,shed_w6,b239937100a377bdf5e8e1ab5371da3961f30c50debb9a791fa271a5da235b05,"minor: klein krulletje aan de gevelhoek bij v7; latten tekenen door, dat klopt"
+2026-10-06T16:00:32,misc_timbers3,a3db3c3035a12f6bdbf0a2a0c49129796df6024c3f1a2581c786a57d5cbc92bf,minor: kleine plakjes op uitstekende kopse kanten
+2026-10-06T16:00:33,pipe_med_9m,33448809655c0cb01aed30bf6113853c23aa9a175a35b8b906b31a53ec31d2f5,minor: kleine klonten waar de dwarsbalk over de buizen ligt bij v5-v7
+2026-10-06T16:00:33,rock_monolith4,e2ff9eb04f51d54f762f9fa5b81fb75bff82053a6689f62565e82e2fe96ca826,minor: holte onder de kaprand op een plek; plakken op steile richels realistisch
+2026-10-06T16:01:07,misc_pipes,4a8d414b1b48f20105c0b6e801eafd36ed7542d8123e9c29094a64ba10230e7c,minor: platte facetjes op de buisruggen bij v7
+2026-10-06T16:01:07,platform2_stairs_20,af9baa4b8c3086186f6ae8b7f82d1ff365008e01232cc7e312ebec3cc635f9b6,minor: kleine tong van de bordeskap over de bovenste trede; tandjes langs de zijrand
+2026-10-06T16:01:07,platform1_stairs_20,af9baa4b8c3086186f6ae8b7f82d1ff365008e01232cc7e312ebec3cc635f9b6,minor: kleine tong van de bordeskap over de bovenste trede; tandjes langs de zijrand (lid van platform2_stairs_20)
+2026-10-06T16:01:08,misc_timbers4,2a78014b3b81d49bf65093c46d08db4bed72ca5a9ea8597f786b2aefa46964e5,minor: kleine plakjes op uitstekende kopse kanten
+2026-10-06T16:01:08,mil_artilery_rampart,01fb0d5adda9d1cb261d511bf5deb97854b2f603879ba52d0e315538be3558ab,minor: kap van de aarden wal komt tot over de bovenrand van de plankwand
+2026-10-06T16:01:09,workshop1,1b9180962bf0d2dc48995bcaacb9ef3e5cd150d3cfb6b3bd5c26cf7cf1b41053,minor: klein wit reepje op een richel aan de gevel; dakkap goed
+2026-10-06T16:01:09,platform2_stairs_30,cb048b2264d2b33adbc84967573787e26b8d93f5ebc913ac778717c1331a62b2,minor: rijtje kleine tandjes langs de zijrand van de trap (elke trede rolt apart over de zijkant)
+2026-10-06T16:01:09,platform1_stairs_30,cb048b2264d2b33adbc84967573787e26b8d93f5ebc913ac778717c1331a62b2,minor: rijtje kleine tandjes langs de zijrand van de trap (elke trede rolt apart over de zijkant) (lid van platform2_stairs_30)
+2026-10-06T16:04:29,wall_cncsmall_4,a0d2e692060de9f02e4bbf00354654fa9ca4cfa2e9a00d67322a67da4f1daee0,Wall cap gains a soft rounded lip by v7; close-ups show clean supported edges.
+2026-10-06T16:04:29,misc_toilet_dry,34a10afd6a188d859b19a3686bd6f940aa782cb4707e2decb3439995f4fc8cf7,minor: V7 close-ups show a small jagged underside along the long roof eave.
+2026-10-06T16:04:29,hbarrier_1m,f82fd34b2562c2c90ccd2aaa795af34b84d7de65645a1dd7167a3c93286f714c,Top pillow grows evenly; v7 low view and close-ups show no conspicuous defects.
+2026-10-06T16:04:30,misc_doghouse,e4eceb2ebd3170d90357e5484e1e043c9b247ed986173467b7d5900ce9a37a70,minor: V7 close-up shows an angular triangular patch at the lower roof corner; overall roof cap remains sound.
+2026-10-06T16:04:30,misc_bench1,0887d47fc64e0cd5c266ac1bf7f334a4bfd2336decff43e943be3e8ebf7f3050,Seat pillow and lower backrest ridge remain separate; straight seat markings follow backrest shadows.
+2026-10-06T16:04:30,wall_garbcont_corner,6e481d7b8ae7f6ab3eb01740e40d649f00f884bbf4c92b9ae6ee6a608155ef5c,Continuous rounded wall-top cap; v7 corners and low view remain clean.
+2026-10-06T16:04:30,misc_table_camp,5de55f119ae66b0ed4bea2a300964f6ff107b37f4c44e71950831f1bf7887745,Tabletop pillow grows smoothly to v7; legs and underside remain clear.
+2026-10-06T16:04:30,wall_tin_5,65767862483e36979b49e2db50c26b4872576ea6083547a98ffa774d7617eeb2,Small supported post caps stay restrained; bare thin sheet edge is acceptable.
+2026-10-06T16:04:30,shed_w4,1c345f713f60474d5d100e4d48de927f4e1ca0ac06098a010ec500b1c4d775cb,minor: V4 close-up shows a small split-looking notch along the left roof eave.
+2026-10-06T16:04:30,misc_tree_pavement2,f7680526367af92e073465edbd64c3b77ae4b124d62b75d5ef371f422c1687f4,minor: V5-v7 top has small sharp triangular creases where the central cap meets the rim.
+2026-10-06T16:04:30,wall_cyel_end,f1993e83f6304c558e598efdbb578ef4e75a41dbb4c2f77e7e6d295f0f63821f,Rounded top and foot caps stay supported; the steep wall face appropriately remains bare.
+2026-10-06T16:04:31,shed_m2,3bb31b721ede49c7840fa0f8aa7d58ab1939d5ddd975c8b55e0e5a8b082d9213,minor: gekartelde franje aan de daklijst bij v1-v4; wit stukje op de as onder de bak
+2026-10-06T16:04:31,wall_cyel_end2,38a830bae2200272a7690b26af4336bc75e5972186483f3ac6753ed11c66c2f3,Top and exposed foot carry supported pillows; steep side stays bare without visible hanging snow.
+2026-10-06T16:04:31,rail_platform_start,c6e9b36b8b76f12edf9fc5209fb6446b05c0497f68b9a9caaf066b41886471b6,Platform and ramp caps follow their supports; v7 edges remain rounded without bridging separate levels.
+2026-10-06T16:04:31,wall_wood4_pole,2f7f9a0b9044b58e55d01691f94aa98e21f7c6115d70882e4e7254dfb549c2c9,Close-ups show a supported square pillow with gentle growth; low view confirms clean edges.
+2026-10-06T16:04:31,wall_gate_ind2a_r,27581c406a4060c883ec4a46aae730c99134bd08c6bc126d959ac39a3606fa40,Upper rail keeps a modest ridge; narrow tops saturate acceptably and post caps remain supported.
+2026-10-06T16:04:31,wall_gate_ind2b_r,27581c406a4060c883ec4a46aae730c99134bd08c6bc126d959ac39a3606fa40,Upper rail keeps a modest ridge; narrow tops saturate acceptably and post caps remain supported. (lid van wall_gate_ind2a_r)
+2026-10-06T16:04:31,wall_gate_ind2a_l,54211c503e8fbe177e0fa8498626d807398ed9c44de4c091b4cf2198cc0e7442,Rail ridges remain proportional through v7; small post pillows and low view are acceptable.
+2026-10-06T16:04:31,wall_gate_ind2b_l,54211c503e8fbe177e0fa8498626d807398ed9c44de4c091b4cf2198cc0e7442,Rail ridges remain proportional through v7; small post pillows and low view are acceptable. (lid van wall_gate_ind2a_l)
+2026-10-06T16:04:31,cemetery_tombstone9,28b4c36542403ded302524b54c86006782734455ab49ce22ad42636d4f20befb,minor: Small isolated snow lumps appear below crossbar end caps in v4-v7 close-ups.
+2026-10-06T16:04:32,airfield_light_papi1,ae6249ebe3776ce862826ea87b31ee06993b577df18e377b9669bd984a80a91a,Light housing carries a smooth growing pillow; v7 close-ups show supported edges and a clear underside.
+2026-10-06T16:04:32,misc_drainage,8f3a7aa11fb7386eac7814f77defac5ae8a97a77a158485e9be571b8b1d6f618,minor: V7 close-ups show a small jagged underside around the circular rim and sloped cap end.
+2026-10-06T16:04:32,wall_gate_wood4,86f8855cf4b6a0cc30373d3190eb7f5b36c3c6bad325cc0aeb84ebcee75373de,minor: Small pointed lobes hang from the far pillar cap at v5-v7.
+2026-10-06T16:04:32,tisy_airshaft,18dc50b8a2464d78882b79cd805486c8418d1f243c530f0b24c6088bd0c6a83f,Roof corrugations fill smoothly with depth; v7 cap stays supported and side edges follow the roofing.
+2026-10-06T16:04:32,wallmap_skiresort,ef88b2ab08f60a5db41106332120b01a00e68b22d4543aa97befffeccf7faf87,minor: licht hobbelige rug op de bovenrand bij v7
+2026-10-06T16:04:32,busstop_village2,4089c21af8d97e7ed93bd72d68175233866a76b130dd966ad9a61c3fbda10ccb,Roof cap grows into a smooth pillow; v7 close-ups show clear eaves and bare sheltered seating.
+2026-10-06T16:06:03,house_1w08_brown,3cc3ac2dce0a7232168be592b3d40cb6d71553b2b0061c01e12150d4deb93efb,"minor: lip-test (A7_LIPDROP .1, A7_OVL .6); uitbouwdak rolt nu schoon over, kleine facetjes aan de dakrand"
+2026-10-06T16:06:04,workshop5,c1cd21a9a4640870f0b0ca30ec102f086bf2052dede65a5744d0678ef4976f2d,"minor: lip-test (A7_LIPDROP .1, A7_OVL .6); dakrand nu schoon, klein kruimeltje aan een hoek"
+2026-10-06T16:06:04,house_1w10,48dac88b2857678fa3c4d78c7bc800200f1518f4849a774e37ab2710378e1add,"minor: lip-test (A7_LIPDROP .1, A7_OVL .6); verandarand nu zacht zonder plooien; sneeuw op de funderingsrand klopt"
+2026-10-06T16:12:12,farm_cowshedc,bf6fb91dca4d8bfe0ec0b9cd036be86b3752e1163146ad035e1f44849d15e228,minor: Exposed front wall stubs carry oversized rounded lumps at v7; roof caps otherwise read cleanly.
+2026-10-06T16:12:12,castle_walls_5_d_nolc,ceeb7b201f38cb77ef0df408aba1b433172d7f96a8eabd44938d1d32c6bf6be6,Broken wall tops develop rounded caps through v7; gaps follow separate stone supports.
+2026-10-06T16:12:12,camp_house_white,a44cd0874cd3462febca2fc7ed56ec165a5b7309f6c9ff92a83e3135121f993c,minor: Small pointed slivers interrupt the porch roof edge in the v7 close-up.
+2026-10-06T16:12:12,rail_crossing_block_10,7914025f53177767b12e20504ab2e0a61c12c64ef8559cdc12060965d01746f8,minor: Clean rounded cap with steady growth; simple block uses 7546 triangles at v1-v2.
+2026-10-06T16:12:12,wall_gate_opendam,51dab20d2cc7654dfec7bad9df983b43c34b4b41c591349437b1f9b90fbd8e0f,Thin rail ridges remain modest through v7; later coverage on the bent lower panel is acceptable.
+2026-10-06T16:12:12,wreck_trailer_flat,16465c17ba0dbdffb22035d0a48f7d2d96a4d93e0c5592cd8c086557413694f7,minor: Deck and rail caps look suitable through v7; v1-v2 use 6585 triangles.
+2026-10-06T16:12:12,wreck_truck01_aban2_blue,e8b3a7f5834921bc922ce4cfabfa18e17b74aa8419832e4d2008589f4c7c027a,minor: Front cargo rail develops a row of beads by v7; cap reaches 6769 triangles.
+2026-10-06T16:12:12,wreck_truck01_aban2_orange,e8b3a7f5834921bc922ce4cfabfa18e17b74aa8419832e4d2008589f4c7c027a,minor: Front cargo rail develops a row of beads by v7; cap reaches 6769 triangles. (lid van wreck_truck01_aban2_blue)
+2026-10-06T16:12:12,wreck_truck01_aban2_green,e8b3a7f5834921bc922ce4cfabfa18e17b74aa8419832e4d2008589f4c7c027a,minor: Front cargo rail develops a row of beads by v7; cap reaches 6769 triangles. (lid van wreck_truck01_aban2_blue)
+2026-10-06T16:12:13,repair_center,63c55d4cc797abff2879bfc6f19802d9c2da7dc0a1e060620e6adc5a470275d4,minor: A small drip hangs from the roof corner above the outer steel beam at v7.
+2026-10-06T16:12:13,busstation_roof_big,dc73b98c5bb1198ba81cd87b67e63a77382008249527aae04f6da79d296e715e,minor: Roof pillow and underside look clean; v1-v2 cap uses 9982 triangles.
+2026-10-06T16:12:13,pier_wooden1_end,1e5b18ee53373e31b61d3d89a0986cf90b75bcf9f627e32e36667e7cb428838e,minor: Deck and stair snow grows smoothly through v7; cap reaches 7959 triangles at v6.
+2026-10-06T16:12:13,misc_trailroof_big,5280aa6513828feaf8df09123f622415f81e46bdcf320449113c0bbe6bba4332,minor: Smooth roof pillow with clean sheltered benches; v1-v2 cap has 7858 triangles.
+2026-10-06T16:12:13,cableway_tower,db11e64077c4ca0ca360901930a448eccea0790f94adb0fec74b01d8e4ed6218,minor: Wheel-top caps look polygonal in v7 close-ups; cap reaches 6426 triangles.
+2026-10-06T16:12:13,mil_aircraftshelter_door_r,9c9bd17c6361954c354db9890e1e84ad68684c831e1dba018a6bc3b948c8abd1,"minor: Short teeth remain under the upper cap at v7; otherwise acceptable growth, with 6368 triangles."
+2026-10-06T16:12:14,wall_gate_kolchoz,9e162b9881faa1966638be1eb4015cd662ca801eb618c95936f8833a87235cda,Arch carries a modest rounded ridge; post caps and clear lettering remain suitable through v7.
+2026-10-06T16:12:14,wreck_harvester_head_trailer,35f74dc81ac4229cab1ed1f8a6e880fd85106a6e56521995c816f07c7b7fc4c4,"minor: Small fingers hang from wheel caps at v7; narrow beams remain acceptable, with 9333 triangles."
+2026-10-06T16:12:14,medical_tent_big,f0ec75a5ffa34fe14f37fbc1cdcf06c3f4613053c578cabb1545286b8dd56873,minor: Roof retains a quilted faceted pattern at v7; cap has 7717 triangles.
+2026-10-06T16:12:14,cementworks_conveyorfurnace,1576b4920da706d84fdb5497a527f12cf96ee98f07e731c57e2d03cd2c072dee,"Full roof coverage grows into a smooth rounded pillow by v7, with clean walls and corners."
+2026-10-06T16:12:14,rubble_concrete3,05aad82e1af40718df57cfcfeaf44bf9aa0964d2b39ac880feebc9ba58cab638,minor: Small serrations remain beneath the rear snow lip in the low v7 view.
+2026-10-06T16:12:14,busstation_building,17942089b727d41d46e44c2feb4ff0b22ecce0e95c7e93f5ce06067483118020,minor: Inner rear parapet snow has a ragged exposed strip at v1-v2; later depths smooth it out.
+2026-10-06T16:12:15,mine_conveyer1_endbuild,c894a87b5aeec98dd80d0240279cb421a609477218ab742d2591db6f1c65053d,Corrugated roof becomes a smooth pillow by v7; exposed metal edges remain acceptable.
+2026-10-06T16:12:15,ship_big_lifeboat,3a55f7ae6507dabbb7ce99a9e048420ffec0a90e3a6dfa4f9ce3a020fd001d76,minor: Fine serrations remain beneath the gunwale snow lip at v7; cap has 8110 triangles.
+2026-10-06T16:12:15,monument_t34,d260ec9a8509211303cbd65388ab9b5990481f594ed7053ce6c7b9be029505d1,minor: Middle terrace lip has ragged triangular gaps at v4 before smoothing; cap reaches 9639 triangles.
+2026-10-06T16:12:47,stone3,8a19d72b8d553312479d6c847e1e65e12e600cddf78c2ae6b799fcc361c578f3,minor: Front lip forms a short tongue at v1; small pointed underside teeth remain in the low v7 view.
+2026-10-06T16:12:47,shed_w3,1877b8e2582880e9f29259f7ae484e87545805b0dd1c63f8937097605648cb93,minor: Fine triangular teeth along roof eaves at v1-v7; v1-v2 caps reach 6898 triangles.
+2026-10-06T16:12:47,roadblock_cncblock,c5b4f499b1cbf12abb28bb0217c02c0e5c44c3cff560cdf0b51ba742a918f130,Continuous rounded top grows smoothly through v7; low view shows a supported lip without conspicuous drips.
+2026-10-06T16:12:47,misc_tree_pavement3,c2ec32e109647357b87f090ed3379b85695597b5809c76bc8d287c30dd5a50c3,minor: Small exposed patch near rear rim at v3; angular basin facets at v4 soften by v7.
+2026-10-06T16:12:47,busstop_village,4eda1376a07185550faa3951598bd582f1905c127eb138c7a73ff7b6b047a368,minor: Small roof punctures at v1-v2; corrugated eaves retain triangular teeth in v7 close-ups.
+2026-10-06T16:12:47,wall_gate_fenr,3b64ea9ceefe824f8b3c06839e485a106a9663b7f00e8dfcff1a5a54324ba34d,minor: dunne bovenregel van de poort blijft kaal; pijlerkappen goed
+2026-10-06T16:12:48,misc_sandbox,acc8c0192d76f17a9d5be444e05bf1b36f27270740e9d2f3b40074c4508f0099,minor: Rim and basin develop supported rounded coverage through v7; caps remain heavy at 7187-7462 triangles.
+2026-10-06T16:12:48,stretcher_green,9abbeb01d29d9d19ded8e1f28f3af6aad12b793a306a99ed4826931439fb31d6,Fabric bed gains a smooth continuous pillow through v7; supported edges and bare legs look natural.
+2026-10-06T16:12:48,stretcher_red,9abbeb01d29d9d19ded8e1f28f3af6aad12b793a306a99ed4826931439fb31d6,Fabric bed gains a smooth continuous pillow through v7; supported edges and bare legs look natural. (lid van stretcher_green)
+2026-10-06T16:12:48,wall_cgry_5_d,9e8728acbdc6df9ea9f541228beaf1ab8ba05be07c825fec42a0d60b6de49c2a,Rounded wall tops and small snow patches on broken ledges remain plausible through v7; steep fracture faces stay mostly bare.
+2026-10-06T16:12:48,misc_fountain,5a93bc7b2fa20ceca32c140207c32ef8e9da6a144914597f835e8f930e3c02ca,"Rim, pedestal and open basin gain rounded snow through v7; exterior lips remain supported without conspicuous defects."
+2026-10-06T16:12:48,busstation_wall,87ef32f7db47a2100f234c025bfc5a85ca51214e03896f7d1d7e4a6b0188d29e,Narrow wall cap stays supported and gently rounded from v1-v7; shallow growth is appropriate for this top.
+2026-10-06T16:12:48,lunapark_bumper_car,9e3e8c5dd713e6a1f3bc57395c5743d46caa083f70968a65cdf9e5680726bdf3,minor: Broad front and rear pillows grow cleanly; small triangular underside teeth are visible in the low v7 view.
+2026-10-06T16:12:48,wall_gate_ind2rail_l,0b78423d9606dd11daa890b664a46670a0086e7d198022978d1fff3a7ceb1e25,Top rail carries a modest rounded ridge through v7; post caps stay proportional and narrow ledges saturate appropriately.
+2026-10-06T16:13:29,misc_stadiumbenches,308641147d54ff7c0deecd6c4244f8cc4e2c7073e44a6307ac04c684469cbbe6,"recept H.separate per rij: geen marshmallow meer, elk bord een eigen kussen; zwaar (21k, craft kapt LOD0 op 12k)"
+2026-10-06T16:13:29,misc_woodtable_indoor,7cbebc0dbfcfeb08fea15b460031518b7f54edc95cc8818b31b7db665b82e7fa,recept H.separate: tafelblad en banken elk een eigen kussen
+2026-10-06T16:13:30,misc_concreteblock2,5109a8a688625fbf6523916a30fa0af1129c86f3ff8f706be460cea93198e164,"recept big_tops: kussen op het blok, hijsogen steken erdoor"
+2026-10-06T16:13:30,misc_concreteblock2_stripes,5109a8a688625fbf6523916a30fa0af1129c86f3ff8f706be460cea93198e164,"recept big_tops: kussen op het blok, hijsogen steken erdoor (lid van misc_concreteblock2)"
+2026-10-06T16:13:30,misc_concreteblock2_damaged,c684c6235a9c0058bf4549a5dc6e60b40cac0ae4e2a6b519f81673d8ea65411c,minor: recept big_tops; klont op het afgebroken eind
+2026-10-06T16:13:30,wall_wood2_5_pole,eee2e822fdef75fc6fe4d15f309de96a4045da1cc8d9d4088ef646a4ced4ba30,recept blanket: paaltop-dekentje vanaf v1
+2026-10-06T16:13:31,wall_fen1_5_hole,df17a5e69d7d7981ed7926366fd99fb2c8a1b0267211be8a1a3ed9415bf2c666,recept blanket: paaltop-dekentje vanaf v1
+2026-10-06T16:13:31,misc_woodblock,4cd9d600630b4c1cc7650d52b5d5a5e114a390735ec51110c6586d9e3a2c71b8,minor: recept A7_OVL .3; dik kussen op de stronk bij v7
+2026-10-06T16:13:31,misc_feedrack,1c97decff7e8b4975f3c1c8ee11487cba2dd8d677030298a4d771b68a9d15cf5,minor: recept A7_BANDH 0; latten tekenen zacht door in de dakkap
+2026-10-06T16:13:32,stone1,a76c8f4a044869d1d3c300ed6a907bbcf13d5b159e640cbc18b8b8c20ec7b3b8,"minor: recept A7_CREVICE .3; donkere kuil in de diepe holte bij v1-v4, vanaf v5 gevuld"
+2026-10-06T16:13:32,wall_cbrk_end,7d79a76cb7fa77cf305aa7681e4e50ed89dae08be2fd2259427084351b7e8322,minor: recept kind 0; dikke kussens op de getrapte breuk
+2026-10-06T16:13:33,wall_cgrylow_5,f3388bcd9f7742c09a77920c521ae2a3cde8659ccaf86f0cbd1a6dfacaeb6aa5,"recept kind 0: geen scherven meer, zacht kussen op de kruin"
+2026-10-06T16:13:33,wall_cgrylow_end1,2052aca523d85dfa2a99a29cb5d55bbc53bc7c51ec4076f92199c28c95f7886f,minor: recept kind 0; kap loopt over de schuine breuk naar beneden
+2026-10-06T16:13:33,wall_cgrylow_end2,ec4005264dbc61e700424d1d1a532961f5f0749496b6f00337eea39d57c6ec9e,minor: recept kind 0; kap loopt over de schuine breuk naar beneden
+2026-10-06T16:13:34,misc_woodpile_forest2,acd5878cb85280e1a5e80261747e720c83ffa8d42fc0fa64ea31f057d468694e,minor: recept alle stammen crescents; kleine rafels aan de bovenste stam
+2026-10-06T16:13:34,misc_woodpile_forest3,64a4f38809a3a448b8caec240ed63a68ef2863bafb9351463c67dd1318414586,minor: recept alle stammen crescents; rafelig randje op een kopse kant
+2026-10-06T16:13:34,garbage_pile1,6c6b25d3483c630b7a4cf3b05b7f59914503e19f2baffe09d0c9cff2262234cb,minor: vouw in de deken over de rommel
+2026-10-06T16:13:35,wall_indvar1_5_d,4dac5d3d8a3425df28a95b74f64eabdb35d70211ab449c1f0470893b096da2c2,"kap op de pijler en de schuine breuk, goed"
+2026-10-06T16:13:35,misc_haybale_packed,91435855f575fa66fa0803697fd6cd312309248c220364d71ab5db92d66e6a86,kussen rolt mooi over de baal

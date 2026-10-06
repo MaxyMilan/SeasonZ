@@ -1711,6 +1711,19 @@ A7_BANDSTEP=.04  # ... and only toward a carrier at least this much higher
 A7_LEVELMIN=.08  # ... but never under 8 cm: a bin's rim 3 cm under its lid stays inside the lid's pillow (the band
                  # cut a trench through it), a pallet strip 14 cm under the next pallet is parted from its cap
 A7_MINLAYER=.25 # every carrier keeps a layer of this share of the depth (8-20 mm), 0: none
+A7_THIN=0.      # (Opus, 6 Oct) tops narrower than this (m) emit no volumetric snow: on a 4 cm handrail the 37 cm kernel of
+                # v7 grew a sausage three times the rail's width (m1). snow_hand.hybrid gives such strips a ridge (0: off)
+
+
+def _thin_cells(m):
+    """the cells of the model's tops on strips narrower than A7_THIN (an opening of the top mask), once per model"""
+    c=getattr(m,'_sz_thin',None)
+    if c is not None: return c
+    M=m.tops(4,slope=False)
+    r=max(1,int(round(A7_THIN/2/m.g)))
+    thin=M&~(H.dilate(H.erode(M,r),r+1)&M)
+    m._sz_thin=thin
+    return thin
 
 
 def _enclosed(M,maxcells):
@@ -2018,8 +2031,10 @@ def _a7_plan(m):
     # a neighbour's spill (_sz_block: the curve into a bench's backrest)
     blocked=excluded+tuple(getattr(m,'_sz_block',None) or ())
     original=m.tops
-    if allowed is not None or excluded:
+    thin=_thin_cells(m) if A7_THIN>0 and getattr(m,'kind',0)!=1 else None
+    if allowed is not None or excluded or thin is not None:
         keep=np.isin(m.PART,allowed) if allowed is not None else ~np.isin(m.PART,excluded)
+        if thin is not None: keep=keep&~thin
         m.tops=lambda *a,**kw:original(*a,**kw)&keep
     try:
         surface=_a6_plan(m)
