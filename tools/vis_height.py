@@ -45,6 +45,42 @@ def triangles(lod):
     T.glass = np.asarray(glass, dtype=bool)
     return V, T
 
+def proxied(lod):
+    """(Opus, 6 Oct) the triangles of a model drawn only through its proxies (the big military tents: the canvas and
+    the furniture under it are models of their own), each proxy's visual LOD placed by its proxy triangle: the
+    right-angled corner is the origin, the long leg points up and the short leg forward. So placed the tents stand
+    upright with the canvas inside their collision box and the furniture on the floor under it"""
+    import odol_extract as X
+    V0 = np.asarray(lod.vertices, dtype=np.float64)
+    Vs, Ts, Gs, off = [], [], [], 0
+    for sel in getattr(lod, 'named_selections', ()):
+        if not sel.name.lower().startswith('proxy:') or not len(sel.faces):
+            continue
+        path = sel.name[6:].lstrip('\\').rsplit('.', 1)[0] + '.p3d'
+        od = X.read_model(path)
+        sub = X.visual_lod(od) if od is not None else None
+        if sub is None:
+            continue
+        V, T = triangles(sub)
+        if len(T) == 0:
+            continue
+        f = lod.faces[sel.faces[0]]
+        P = V0[list(f if isinstance(f, (list, tuple)) else f.indices)[:3]]
+        k = int(np.argmin([abs(np.dot(P[(i + 1) % 3] - P[i], P[(i + 2) % 3] - P[i])) for i in range(3)]))
+        o, a, b = P[k], P[(k + 1) % 3] - P[k], P[(k + 2) % 3] - P[k]
+        up, fw = (a, b) if np.linalg.norm(a) > np.linalg.norm(b) else (b, a)
+        up, fw = up / np.linalg.norm(up), fw / np.linalg.norm(fw)
+        rt = np.cross(up, fw)
+        Vs.append(o + V[:, 0:1] * rt + V[:, 1:2] * up + V[:, 2:3] * fw)
+        Ts.append(np.asarray(T, dtype=np.int64).reshape(-1, 3) + off)
+        Gs.append(np.asarray(getattr(T, 'glass', np.zeros(len(T), bool)), bool))
+        off += len(V)
+    if not Vs:
+        return triangles(lod)
+    T = np.concatenate(Ts).view(Tris)
+    T.glass = np.concatenate(Gs)
+    return np.concatenate(Vs), T
+
 def zbuffer(V, T, u0, v0, step, nu, nv, thin_rise=0.06, skip_vertical=False):
     """highest surface y at the points (u0 + i step, v0 + j step); nan where none. Also the normal y of that face"""
     Z = np.full((nv, nu), -np.inf)

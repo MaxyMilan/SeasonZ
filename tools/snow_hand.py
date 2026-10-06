@@ -561,6 +561,9 @@ class Model:
         self.shape = m.shape
         lod = X.visual_lod(X.read_model(m.shape))
         V, T = VH.triangles(lod)
+        if len(T) == 0:
+            # (Opus, 6 Oct) drawn only through its proxies (the big military tents): their models, placed
+            V, T = VH.proxied(lod)
         self.glass_t = np.asarray(getattr(T, 'glass', np.zeros(len(T), bool)), bool)
         self.V = np.asarray(V, dtype=np.float64)
         self.T = np.asarray(T, dtype=np.int64).reshape(-1, 3)
