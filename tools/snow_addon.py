@@ -653,7 +653,7 @@ A7_RISE=1.      # outside its carrier the floor rises this many metres per metre
                 # like a cornice, so a bin or box gets a cap with a short lip, not a mushroom (0: level floor)
 A7_LEDGE=True   # a narrow ledge just below a higher top (a box rim, a frame strip) holds no bead of its own
 A7_FLOORBLUR=.25 # outside its carriers the floor is smoothed over this share of the kernel radius (0: nearest carrier)
-A7_FLOORK=.5    # rounding of the cut at the carrier's floor, as a share of the particle depth (0: 5 mm)
+A7_FLOORK=.1    # rounding of the cut at the carrier's floor, as a share of the particle depth (0: 5 mm)
 # addonfine (Opus, 6 Oct): the user's choice for deep snow is the addonfine look - soft round pillows that roll over
 # the edge. That is the surface-particle recipe (a6) at the full depth, kernel ~1.6x the depth; the floors, blocked
 # parts, sky test and tip rules keep out its drips, bridges and snow underneath. The a5 volume body remains for
@@ -1606,7 +1606,6 @@ def _a6_grid(m,plan):
             own=H.sh(np.where(M,source,-1),dj,di,-1)
             take=(owner<0)&(own>=0); owner[take]=own[take]; dist[take]=distance
         floor=np.where(owner>=0,(S-sink).ravel()[np.maximum(owner,0)],-np.inf)
-        if A7_RISE>0: floor=np.where((owner>=0)&~M,floor+A7_RISE*dist,floor)
         rb=int(math.ceil(A7_FLOORBLUR*cloud['R']/g))
         if rb>0:
             # beside stair treads or roof planes of different heights the nearest carrier changes from one column to
@@ -1615,6 +1614,9 @@ def _a6_grid(m,plan):
             out=(owner>=0)&~M; val=np.where(out,floor,0.)
             num=_box2(val,rb); den=_box2(out.astype(float),rb)
             floor=np.where(out,num/np.maximum(den,1e-9),floor)
+        # the rise comes after the smoothing: smoothed, the rising floor lifted a deep pillow's underside off the edge
+        # (a wide kernel averages far, high columns) and the thinner depths' lips showed under it as a flange
+        if A7_RISE>0: floor=np.where((owner>=0)&~M,floor+A7_RISE*dist,floor)
         floors[base]=floor.T; owners[base]=owner; dists[base]=dist.T
     for s in plan['stages'].values():
         D=s['D'][mj[:,None],mi[None,:]]; owner=owners[s['base']]
