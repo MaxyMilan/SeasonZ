@@ -1492,6 +1492,15 @@ def _a6_plan(m):
     # without particles there the cap sags into a groove that reads as a dark line
     gap=_a4_close(mask,Z,max(m.thick(1),.04),m.g)&~mask
     Zfill=np.where(gap,H.maxf(np.where(mask,Z,-1e6),max(1,int(math.ceil(.02/m.g)))),Z)
+    if A7_ROCKFILL and (getattr(m,'rough',False) or m.cls=='rock'):
+        # a steep crevice or notch inside a rock's crown (enclosed, up to 0.25 m2) emitted nothing and showed as a hole
+        # in the cap at v1-v4: the snow bridges it at the height of its rim (inpainted from the rim inwards); for the
+        # floor it counts as a carrier, so the rising floor does not cut the bridge
+        hole=_enclosed(mask|gap,.25/(m.g*m.g))
+        if hole.any():
+            Zh=_inpaint(np.where(mask|gap,np.where(gap,Zfill,Z),np.nan),hole)
+            ok=hole&np.isfinite(Zh); Zfill=np.where(ok,Zh,Zfill); gap=gap|ok
+            mask_floor=mask|ok; Z_floor=np.where(ok,Zh,Z); sink=np.where(ok,.003,sink)
     emit=mask|gap
     angle=np.degrees(np.arccos(np.clip(m.NYF,0,1)))
     taper=np.clip((steep-angle)/(steep-full),0,1); taper=taper*taper*(3-2*taper)
@@ -1526,6 +1535,7 @@ def _a6_plan(m):
     for b,c in counts.items():
         selected=good&(ordinal<c.ravel()[cols])
         clouds[b]=dict(P=np.column_stack((px[selected],sky[selected],pz[selected])),R=.54*b/.331,base=b)
+    if 'mask_floor' in locals(): mask,Z=mask_floor,Z_floor
     return dict(mask=mask,Z=Z,sink=sink,taper=taper,stages=stages,clouds=clouds,
                 bank_points=len(cols),rejected_points=int((~good).sum()),seed=SEED)
 
@@ -1547,6 +1557,33 @@ def _dens(base):
     (each depth's own lumps crossing in the nested union). More particles with a proportionally higher threshold
     keep the mean surface and calm the noise (1/sqrt of the factor)"""
     return 1.+A7_DENSK*float(np.clip((base-.05)/.18,0,1))
+
+
+A7_ROCKFILL=True
+A7_MINLAYER=.25 # every carrier keeps a layer of this share of the depth (8-20 mm), 0: none
+
+
+def _enclosed(M,maxcells):
+    """cells outside M in components (4-connected) that touch no grid border and have at most maxcells cells"""
+    O=~M; lab,n=H.label(O,O[:,:-1]&O[:,1:],O[:-1]&O[1:])
+    if not n: return np.zeros_like(M)
+    L=np.where(O,lab,n); cnt=np.bincount(L.ravel(),minlength=n+1)[:n]
+    edge=np.unique(np.concatenate((L[0],L[-1],L[:,0],L[:,-1]))); bad=np.zeros(n+1,bool); bad[edge]=True
+    keep=(cnt<=maxcells)&~bad[:n]
+    return O&np.r_[keep,False][L]
+
+
+def _inpaint(A,hole,iters=400):
+    """fill the hole cells of A (nan there) with the mean of their filled 4-neighbours, from the rim inwards"""
+    A=A.copy()
+    for _ in range(iters):
+        todo=hole&~np.isfinite(A)
+        if not todo.any(): break
+        s=np.zeros_like(A); c=np.zeros_like(A)
+        for dj,di in ((0,1),(0,-1),(1,0),(-1,0)):
+            B=H.sh(A,dj,di,np.nan); f=np.isfinite(B); s+=np.where(f,B,0); c+=f
+        A=np.where(todo&(c>0),s/np.maximum(c,1),A)
+    return A
 
 
 def _ovl(base):
@@ -1597,6 +1634,10 @@ def _a6_grid(m,plan):
     mi=np.clip(mi,0,m.nu-1); mj=np.clip(mj,0,m.nv-1)
     M=valid&plan['mask'][mj[:,None],mi[None,:]]
     S=plan['Z'][mj[:,None],mi[None,:]]; sink=plan['sink'][mj[:,None],mi[None,:]]
+    # the minimum layer (see _a7_tile): the carrier's surface, its sink and a taper to nothing over 4 cm at the edge
+    dM=H.distance(M,int(math.ceil(.04/g))+2)*g
+    minlayer=dict(lo=np.where(M,S-sink,np.nan).T.astype(np.float32),top=np.where(M,S,np.nan).T.astype(np.float32),
+                  w=np.where(M,np.clip(dM/.04,0,1),0.).T.astype(np.float32))
     source=np.arange(M.size).reshape(M.shape); floors={}; owners={}; dists={}
     for base,cloud in plan['clouds'].items():
         if base not in {s['base'] for s in plan['stages'].values()}: continue
@@ -1633,7 +1674,7 @@ def _a6_grid(m,plan):
         # The rolled lip inherits the extension of its carrying surface.
         s['lattice_D']=np.where(M,D,D.ravel()[np.maximum(owner,0)]).T
     return dict(origin=origin,pitch=pitch,shape=shape,core=core,nb=nb,maxR=maxR,
-                extra=extra,tiles=tiles,floors=floors,dists=dists)
+                extra=extra,tiles=tiles,floors=floors,dists=dists,minlayer=minlayer)
 
 
 def _a6_vertical_max(F,D,gy):
@@ -1887,6 +1928,13 @@ def _a7_tile(plan,grid,tile,variants):
         floor=grid['floors'][stage['base']][sl]
         yy=grid['origin'][1]+np.arange(start[1],end[1]+1)*pitch[1]
         # a deep pillow curls under to its support: the cut along the floor is rounded, no flat shelf with a hard rim
+        if A7_MINLAYER>0:
+            # a sharp crest (a rock's ridge, a box corner) stood out of the smooth particle surface at v1-v4 and read as
+            # a hole: every carrier keeps at least a thin layer (vertical, 1-2 cm, tapering out at the cap's edge)
+            ml=grid['minlayer']; lo=ml['lo'][sl]; tp=ml['top'][sl]; hm=float(np.clip(A7_MINLAYER*stage['base'],.008,.02))*ml['w'][sl]
+            fm=np.minimum(yy[None,:,None]-lo[:,None,:],(tp+hm)[:,None,:]-yy[None,:,None])
+            fm=np.where(np.isfinite(lo)[:,None,:]&(hm>1e-4)[:,None,:],fm,-1.)
+            current=np.maximum(current,fm)
         current=_smin(current,yy[None,:,None]-floor[:,None,:],max(.005,A7_FLOORK*stage['base']))
         if A7_OVL>0:
             # a pillow hangs over its carrier's edge by about a third of its depth at most: a post, bin or box keeps
