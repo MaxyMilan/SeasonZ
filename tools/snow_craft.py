@@ -1618,17 +1618,31 @@ def craft(path, out_dir, name):
             fh.write(data)
     return ('ok' if not empty else 'ok-from-v%d' % (max(empty) + 1)), stats
 
+APPROVED = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hand', 'approved')
+
+
+def approved_mesh(name):
+    """the frozen, reviewed snow of a model (tools/hand/approved/<name>.npz, written by the QA approve step): {variant:
+    (V, F)} in model space, or None"""
+    p = os.path.join(APPROVED, name + '.npz')
+    if not os.path.exists(p):
+        return None
+    z = np.load(p)
+    return {v: (np.asarray(z['V%d' % v], np.float64), np.asarray(z['F%d' % v], np.int64)) for v in range(1, 8)}
+
+
 def craft_hand(path, out_dir, name):
-    """the hand-made snow of a model with a recipe in tools/hand (snow_hand): None when it has none. SZ_HAND=all
-    makes every model's snow by hand (its recipe, or the plain one)"""
+    """the hand-made snow of a model: its approved (frozen) meshes first, else its recipe in tools/hand (snow_hand);
+    None when it has neither. SZ_HAND=all makes every model's snow by hand (its recipe, or the default)"""
     import snow_hand as H
-    if H.recipe(name) is None and os.environ.get('SZ_HAND') != 'all':
+    ap = approved_mesh(name)
+    if ap is None and H.recipe(name) is None and os.environ.get('SZ_HAND') != 'all':
         return None
     hm = H.Model(name, path=path)
     files, stats, empty = [], [], []
     for variant in VARIANTS:
         stage = VARIANTS[variant]
-        d = H.build(hm, variant)
+        d = ap[variant] if ap is not None else H.build(hm, variant)
         if d is None or len(d[1]) == 0:
             empty.append(variant)
             c = hm.V.mean(0)

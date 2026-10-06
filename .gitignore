@@ -22,3 +22,5 @@ tools/ext/
 
 # Generated snow caps (5.4 GB of MLOD source models): made again with tools/craft_all.py from the game's models
 source/SeasonZ/data/baked/
+
+# (approved snow meshes are kept in git: they are the reviewed product, not regenerable once the generator moves on)
