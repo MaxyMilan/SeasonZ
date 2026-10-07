@@ -132,6 +132,8 @@ class SZ_RoofBuilding
 	// before this client saw it)
 	vector m_LastPos;
 	vector m_LastDir;
+	vector m_LastUp;
+	float m_LastScale;
 	float m_StillTime;
 	float m_RestDepth;
 
@@ -4604,6 +4606,8 @@ class SZ_RoofSnow
 				nb.m_Kind = 2;
 				nb.m_LastPos = e.GetPosition();
 				nb.m_LastDir = e.GetDirection();
+			nb.m_LastUp = e.GetTransformAxis(1).Normalized();
+			nb.m_LastScale = e.GetScale();
 				nb.m_Ground = g_Game.SurfaceY(nb.m_LastPos[0], nb.m_LastPos[2]);
 				nb.m_RestDepth = -1;
 				if (s_Fresh && s_Fresh.Contains(e))
@@ -4634,7 +4638,8 @@ class SZ_RoofSnow
 				continue;
 			vector pos = ent.GetPosition();
 			vector dir = ent.GetDirection();
-			bool moved = vector.Distance(pos, b.m_LastPos) > 0.03 || vector.Dot(dir, b.m_LastDir) < 0.9995 || ent.GetHierarchyParent() != null;
+			vector up = ent.GetTransformAxis(1).Normalized();
+			bool moved = vector.Distance(pos, b.m_LastPos) > 0.03 || vector.Dot(dir, b.m_LastDir) < 0.9995 || vector.Dot(up, b.m_LastUp) < 0.9995 || Math.AbsFloat(ent.GetScale() - b.m_LastScale) > 0.001 || ent.GetHierarchyParent() != null;
 			if (moved)
 			{
 				DeleteObjects(b);
@@ -4646,6 +4651,8 @@ class SZ_RoofSnow
 				b.m_StillTime = 0;
 				b.m_LastPos = pos;
 				b.m_LastDir = dir;
+				b.m_LastUp = up;
+				b.m_LastScale = ent.GetScale();
 				b.m_Ground = g_Game.SurfaceY(pos[0], pos[2]);
 				// only snow that falls from now on lies on it
 				b.m_RestDepth = SZ_State.SnowAt(b.m_Ground, m_S0, m_S1, m_S2);
