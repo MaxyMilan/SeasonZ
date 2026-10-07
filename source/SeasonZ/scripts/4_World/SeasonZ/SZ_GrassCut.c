@@ -26,6 +26,8 @@ class SZ_GrassCut
 	protected int m_DropZ;
 	// time left before the next pass at an unchanged grid cell
 	protected float m_Rest;
+	protected bool m_DropActive;
+	protected int m_DropCursor;
 
 	void SZ_GrassCut()
 	{
@@ -75,6 +77,12 @@ class SZ_GrassCut
 
 	void Update(float timeslice, vector camera, float s0, float s1, float s2)
 	{
+		int perfStart = TickCount(0);
+		float perfTicks = SZ_RoofSnow.DebugTicksPerSec() / 1000.0;
+		if (SZ_State.s_DebugGrassBudget)
+			ContinueDrop(camera, perfStart, perfTicks);
+		else
+			m_DropActive = false;
 		int ax = Math.Floor(camera[0] / STEP);
 		int az = Math.Floor(camera[2] / STEP);
 		if (ax != m_AnchorX || az != m_AnchorZ)
@@ -105,6 +113,8 @@ class SZ_GrassCut
 		int visited = 0;
 		while (budget < 40.0 && visited < count)
 		{
+			if (SZ_State.s_DebugGrassBudget && visited > 0 && perfTicks > 0 && TickCount(perfStart) >= perfTicks)
+				break;
 			if (m_Scan >= count)
 			{
 				m_Scan = 0;
@@ -152,9 +162,16 @@ class SZ_GrassCut
 	//! forgets the cutters the camera left behind (once per new anchor, after a full pass)
 	protected void DropFar(vector camera)
 	{
+		if (SZ_State.s_DebugGrassBudget && m_DropActive) return;
 		m_Swept = true;
 		m_DropX = Math.Floor(camera[0] / STEP);
 		m_DropZ = Math.Floor(camera[2] / STEP);
+		if (SZ_State.s_DebugGrassBudget)
+		{
+			m_DropActive = true;
+			m_DropCursor = 0;
+			return;
+		}
 		array<int> drop = new array<int>;
 		foreach (int key, Object cutter : m_Cutters)
 		{
@@ -174,8 +191,37 @@ class SZ_GrassCut
 		}
 	}
 
+	//! Yield between native deletions. Recheck against the current camera so a
+	//! reversal never deletes a cutter that has become near again.
+	protected void ContinueDrop(vector camera, int started, float limit)
+	{
+		int visited = 0;
+		int removed = 0;
+		while (m_DropActive && visited < 32 && removed < 8)
+		{
+			if (visited > 0 && limit > 0 && TickCount(started) >= limit) break;
+			if (m_DropCursor >= m_Cutters.Count()) { m_DropActive = false; break; }
+			int key = m_Cutters.GetKey(m_DropCursor);
+			int gx = Math.Floor(key / 65536.0);
+			int gz = key - gx * 65536;
+			float dx = (gx + 0.5) * STEP - camera[0];
+			float dz = (gz + 0.5) * STEP - camera[2];
+			visited++;
+			if (dx * dx + dz * dz > KEEP_RADIUS * KEEP_RADIUS)
+			{
+				Object o = m_Cutters.Get(key);
+				if (o) g_Game.ObjectDelete(o);
+				m_Cutters.Remove(key);
+				removed++;
+			}
+			else m_DropCursor++;
+		}
+	}
+
 	void Clear()
 	{
+		m_DropActive = false;
+		m_DropCursor = 0;
 		if (!m_Cutters)
 			return;
 		for (int i = 0; i < m_Cutters.Count(); i++)

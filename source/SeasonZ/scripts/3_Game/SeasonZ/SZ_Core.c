@@ -177,6 +177,8 @@ class SZ_State
 	static float s_DebugCarpetDetailNear = -1;
 	//! Local A/B only: preserve 70 m exact detail, coarsen only the outer level-0 fringe.
 	static bool s_DebugCarpetOuterCoarse;
+	//! Opt-in bounded cutter maintenance; retain production behavior until wider travel QA.
+	static bool s_DebugGrassBudget = false;
 	//! Prototype: no cover traversal after the last snow object has melted.
 	static bool s_DebugCarpetIdle = true;
 	// local test harness only: the wall rule from before the cut along the walls (A/B comparisons)
