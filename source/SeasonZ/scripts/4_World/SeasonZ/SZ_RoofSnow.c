@@ -551,7 +551,48 @@ class SZ_RoofSnow
 			}
 			m_Tiles.Remove(k);
 		}
+		PruneBakedRing();
 		m_Cursor = 0;
+	}
+
+	//! A depth-stable ring is asleep; evicted owners must still leave its array.
+	protected void PruneBakedRing()
+	{
+		if (!m_BakedRing)
+			return;
+		int ringCount = m_BakedRing.Count();
+		int oldCursor = m_BakedCursor;
+		if (oldCursor >= ringCount)
+			oldCursor = 0;
+		int oldLeft = Math.Min(m_RingLeft, ringCount);
+		int writeIndex = 0;
+		int nextCursor = 0;
+		int pendingLeft = 0;
+		for (int ri = 0; ri < ringCount; ri++)
+		{
+			SZ_RoofBuilding rb = m_BakedRing[ri];
+			if (!rb || !rb.m_Obj || rb.m_Dropped || rb.m_Baked == "")
+			{
+				if (rb)
+					rb.m_InRing = false;
+				continue;
+			}
+			// Stable compaction preserves the pending circular interval, including wraparound.
+			if (ri < oldCursor)
+				nextCursor++;
+			int ahead = ri - oldCursor;
+			if (ahead < 0)
+				ahead += ringCount;
+			if (m_RingActive && ahead < oldLeft)
+				pendingLeft++;
+			if (writeIndex != ri)
+				m_BakedRing[writeIndex] = rb;
+			writeIndex++;
+		}
+		m_BakedRing.Resize(writeIndex);
+		m_BakedCursor = nextCursor;
+		m_RingLeft = pendingLeft;
+		m_RingActive = m_RingActive && pendingLeft > 0;
 	}
 
 	protected void ScanTile(SZ_RoofTile tile, int tx, int tz)
@@ -4175,7 +4216,8 @@ class SZ_RoofSnow
 			{
 				if (b)
 					b.m_InRing = false;
-				m_BakedRing.Remove(m_BakedCursor);
+				// Keep the pending circular order: the last slot may already have been visited.
+				m_BakedRing.RemoveOrdered(m_BakedCursor);
 				continue;
 			}
 			m_BakedCursor++;
