@@ -150,6 +150,7 @@ class SZ_RoofTile
 {
 	ref array<ref SZ_RoofBuilding> m_Buildings;
 	bool m_Scanned;
+	int m_UpdateCursor;
 
 	void SZ_RoofTile()
 	{
@@ -4158,11 +4159,12 @@ class SZ_RoofSnow
 			m_RingLeft = m_BakedRing.Count();
 		}
 		int n = Math.Min(BAKED_RING_PER_FRAME, m_RingLeft);
-		m_RingLeft -= n;
-		if (m_RingLeft <= 0)
-			m_RingActive = false;
 		for (int k = 0; k < n; k++)
 		{
+			// Allow one visit for progress, then yield without discarding pending visits.
+			if (k > 0 && OverBudget())
+				break;
+			m_RingLeft--;
 			if (m_BakedCursor >= m_BakedRing.Count())
 				m_BakedCursor = 0;
 			if (m_BakedRing.Count() == 0)
@@ -4195,6 +4197,8 @@ class SZ_RoofSnow
 			b.m_Dist = dist;
 			UpdateBaked(b, anySnow);
 		}
+		if (m_RingLeft <= 0)
+			m_RingActive = false;
 	}
 
 	protected void UpdateFrame(float timeslice, vector camera, float s0, float s1, float s2)
@@ -4305,8 +4309,17 @@ class SZ_RoofSnow
 			}
 
 			m_Cost += 0.01;
-			foreach (SZ_RoofBuilding b : tile.m_Buildings)
+			while (tile.m_UpdateCursor < tile.m_Buildings.Count())
 			{
+				if (looked >= VISITS_PER_FRAME || OverBudget(TileDist(ktx, ktz) < URGENT_DIST + TILE))
+				{
+					m_Cursor--;
+					visited = count;
+					busy = true;
+					break;
+				}
+				SZ_RoofBuilding b = tile.m_Buildings[tile.m_UpdateCursor];
+				tile.m_UpdateCursor++;
 				if (!b.m_Obj)
 					continue;
 				looked++;
@@ -4343,6 +4356,7 @@ class SZ_RoofSnow
 					StatTicks(4, tk);
 					if (!placed)
 					{
+						tile.m_UpdateCursor--;
 						m_Cursor--;
 						visited = count;
 						busy = true;
@@ -4394,7 +4408,8 @@ class SZ_RoofSnow
 				}
 				if (b.m_State != 2)
 				{
-					// continue this tile next frame
+					// continue this building and tile next frame
+					tile.m_UpdateCursor--;
 					m_Cursor--;
 					visited = count;
 					busy = true;
@@ -4408,6 +4423,7 @@ class SZ_RoofSnow
 					StatTicks(4, tk);
 					if (!started)
 					{
+						tile.m_UpdateCursor--;
 						m_Cursor--;
 						visited = count;
 						busy = true;
@@ -4415,8 +4431,10 @@ class SZ_RoofSnow
 					}
 				}
 			}
+			if (tile.m_UpdateCursor >= tile.m_Buildings.Count())
+				tile.m_UpdateCursor = 0;
 		}
-		if (m_Cost >= 20.0 || m_Trash.Count() > 0)
+		if (m_Cost >= 20.0 || m_Trash.Count() > 0 || m_RingActive)
 			busy = true;
 		SZ_State.s_StatRoofBusy = busy;
 	}
