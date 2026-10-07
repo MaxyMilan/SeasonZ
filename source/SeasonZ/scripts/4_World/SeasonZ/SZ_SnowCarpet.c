@@ -282,6 +282,26 @@ class SZ_SnowCarpet
 		return m_Objects;
 	}
 
+	void PerfInventory(FileHandle file)
+	{
+		map<string, int> counts = new map<string, int>;
+		for (int level = 0; level < m_Cells.Count(); level++)
+		{
+			for (int i = 0; i < m_Cells[level].Count(); i++)
+			{
+				SZ_SnowCell cell = m_Cells[level].GetElement(i);
+				foreach (Object obj : cell.m_Objects)
+					SZ_PerfInventory.Add(counts, obj);
+			}
+		}
+		foreach (SZ_SnowCell retired : m_Retired)
+		{
+			foreach (Object oldObj : retired.m_Objects)
+				SZ_PerfInventory.Add(counts, oldObj);
+		}
+		SZ_PerfInventory.Write(file, "carpet", counts);
+	}
+
 	int GetSkirtCount()
 	{
 		return m_SkirtCount;
@@ -2216,9 +2236,12 @@ class SZ_SnowCarpet
 	//! (-1 for a new cell)
 	protected int DetailFor(float dist, int current)
 	{
-		if (!SZ_State.s_CarpetFarDetail || dist < DETAIL_NEAR)
+		float nearRadius = DETAIL_NEAR;
+		if (SZ_State.s_DebugCarpetDetailNear >= 0)
+			nearRadius = Math.Clamp(SZ_State.s_DebugCarpetDetailNear, 10.0, DETAIL_NEAR);
+		if (!SZ_State.s_CarpetFarDetail || dist < nearRadius)
 			return EXACT_DEPTH;
-		if (current == EXACT_DEPTH && dist < DETAIL_NEAR + DETAIL_HYST)
+		if (current == EXACT_DEPTH && dist < nearRadius + DETAIL_HYST)
 			return EXACT_DEPTH;
 		return EXACT_DEPTH - 1;
 	}
@@ -2636,6 +2659,11 @@ class SZ_SnowCarpet
 			m_Epoch++;
 		}
 		bool anySnow = Math.Max(s0, Math.Max(s1, s2)) >= 0.5;
+		// Keep existing cells/caches. When snow returns, normal anchor and pond
+		// invalidation runs before rebuilding; melting and retired cleanup finish
+		// before this guard is allowed. No visible objects exist on this path.
+		if (SZ_State.s_DebugCarpetIdle && !anySnow && m_Objects == 0 && m_Retired.Count() == 0)
+			return;
 
 		int pondMode = WantedPondMode();
 		if (pondMode != m_PondMode)

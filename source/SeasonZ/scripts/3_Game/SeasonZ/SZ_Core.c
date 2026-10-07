@@ -154,6 +154,10 @@ class SZ_State
 	static float s_DebugExtraOffset = 0;
 	// local test harness only: hides the snow cover
 	static bool s_DebugNoCarpet = false;
+	//! Performance prototype: exact building-edge detail radius (negative keeps production 70 m).
+	static float s_DebugCarpetDetailNear = -1;
+	//! Prototype: no cover traversal after the last snow object has melted.
+	static bool s_DebugCarpetIdle = true;
 	// local test harness only: the wall rule from before the cut along the walls (A/B comparisons)
 	static bool s_DebugOldWalls = false;
 	// local test harness only: extra height of the roof snow (metres)

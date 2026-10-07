@@ -1027,6 +1027,10 @@ class SZ_TreeSwap
 			m_ProbeAt = m_Clock + LIMIT_PROBE_SECONDS;
 		}
 		float reach = m_LimitR;
+		// A/B radius must also retire existing replacements. Previously it only
+		// stopped far visits, so reducing radius left the expensive old objects alive.
+		if (SZ_State.s_DebugTreeRadius >= 0)
+			reach = Math.Min(reach, SZ_State.s_DebugTreeRadius);
 		if (m_Fog > 0.01)
 			reach = Math.Min(reach, FOG_REACH / m_Fog);
 		m_Reach = Math.Clamp(reach, NEAR_RADIUS + TILE, RADIUS);
@@ -1104,6 +1108,14 @@ class SZ_TreeSwap
 	float GetReach()
 	{
 		return m_Reach;
+	}
+
+	void PerfInventory(FileHandle file)
+	{
+		map<string, int> counts = new map<string, int>;
+		for (int i = 0; i < s_ReplToOrig.Count(); i++)
+			SZ_PerfInventory.Add(counts, s_ReplToOrig.GetKey(i));
+		SZ_PerfInventory.Write(file, "trees", counts);
 	}
 
 	//! the frame's time for swapping trees is used up

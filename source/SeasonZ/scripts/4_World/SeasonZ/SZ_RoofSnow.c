@@ -435,6 +435,29 @@ class SZ_RoofSnow
 		return m_Objects;
 	}
 
+	void PerfInventory(FileHandle file)
+	{
+		map<string, int> baked = new map<string, int>;
+		map<string, int> sampled = new map<string, int>;
+		for (int i = 0; i < m_Tiles.Count(); i++)
+		{
+			SZ_RoofTile tile = m_Tiles.GetElement(i);
+			foreach (SZ_RoofBuilding building : tile.m_Buildings)
+			{
+				foreach (Object obj : building.m_Objects)
+				{
+					if (building.m_Baked != "")
+						SZ_PerfInventory.Add(baked, obj);
+					else
+						SZ_PerfInventory.Add(sampled, obj);
+				}
+			}
+		}
+		SZ_PerfInventory.Write(file, "roof_baked", baked);
+		SZ_PerfInventory.Write(file, "roof_sampled", sampled);
+		Print(string.Format("[DSTest] inventory roof pending_trash=%1 movable_sources=%2", m_Trash.Count(), m_Movable.Count()));
+	}
+
 	int GetRayCount()
 	{
 		return m_Rays;
