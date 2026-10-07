@@ -584,6 +584,12 @@ class SZ_TreeSwap
 				tile.m_Paths.Insert(o);
 				tile.m_PathScale.Insert(o.GetScale());
 				tile.m_PathAlt.Insert(p[1]);
+				// SetPathsHidden is a no-op while the tile already has this state.
+				if (tile.m_PathsHidden)
+				{
+					o.SetScale(0.001);
+					o.Update();
+				}
 				continue;
 			}
 
