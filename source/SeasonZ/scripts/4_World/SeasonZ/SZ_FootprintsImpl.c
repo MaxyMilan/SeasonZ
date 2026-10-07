@@ -2,6 +2,7 @@ class SZ_Print
 {
 	Object m_Obj;
 	float m_Time;
+	float m_Fill; // integrated snowfall exposure, 1 = filled
 }
 
 //! Client: footprints in the snow cover. Every footstep on snow leaves a print aligned to the ground; fresh snowfall
@@ -148,21 +149,21 @@ class SZ_Footprints
 	{
 		s_Clock += timeslice;
 		if (!s_Prints || s_Prints.Count() == 0)
+		{
+			s_FillTimer = 0;
 			return;
+		}
 
 		s_FillTimer += timeslice;
 		if (s_FillTimer < 1.0)
 			return;
+		float fillSeconds = s_FillTimer;
 		s_FillTimer = 0;
 
 		float snowfall = g_Game.GetWeather().GetSnowfall().GetActual();
+		float fillStep = 0;
 		if (snowfall > 0.05)
-		{
-			// heavy snowfall covers a print within minutes, light snow takes most of an hour
-			float maxAge = FILL_HEAVY + FILL_LIGHT * (1.0 - Math.Clamp(snowfall, 0, 1));
-			while (s_Prints.Count() > 0 && s_Clock - s_Prints[0].m_Time > maxAge)
-				RemoveAt(0);
-		}
+			fillStep = fillSeconds / (FILL_HEAVY + FILL_LIGHT * (1.0 - Math.Clamp(snowfall, 0, 1)));
 
 		for (int i = s_Prints.Count() - 1; i >= 0; i--)
 		{
@@ -172,14 +173,17 @@ class SZ_Footprints
 				s_Prints.RemoveOrdered(i);
 				continue;
 			}
+			// A mark born within this fill interval did not see the earlier part of it.
+			p.m_Fill += fillStep * Math.Clamp((s_Clock - p.m_Time) / fillSeconds, 0, 1);
 			vector pp = p.m_Obj.GetPosition();
-			if (SZ_State.SnowAt(pp[1], s0, s1, s2) < 0.8)
+			if (p.m_Fill >= 1.0 || SZ_State.SnowAt(pp[1], s0, s1, s2) < 0.8)
 				RemoveAt(i);
 		}
 	}
 
 	static void Clear()
 	{
+		s_FillTimer = 0;
 		if (!s_Prints)
 			return;
 		while (s_Prints.Count() > 0)
