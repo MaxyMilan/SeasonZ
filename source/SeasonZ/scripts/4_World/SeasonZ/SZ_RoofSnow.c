@@ -767,7 +767,8 @@ class SZ_RoofSnow
 		RaycastRVParams rp = new RaycastRVParams(Vector(x, b.m_Top, z), Vector(x, b.m_Bottom, z), null, 0);
 		rp.type = b.m_Geo;
 		rp.flags = CollisionFlags.ALLOBJECTS;
-		rp.sorted = true;
+		// All hits are reduced to maxima below; their order is irrelevant.
+		rp.sorted = false;
 		array<ref RaycastRVResult> results = new array<ref RaycastRVResult>;
 		m_Rays++;
 		m_Cost += 0.035;
