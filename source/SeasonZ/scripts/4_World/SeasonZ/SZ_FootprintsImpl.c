@@ -3,6 +3,7 @@ class SZ_Print
 	Object m_Obj;
 	float m_Time;
 	float m_Fill; // integrated snowfall exposure, 1 = filled
+	bool m_OnPond;
 }
 
 //! Client: footprints in the snow cover. Every footstep on snow leaves a print aligned to the ground; fresh snowfall
@@ -77,7 +78,7 @@ class SZ_Footprints
 	{
 		if (!s_Prints)
 			s_Prints = new array<ref SZ_Print>;
-		float ground = g_Game.SurfaceY(pos[0], pos[2]);
+		float ground = SZ_SnowCarpet.CoverHeightAt(pos[0], pos[2]);
 		float snow = SZ_State.SnowAt(ground, SZ_State.s_Snow0, SZ_State.s_Snow1, SZ_State.s_Snow2);
 		if (snow < MIN_CM)
 			return;
@@ -101,6 +102,8 @@ class SZ_Footprints
 		// just above the snow cover, which floats a few centimetres over the terrain and a little more over roads
 		float cover = SZ_SnowCarpet.CoverHeightAt(pos[0], pos[2]);
 		vector up = g_Game.SurfaceGetNormal(pos[0], pos[2]);
+		if (SZ_Winter.FrozenPondAt(pos))
+			up = "0 1 0";
 		// forward along the slope
 		vector fwd = dir - up * vector.Dot(dir, up);
 		if (fwd.Length() < 0.01)
@@ -130,6 +133,7 @@ class SZ_Footprints
 		SZ_Print p = new SZ_Print();
 		p.m_Obj = o;
 		p.m_Time = s_Clock;
+		p.m_OnPond = SZ_Winter.FrozenPondAt(pos);
 		s_Prints.Insert(p);
 		while (s_Prints.Count() > MAX_PRINTS)
 			RemoveAt(0);
@@ -176,7 +180,7 @@ class SZ_Footprints
 			// A mark born within this fill interval did not see the earlier part of it.
 			p.m_Fill += fillStep * Math.Clamp((s_Clock - p.m_Time) / fillSeconds, 0, 1);
 			vector pp = p.m_Obj.GetPosition();
-			if (p.m_Fill >= 1.0 || SZ_State.SnowAt(pp[1], s0, s1, s2) < 0.8)
+			if (p.m_Fill >= 1.0 || (p.m_OnPond && !SZ_Winter.FrozenPondAt(pp)) || SZ_State.SnowAt(pp[1], s0, s1, s2) < 0.8)
 				RemoveAt(i);
 		}
 	}
