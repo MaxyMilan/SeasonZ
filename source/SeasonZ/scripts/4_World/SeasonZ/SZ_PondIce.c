@@ -309,6 +309,13 @@ class SZ_PondIce
 		// thick ice carries snow and people and looks pale; thin ice (freezing up, rotting in spring) is dark like
 		// clear ice and the server has no plates for it
 		bool thick = ice >= SZ_Const.ICE_SNOW_ON || (b.m_Thick && ice >= SZ_Const.ICE_SNOW_OFF);
+		// Keep physical state current even while the body is hidden or unmeasured.
+		if (thick != b.m_Thick)
+		{
+			if (b.m_Objects.Count() > 0)
+				Hide(b);
+			b.m_Thick = thick;
+		}
 		bool frozen = ice >= SZ_Const.ICE_VISIBLE;
 		if (m_Server)
 			frozen = thick;
@@ -324,12 +331,6 @@ class SZ_PondIce
 			b.m_Step = 0;
 		if (b.m_Step < 2)
 			return Measure(b);
-		if (thick != b.m_Thick)
-		{
-			if (b.m_Objects.Count() > 0)
-				Hide(b);
-			b.m_Thick = thick;
-		}
 		if (!b.m_Shown)
 			return Show(b);
 		return true;
