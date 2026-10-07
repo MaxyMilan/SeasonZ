@@ -60,7 +60,7 @@ modded class MissionGameplay
 		m_SZ_Client = null;
 		// A later connection must wait for its own server's state.
 		if (!g_Game.IsServer())
-			SZ_State.s_Valid = false;
+			SZ_State.ResetSession();
 		super.OnMissionFinish();
 	}
 }

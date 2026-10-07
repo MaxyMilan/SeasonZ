@@ -86,6 +86,13 @@ class SZ_ServerController
 			m_State.Version = 3;
 			Print(string.Format("[SeasonZ] pond ice started from the Kyiv climate for day %1", SZ_State.s_DayOfYear));
 		}
+		g_Game.GetWorldName(SZ_State.s_PondWorld);
+		SZ_State.s_PondWorld.ToLower();
+		SZ_State.s_PondCarry = null;
+		if (m_State.PondLayout == SZ_PondProtocol.LAYOUT && m_State.PondWorld == SZ_State.s_PondWorld)
+			SZ_State.s_PondCarry = m_State.PondCarry;
+		SZ_State.s_PondRevision++; // initialize the generation even when loaded carrying bits are unchanged
+		RefreshPondCarry();
 		ApplyDate();
 		SZ_State.s_Valid = true;
 		UpdateLiquids();
@@ -152,6 +159,11 @@ class SZ_ServerController
 		m_State.SnowWater250mMm = m_Water[1];
 		m_State.SnowWater500mMm = m_Water[2];
 		m_State.TempAnomaly = SZ_State.s_TempAnomaly;
+		RefreshPondCarry();
+		m_State.PondCarry = SZ_State.s_PondCarry;
+		m_State.PondWorld = SZ_State.s_PondWorld;
+		m_State.PondLayout = SZ_PondProtocol.LAYOUT;
+		m_State.Version = 4;
 		m_State.IceSeaLevelCm = SZ_State.s_Ice0;
 		m_State.Ice250mCm = SZ_State.s_Ice1;
 		m_State.Ice500mCm = SZ_State.s_Ice2;
@@ -624,9 +636,44 @@ class SZ_ServerController
 	}
 
 	// ---- sync --------------------------------------------------------------------------------
+	protected void RefreshPondCarry()
+	{
+		array<float> ponds = SZ_PondState.Data();
+		int count = 0;
+		if (ponds)
+			count = ponds.Count() / 5;
+		bool changed = false;
+		bool hasCarry = false;
+		if (!SZ_State.s_PondCarry || SZ_State.s_PondCarry.Count() != count)
+		{
+			SZ_State.s_PondCarry = new array<int>;
+			SZ_State.s_PondCarry.Resize(count);
+			changed = true;
+		}
+		for (int i = 0; i < count; i++)
+		{
+			float depth = SZ_State.SnowAt(ponds[i * 5 + 4], SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2);
+			int value = 0;
+			if (depth >= SZ_Const.ICE_SNOW_ON || (SZ_State.s_PondCarry[i] == 1 && depth >= SZ_Const.ICE_SNOW_OFF))
+				value = 1;
+			if (value == 1)
+				hasCarry = true;
+			if (value != SZ_State.s_PondCarry[i])
+			{
+				SZ_State.s_PondCarry[i] = value;
+				changed = true;
+			}
+		}
+		SZ_State.s_HasPondCarry = hasCarry;
+		if (changed)
+			SZ_State.s_PondRevision++;
+	}
+
 	void SendState(PlayerIdentity identity)
 	{
-		Param8<float, float, float, float, float, float, float, float> data = new Param8<float, float, float, float, float, float, float, float>(SZ_State.s_DayOfYear, SZ_State.s_Snow0, SZ_State.s_Snow1, SZ_State.s_Snow2, SZ_State.s_TempAnomaly, SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2);
+		RefreshPondCarry();
+		array<float> values = {2.0, SZ_State.s_DayOfYear, SZ_State.s_Snow0, SZ_State.s_Snow1, SZ_State.s_Snow2, SZ_State.s_TempAnomaly, SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2};
+		Param4<int, string, ref array<float>, ref array<int>> data = new Param4<int, string, ref array<float>, ref array<int>>(SZ_PondProtocol.LAYOUT, SZ_State.s_PondWorld, values, SZ_State.s_PondCarry);
 		g_Game.RPCSingleParam(null, SZ_Const.RPC_STATE, data, true, identity);
 	}
 
@@ -719,6 +766,7 @@ class SZ_ServerController
 			ComputeDayOfYear();
 			ApplyDate();
 			UpdateSnow();
+			RefreshPondCarry();
 			UpdatePrecipitationType();
 			if (g_Game.GetMission() && g_Game.GetMission().GetWorldData())
 				g_Game.GetMission().GetWorldData().SZ_EnforceHaze();
@@ -762,7 +810,7 @@ class SZ_ServerController
 		if (m_Ice)
 			m_Ice.Clear();
 		m_Ice = null;
-		SZ_State.s_Valid = false;
+		SZ_State.ResetSession();
 	}
 
 	SZ_PondIce GetIce()

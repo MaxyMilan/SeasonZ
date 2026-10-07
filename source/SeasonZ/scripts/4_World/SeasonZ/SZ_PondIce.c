@@ -2,6 +2,7 @@
 //! its open water
 class SZ_PondBody
 {
+	int m_Id;
 	float m_X0;
 	float m_Z0;
 	float m_X1;
@@ -102,7 +103,9 @@ class SZ_PondIce
 				float x1 = data[i + 2];
 				float z1 = data[i + 3];
 				float y = data[i + 4];
-				m_Bodies.Insert(new SZ_PondBody(x0, z0, x1, z1, y));
+				SZ_PondBody body = new SZ_PondBody(x0, z0, x1, z1, y);
+			body.m_Id = i / 5;
+			m_Bodies.Insert(body);
 			}
 		}
 		Print(string.Format("[SeasonZ] pond ice: %1 water bodies on %2", m_Bodies.Count(), world));
@@ -309,7 +312,7 @@ class SZ_PondIce
 		float ice = IceAt(b.m_Y);
 		// thick ice carries snow and people and looks pale; thin ice (freezing up, rotting in spring) is dark like
 		// clear ice and the server has no plates for it
-		bool thick = ice >= SZ_Const.ICE_SNOW_ON || (b.m_Thick && ice >= SZ_Const.ICE_SNOW_OFF);
+		bool thick = SZ_PondState.Carries(b.m_Id);
 		// Keep physical state current even while the body is hidden or unmeasured.
 		if (thick != b.m_Thick)
 		{

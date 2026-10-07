@@ -2,7 +2,7 @@
 
 class SZ_Const
 {
-	static const int RPC_STATE = 83610417;
+	static const int RPC_STATE = 83610418;
 	static const string PROFILE_DIR = "$profile:SeasonZ";
 	static const string CONFIG_FILE = "$profile:SeasonZ/config.json";
 	static const string STATE_FILE = "$profile:SeasonZ/state.json";
@@ -137,6 +137,20 @@ class SZ_State
 	static float s_Ice0 = 0;
 	static float s_Ice1 = 0;
 	static float s_Ice2 = 0;
+	//! RPC v2: stable SZ_PondData index, server-owned hysteresis; no client-local reconstruction.
+	static ref array<int> s_PondCarry;
+	static string s_PondWorld;
+	static int s_PondRevision;
+	static bool s_HasPondCarry;
+	static void ResetSession()
+	{
+		s_Valid = false;
+		s_PondCarry = null;
+		s_PondWorld = "";
+		s_PondRevision = 0;
+		s_HasPondCarry = false;
+	}
+
 	static bool s_LightingDirty = false;
 	// client statistics, for the log and the local test harness
 	static int s_StatCarpet = 0;

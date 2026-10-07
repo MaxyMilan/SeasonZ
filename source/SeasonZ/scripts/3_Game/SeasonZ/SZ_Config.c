@@ -77,6 +77,10 @@ class SZ_PersistentState
 	float PondTemp500m = 0;
 	//! 1 once the pond values above exist (a state of an earlier version starts them from the Kyiv climate)
 	int IceModel = 0;
+	//! Version 4 persists carrying history; layout 1 pins the ordered Chernarus pond dataset.
+	int PondLayout = 0;
+	string PondWorld;
+	ref array<int> PondCarry;
 
 	//! Positive comparisons reject NaN as well as infinities and unreasonable edited save data.
 	static bool InRange(float value, float low, float high)
@@ -86,7 +90,7 @@ class SZ_PersistentState
 
 	bool ValidForLoad()
 	{
-		if (Version < 1 || Version > 3 || SnowModel < 0 || SnowModel > 2 || IceModel < 0 || IceModel > 1)
+		if (Version < 1 || Version > 4 || SnowModel < 0 || SnowModel > 2 || IceModel < 0 || IceModel > 1)
 			return false;
 		if (!InRange(CycleDays, -1000000, 1000000) || !InRange(TempAnomaly, -100, 100))
 			return false;
@@ -97,6 +101,13 @@ class SZ_PersistentState
 		if (!InRange(IceSeaLevelCm, 0, 10000) || !InRange(Ice250mCm, 0, 10000) || !InRange(Ice500mCm, 0, 10000))
 			return false;
 		if (!InRange(PondTempSeaLevel, 0, 100) || !InRange(PondTemp250m, 0, 100) || !InRange(PondTemp500m, 0, 100))
+			return false;
+		if (Version == 4)
+		{
+			if (!SZ_PondProtocol.Valid(PondLayout, PondWorld, PondCarry))
+				return false;
+		}
+		else if (PondLayout != 0 || PondWorld != "" || (PondCarry && PondCarry.Count() > 0))
 			return false;
 		if (SnowModel == 2)
 		{

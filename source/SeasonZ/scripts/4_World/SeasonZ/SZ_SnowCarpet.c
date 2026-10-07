@@ -707,32 +707,25 @@ class SZ_SnowCarpet
 		float water;
 		if (!SZ_Util.PondWater(x, z, water))
 			return false;
-		if (m_PondMode == 0)
-			return true;
-		return !PondCovered(water);
+		return !PondCovered(x, z, water);
 	}
 
-	//! true when the ponds around this water height carry snow (the band of the nearest tracked height)
-	protected bool PondCovered(float altitude)
+	//! Same supported body and authoritative state as collision and water actions.
+	protected bool PondCovered(float x, float z, float water)
 	{
-		int bit = 2;
-		if (altitude < 125.0)
-			bit = 1;
-		else if (altitude >= 375.0)
-			bit = 4;
-		return (m_PondMode & bit) != 0;
+		return SZ_PondState.At(x, z, water);
 	}
 
 	//! height the snow cover lies on: the terrain, or the ice of a frozen pond that carries snow
 	float GY(float x, float z)
 	{
 		float ground = g_Game.SurfaceY(x, z);
-		if (m_PondMode == 0)
+		if (!SZ_State.s_HasPondCarry)
 			return ground;
 		float water;
 		if (!SZ_Util.PondWater(x, z, water))
 			return ground;
-		if (!PondCovered(water))
+		if (!PondCovered(x, z, water))
 			return ground;
 		float top = water + ICE_TOP;
 		if (top > ground)
@@ -740,24 +733,10 @@ class SZ_SnowCarpet
 		return ground;
 	}
 
-	//! per tracked height: does its ice carry snow (with a margin, so the state does not flicker at the threshold)
+	//! This is now a generation, not three altitude bits: rebuild whenever ANY pond changes.
 	protected int WantedPondMode()
 	{
-		int mode = 0;
-		if (LevelCarriesSnow(SZ_State.s_Ice0, 1))
-			mode = mode | 1;
-		if (LevelCarriesSnow(SZ_State.s_Ice1, 2))
-			mode = mode | 2;
-		if (LevelCarriesSnow(SZ_State.s_Ice2, 4))
-			mode = mode | 4;
-		return mode;
-	}
-
-	protected bool LevelCarriesSnow(float ice, int bit)
-	{
-		if ((m_PondMode & bit) != 0)
-			return ice >= SZ_Const.ICE_SNOW_OFF;
-		return ice >= SZ_Const.ICE_SNOW_ON;
+		return SZ_State.s_PondRevision;
 	}
 
 	int GetPondMode()
@@ -2835,6 +2814,13 @@ class SZ_SnowCarpet
 			// frozen ponds started or stopped carrying snow: every cell is rebuilt in place, nearest first
 			m_PondMode = pondMode;
 			m_BuildGen++;
+			if (m_Job && m_Job != m_JobOld)
+				DeleteObjects(m_Job);
+			m_Job = null;
+			m_JobOld = null;
+			m_ExactStack.Clear();
+			m_FineGeometry.Clear();
+			m_FarGeometry.Clear();
 			for (int lv = 1; lv < LEVELS; lv++)
 			{
 				m_Rise[lv].Clear();
@@ -2843,7 +2829,7 @@ class SZ_SnowCarpet
 			m_Road0.Clear();
 			m_Diag0.Clear();
 			m_NearScan = 0;
-			Print(string.Format("[SeasonZ] snow cover: frozen ponds carrying snow (bits 0m/250m/500m) = %1", m_PondMode));
+			Print(string.Format("[SeasonZ] snow cover: frozen ponds carrying snow (authority generation) = %1", m_PondMode));
 		}
 
 		// test harness: another road rule rebuilds every cell in place

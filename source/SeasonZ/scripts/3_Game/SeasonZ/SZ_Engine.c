@@ -43,22 +43,51 @@ modded class DayZGame
 	{
 		if (rpc_type == SZ_Const.RPC_STATE && !target)
 		{
-			// This message publishes server state; clients cannot set it on the server.
 			if (IsServer())
 				return;
-			Param8<float, float, float, float, float, float, float, float> data = new Param8<float, float, float, float, float, float, float, float>(0, 0, 0, 0, 0, 0, 0, 0);
-			if (ctx.Read(data))
+			Param4<int, string, ref array<float>, ref array<int>> data = new Param4<int, string, ref array<float>, ref array<int>>(0, "", null, null);
+			if (!ctx.Read(data) || !data.param3)
+				return;
+			string world;
+			GetWorldName(world);
+			world.ToLower();
+			if (data.param2 != world || !SZ_PondProtocol.Valid(data.param1, data.param2, data.param4))
+				return;
+			array<float> v = data.param3;
+			array<int> carry = data.param4;
+			if (v.Count() != 9 || v[0] != 2.0)
+				return;
+			if (!(v[1] >= 0 && v[1] < 365) || !SZ_PersistentState.InRange(v[5], -100, 100))
+				return;
+			if (!SZ_PersistentState.InRange(v[2], 0, 1000) || !SZ_PersistentState.InRange(v[3], 0, 1000) || !SZ_PersistentState.InRange(v[4], 0, 1000))
+				return;
+			if (!SZ_PersistentState.InRange(v[6], 0, 10000) || !SZ_PersistentState.InRange(v[7], 0, 10000) || !SZ_PersistentState.InRange(v[8], 0, 10000))
+				return;
+			bool changed = SZ_State.s_PondWorld != world || !SZ_State.s_PondCarry || SZ_State.s_PondCarry.Count() != carry.Count();
+			bool hasCarry = false;
+			for (int pi = 0; pi < carry.Count(); pi++)
 			{
-				SZ_State.s_DayOfYear = data.param1;
-				SZ_State.s_Snow0 = data.param2;
-				SZ_State.s_Snow1 = data.param3;
-				SZ_State.s_Snow2 = data.param4;
-				SZ_State.s_TempAnomaly = data.param5;
-				SZ_State.s_Ice0 = data.param6;
-				SZ_State.s_Ice1 = data.param7;
-				SZ_State.s_Ice2 = data.param8;
-				SZ_State.s_Valid = true;
+				if (carry[pi] != 0 && carry[pi] != 1)
+					return;
+				if (carry[pi] == 1)
+					hasCarry = true;
+				if (!changed && SZ_State.s_PondCarry[pi] != carry[pi])
+					changed = true;
 			}
+			SZ_State.s_DayOfYear = v[1];
+			SZ_State.s_Snow0 = v[2];
+			SZ_State.s_Snow1 = v[3];
+			SZ_State.s_Snow2 = v[4];
+			SZ_State.s_TempAnomaly = v[5];
+			SZ_State.s_Ice0 = v[6];
+			SZ_State.s_Ice1 = v[7];
+			SZ_State.s_Ice2 = v[8];
+			SZ_State.s_PondCarry = carry;
+			SZ_State.s_HasPondCarry = hasCarry;
+			SZ_State.s_PondWorld = world;
+			if (changed)
+				SZ_State.s_PondRevision++;
+			SZ_State.s_Valid = true;
 			return;
 		}
 
