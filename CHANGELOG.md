@@ -2,19 +2,25 @@
 
 ## 0.5.2
 
-- 1,377 approved snow caps plus intentional skips, including the indoor patient monitor; refined buildings,
-  military structures, industrial sites, rocks, ruins and wrecks retain the generated baked index.
-- Bounded carpet creation and retirement plus the reviewed static fixes preserve pending roof/tree work,
-  authoritative server state, chronological print queues, pond updates and clean mission teardown.
-- Bounded grass cutter maintenance is included as an opt-in experiment and defaults to OFF. Carpet LOD radii
-  and outer-detail defaults are unchanged; chunk/batching experiments are not included.
-- Validated persistent state and recoverable saves; verified one-time legacy profile ownership; civil leap-date
-  handling; bounded, persistent climate catch-up; pond carrying history synchronized across joins and stale
-  pond coverage rebuilt before swimmer rescue.
-- Retry failed snow models, resume roof rescans and retire lost owners; movable snow reacts to roll and scale;
-  hard frost kills living paused crops; snow fills footprints and tracks by exposure while preserving age order;
-  supported snowy ice accepts footsteps and clears them on thaw.
-- Every visual LOD of footprints and tyre tracks is verified to carry lodnoshadow=1; the generator preserves it.
+- 1,377 active snow caps in seven depths, with 27 intentional skips. The hand register contains
+  1,381 approved models and one skipped compatible model; four approved caps remain archived only.
+- Ground snow is built and removed in smaller batches to reduce movement stutter. Reviewed roof,
+  tree, pond and cleanup fixes are included. These budgets cannot interrupt an individual engine call.
+- Grass maintenance in smaller batches is included but defaults to OFF. Existing snow detail and
+  distance settings are retained. Experimental chunk streaming and mesh batching are not shipped.
+- Saves validate their contents and retain recovery copies. High season speeds now process snow and
+  ice in steps, saving unfinished work across restarts. One-time old-profile migration and leap-date
+  handling are included; independent-account join-in-progress and leap-day injection remain untested.
+- Pond carrying history is saved and sent to clients. Missing server ice coverage can be rebuilt
+  before rescuing a swimmer; the reported restart failure passed targeted native retests.
+- Snow creation can retry failures; roof rescans resume and lost owners are removed. Movable snow
+  responds to roll and scale. Hard frost affects living paused crops. Footprints and tyre tracks fill
+  according to snowfall exposure and retain their age order; snowy-ice prints clear on thaw.
+- All visual LODs of footprint and tyre-track models have shadow casting disabled. The generator
+  already preserved this setting; no model correction was needed.
+- Released to the server and PC as 18 signed PBOs, each below 2 GB, with flat prefixes. Signatures,
+  local script loading and deployment hashes passed. Detailed QA still has open cases, including
+  snow actions under bare shelter; model polish can continue from user reports.
 
 ## 0.5.1 (snow caps, second pass)
 
