@@ -7,6 +7,8 @@ class SZ_ServerController
 	protected ref SZ_PondIce m_Ice;
 	protected bool m_RealTime;
 	protected bool m_StateWritable = true;
+	protected bool m_ImportFailed;
+	static const string MIGRATION_TEXT = "SeasonZ profile owns its config and state; legacy import checked once.";
 	protected float m_TickTimer;
 	protected float m_SyncTimer;
 	protected float m_SaveTimer;
@@ -33,17 +35,36 @@ class SZ_ServerController
 	{
 		if (!FileExist(SZ_Const.PROFILE_DIR))
 			MakeDirectory(SZ_Const.PROFILE_DIR);
-		// a server that ran the mod before it was named SeasonZ keeps its settings and its season
-		if (!FileExist(SZ_Const.CONFIG_FILE) && FileExist(SZ_Const.OLD_CONFIG_FILE))
+		// Establish profile ownership once. A later reset must not resurrect a legacy save.
+		string marker = SZ_Const.PROFILE_DIR + "/migration.done";
+		if (FileExist(marker))
+			m_ImportFailed = !MigrationComplete(marker);
+		else
 		{
-			CopyFile(SZ_Const.OLD_CONFIG_FILE, SZ_Const.CONFIG_FILE);
-			Print("[SeasonZ] config.json taken over from the DynamicSeasons profile folder");
+			bool imported = true;
+			if (!FileExist(SZ_Const.CONFIG_FILE) && FileExist(SZ_Const.OLD_CONFIG_FILE))
+				imported = CopyProfileChecked(SZ_Const.OLD_CONFIG_FILE, SZ_Const.CONFIG_FILE);
+			if (!FileExist(SZ_Const.STATE_FILE) && FileExist(SZ_Const.OLD_STATE_FILE))
+			{
+				bool stateCopied = CopyProfileChecked(SZ_Const.OLD_STATE_FILE, SZ_Const.STATE_FILE);
+				imported = imported && stateCopied;
+			}
+			if (imported)
+			{
+				FileHandle mark = OpenFile(marker, FileMode.WRITE);
+				if (mark != 0)
+				{
+					FPrint(mark, MIGRATION_TEXT);
+					CloseFile(mark);
+					imported = MigrationComplete(marker);
+				}
+				else
+					imported = false;
+			}
+			m_ImportFailed = !imported;
 		}
-		if (!FileExist(SZ_Const.STATE_FILE) && FileExist(SZ_Const.OLD_STATE_FILE))
-		{
-			CopyFile(SZ_Const.OLD_STATE_FILE, SZ_Const.STATE_FILE);
-			Print("[SeasonZ] state.json taken over from the DynamicSeasons profile folder");
-		}
+		if (m_ImportFailed)
+			Print("[SeasonZ] migration incomplete or marker invalid; config/state saves disabled. Repair profile copies/marker before restarting; legacy files retained.");
 
 		LoadConfig();
 		LoadState();
@@ -103,6 +124,36 @@ class SZ_ServerController
 		Print(string.Format("[SeasonZ] world position: latitude=%1 longitude=%2", g_Game.GetWorld().GetLatitude(), g_Game.GetWorld().GetLongitude()));
 	}
 
+	protected bool MigrationComplete(string marker)
+	{
+		FileHandle handle = OpenFile(marker, FileMode.READ);
+		if (handle == 0)
+			return false;
+		string text;
+		int bytes = ReadFile(handle, text, 1024);
+		CloseFile(handle);
+		return bytes == MIGRATION_TEXT.Length() && text == MIGRATION_TEXT;
+	}
+
+	protected bool CopyProfileChecked(string source, string destination)
+	{
+		FileHandle original = OpenFile(source, FileMode.READ);
+		if (original == 0)
+			return false;
+		string before;
+		int beforeBytes = ReadFile(original, before, 100000000);
+		CloseFile(original);
+		if (beforeBytes <= 0 || beforeBytes >= 100000000 || !CopyFile(source, destination))
+			return false;
+		FileHandle copied = OpenFile(destination, FileMode.READ);
+		if (copied == 0)
+			return false;
+		string after;
+		int afterBytes = ReadFile(copied, after, 100000000);
+		CloseFile(copied);
+		return beforeBytes == afterBytes && before == after;
+	}
+
 	protected void LoadConfig()
 	{
 		string error;
@@ -127,7 +178,7 @@ class SZ_ServerController
 
 		m_Config.Validate();
 		SZ_State.s_WinterHaze = m_Config.WinterHaze;
-		if (loaded)
+		if (loaded && !m_ImportFailed)
 			JsonFileLoader<SZ_Config>.SaveFile(SZ_Const.CONFIG_FILE, m_Config, error);
 	}
 
@@ -150,7 +201,7 @@ class SZ_ServerController
 
 	void SaveState()
 	{
-		if (!m_StateWritable)
+		if (m_ImportFailed || !m_StateWritable)
 			return;
 		m_State.SnowSeaLevelCm = SZ_State.s_Snow0;
 		m_State.Snow250mCm = SZ_State.s_Snow1;
