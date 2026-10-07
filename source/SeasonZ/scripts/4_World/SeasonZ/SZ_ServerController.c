@@ -389,10 +389,14 @@ class SZ_ServerController
 
 		int wantMonth;
 		int wantDay;
+		int wantYear = year;
 		SZ_Calendar.ToMonthDay(SZ_State.s_DayOfYear, wantMonth, wantDay);
-		if (wantMonth != month || wantDay != day)
+		// Climate remains a 365-day curve; the displayed RealTime date must still be the real civil date.
+		if (m_RealTime && SZ_State.s_DebugDoy < 0)
+			GetYearMonthDay(wantYear, wantMonth, wantDay);
+		if (wantYear != year || wantMonth != month || wantDay != day)
 		{
-			g_Game.GetWorld().SetDate(year, wantMonth, wantDay, hour, minute);
+			g_Game.GetWorld().SetDate(wantYear, wantMonth, wantDay, hour, minute);
 			if (g_Game.GetMission() && g_Game.GetMission().GetWorldData())
 				g_Game.GetMission().GetWorldData().SZ_RefreshTemperature();
 		}
