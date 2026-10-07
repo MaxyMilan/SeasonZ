@@ -81,6 +81,7 @@ class SZ_PondIce
 	protected vector m_LastCamera;
 	protected bool m_Server;
 	protected ref array<vector> m_Players;
+	protected ref array<Man> m_ServerPlayers;
 	protected float m_Radius = RADIUS;
 	protected float m_KeepRadius = KEEP_RADIUS;
 	protected float m_RescueClock;
@@ -114,6 +115,7 @@ class SZ_PondIce
 		m_Radius = SERVER_RADIUS;
 		m_KeepRadius = SERVER_KEEP_RADIUS;
 		m_Players = new array<vector>;
+		m_ServerPlayers = new array<Man>;
 		Init();
 	}
 
@@ -232,13 +234,13 @@ class SZ_PondIce
 		if (!m_Bodies || m_Bodies.Count() == 0)
 			return;
 		m_Players.Clear();
-		array<Man> players = new array<Man>;
-		g_Game.GetPlayers(players);
+		m_ServerPlayers.Clear();
+		g_Game.GetPlayers(m_ServerPlayers);
 		m_RescueClock += timeslice;
 		bool rescue = m_RescueClock >= 1.0;
 		if (rescue)
 			m_RescueClock = 0;
-		foreach (Man man : players)
+		foreach (Man man : m_ServerPlayers)
 		{
 			if (!man)
 				continue;
@@ -304,7 +306,6 @@ class SZ_PondIce
 	//! false while the body still needs work this frame
 	protected bool Process(SZ_PondBody b)
 	{
-		float dist = Dist(b);
 		float ice = IceAt(b.m_Y);
 		// thick ice carries snow and people and looks pale; thin ice (freezing up, rotting in spring) is dark like
 		// clear ice and the server has no plates for it
@@ -319,7 +320,14 @@ class SZ_PondIce
 		bool frozen = ice >= SZ_Const.ICE_VISIBLE;
 		if (m_Server)
 			frozen = thick;
-		if (!frozen || dist > m_KeepRadius)
+		if (!frozen)
+		{
+			if (b.m_Objects.Count() > 0)
+				Hide(b);
+			return true;
+		}
+		float dist = Dist(b);
+		if (dist > m_KeepRadius)
 		{
 			if (b.m_Objects.Count() > 0)
 				Hide(b);
