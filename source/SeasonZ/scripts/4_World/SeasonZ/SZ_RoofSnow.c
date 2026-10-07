@@ -154,6 +154,9 @@ class SZ_RoofTile
 {
 	ref array<ref SZ_RoofBuilding> m_Buildings;
 	bool m_Scanned;
+	bool m_Partial;
+	float m_RescanAt;
+	int m_Expected;
 	int m_UpdateCursor;
 
 	void SZ_RoofTile()
@@ -603,6 +606,23 @@ class SZ_RoofSnow
 	protected void ScanTile(SZ_RoofTile tile, int tx, int tz)
 	{
 		tile.m_Scanned = true;
+		map<Object, bool> known = new map<Object, bool>;
+		for (int old = tile.m_Buildings.Count() - 1; old >= 0; old--)
+		{
+			SZ_RoofBuilding prior = tile.m_Buildings[old];
+			if (prior && prior.m_Obj)
+				known.Set(prior.m_Obj, true);
+			else
+			{
+				if (prior)
+				{
+					prior.m_Dropped = true;
+					prior.m_Job = null;
+					TrashAll(prior);
+				}
+				tile.m_Buildings.RemoveOrdered(old);
+			}
+		}
 		vector center = Vector((tx + 0.5) * TILE, 0, (tz + 0.5) * TILE);
 		center[1] = g_Game.SurfaceY(center[0], center[2]);
 		array<Object> objects = new array<Object>;
@@ -611,7 +631,7 @@ class SZ_RoofSnow
 
 		foreach (Object o : objects)
 		{
-			if (!o || IsMovable(o))
+			if (!o || IsMovable(o) || known.Contains(o))
 				continue;
 			// ground details the snow cover buries (kerbs, footpaths) carry no snow of their own
 			if (SZ_TreeSwap.IsPath(o))
@@ -623,6 +643,11 @@ class SZ_RoofSnow
 			if (b)
 				tile.m_Buildings.Insert(b);
 		}
+		// Rescan changed the owner array; never resume a stale numeric building cursor.
+		tile.m_UpdateCursor = 0;
+		tile.m_Expected = Math.Max(tile.m_Expected, tile.m_Buildings.Count());
+		tile.m_Partial = tile.m_Buildings.Count() < tile.m_Expected;
+		tile.m_RescanAt = s_Clock + 30.0;
 	}
 
 	//! the snow record of a map object that carries snow, null for the others
@@ -4407,7 +4432,7 @@ class SZ_RoofSnow
 				tile = new SZ_RoofTile();
 				m_Tiles.Set(key, tile);
 			}
-			if (!tile.m_Scanned)
+			if (!tile.m_Scanned || (tile.m_Partial && s_Clock >= tile.m_RescanAt))
 			{
 				int tx = Math.Floor(key / 65536.0);
 				int tz = key - tx * 65536;
@@ -4428,9 +4453,20 @@ class SZ_RoofSnow
 				}
 				SZ_RoofBuilding b = tile.m_Buildings[tile.m_UpdateCursor];
 				tile.m_UpdateCursor++;
-				if (!b.m_Obj)
+				looked++; // missing records also consume the existing per-frame visit cap
+				if (!b || !b.m_Obj)
+				{
+					if (b && !b.m_Dropped)
+					{
+						b.m_Dropped = true;
+						b.m_Job = null;
+						TrashAll(b);
+					}
+					if (!tile.m_Partial)
+						tile.m_RescanAt = s_Clock + 8.0;
+					tile.m_Partial = true;
 					continue;
-				looked++;
+				}
 				vector bp = b.m_Obj.GetPosition();
 				float dx = bp[0] - camera[0];
 				float dz = bp[2] - camera[2];
