@@ -2867,7 +2867,17 @@ class SZ_SnowCarpet
 				ClearMap(m_Cells[level]);
 		}
 		if (m_Retired)
-			DropRetired(true);
+		{
+			// Shutdown and carpet-off have no later Update to drain this queue.
+			foreach (SZ_SnowCell retired : m_Retired)
+			{
+				if (retired)
+					DeleteObjects(retired);
+			}
+			m_Retired.Clear();
+		}
+		m_RetiredCursor = 0;
+		m_SkirtCount = 0;
 		m_Objects = 0;
 	}
 
