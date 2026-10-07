@@ -47,10 +47,15 @@ class SZ_Calendar
 
 	static float Wrap(float doy)
 	{
-		while (doy < 0)
+		// Bounded normalization; NaN/infinity must not reach a loop or an array index.
+		if (!(doy >= -1000000 && doy <= 1000000))
+			return 0;
+		doy = Math.ModFloat(doy, 365.0);
+		if (doy < 0)
 			doy += 365.0;
-		while (doy >= 365.0)
-			doy -= 365.0;
+		// A tiny negative remainder can round up to 365 when added in float32.
+		if (doy >= 365.0)
+			doy = 0;
 		return doy;
 	}
 

@@ -131,13 +131,13 @@ class SZ_ServerController
 			return;
 
 		SZ_PersistentState st;
-		if (JsonFileLoader<SZ_PersistentState>.LoadFile(SZ_Const.STATE_FILE, st, error) && st)
+		if (JsonFileLoader<SZ_PersistentState>.LoadFile(SZ_Const.STATE_FILE, st, error) && st && st.ValidForLoad())
 			m_State = st;
 		else
 		{
-			// Preserve the unreadable file for recovery; fallback state is session-only.
+			// Preserve unreadable or invalid state for recovery; fallback state is session-only.
 			m_StateWritable = false;
-			Print("[SeasonZ] state.json could not be read; saving disabled this session: " + error);
+			Print("[SeasonZ] state.json unreadable or invalid; original preserved and saving disabled this session: " + error);
 		}
 	}
 
@@ -159,8 +159,51 @@ class SZ_ServerController
 		m_State.PondTemp250m = m_PondTemp[1];
 		m_State.PondTemp500m = m_PondTemp[2];
 		string error;
-		if (!JsonFileLoader<SZ_PersistentState>.SaveFile(SZ_Const.STATE_FILE, m_State, error))
-			Print("[SeasonZ] state.json could not be written: " + error);
+		// CopyFile is not atomic: retain a validated new file and last good backup if publication is interrupted.
+		string next = SZ_Const.STATE_FILE + ".next";
+		string backup = SZ_Const.STATE_FILE + ".bak";
+		SZ_PersistentState verify;
+		string expected;
+		string actual;
+		bool ok = m_State.ValidForLoad();
+		if (ok)
+			ok = JsonFileLoader<SZ_PersistentState>.MakeData(m_State, expected, error);
+		if (ok)
+			ok = JsonFileLoader<SZ_PersistentState>.SaveFile(next, m_State, error);
+		if (ok)
+			ok = JsonFileLoader<SZ_PersistentState>.LoadFile(next, verify, error) && verify && verify.ValidForLoad();
+		if (ok)
+			ok = JsonFileLoader<SZ_PersistentState>.MakeData(verify, actual, error) && expected == actual;
+		if (ok && FileExist(SZ_Const.STATE_FILE))
+		{
+			SZ_PersistentState previous;
+			SZ_PersistentState backedUp;
+			string previousText;
+			string backupText;
+			ok = JsonFileLoader<SZ_PersistentState>.LoadFile(SZ_Const.STATE_FILE, previous, error) && previous && previous.ValidForLoad();
+			if (ok)
+				ok = CopyFile(SZ_Const.STATE_FILE, backup);
+			if (ok)
+				ok = JsonFileLoader<SZ_PersistentState>.LoadFile(backup, backedUp, error) && backedUp;
+			if (ok)
+				ok = JsonFileLoader<SZ_PersistentState>.MakeData(previous, previousText, error) && JsonFileLoader<SZ_PersistentState>.MakeData(backedUp, backupText, error) && previousText == backupText;
+		}
+		if (ok)
+			ok = CopyFile(next, SZ_Const.STATE_FILE);
+		// Check publication too: a successful native return is not a verified JSON save.
+		if (ok)
+		{
+			SZ_PersistentState published;
+			string publishedText;
+			ok = JsonFileLoader<SZ_PersistentState>.LoadFile(SZ_Const.STATE_FILE, published, error) && published && published.ValidForLoad();
+			if (ok)
+				ok = JsonFileLoader<SZ_PersistentState>.MakeData(published, publishedText, error) && expected == publishedText;
+		}
+		if (!ok)
+		{
+			m_StateWritable = false;
+			Print("[SeasonZ] save failed; writes disabled; retain state.json, .next and .bak for recovery: " + error);
+		}
 	}
 
 	// ---- season cycle (Multiplier mode) --------------------------------------------------
@@ -209,10 +252,13 @@ class SZ_ServerController
 	protected float CycleToDoy(float pos)
 	{
 		float total = CycleTotal();
-		while (pos < 0)
+		if (!SZ_PersistentState.InRange(pos, -1000000, 1000000) || !(total > 0 && total <= 7300.0))
+			return 0;
+		pos = Math.ModFloat(pos, total);
+		if (pos < 0)
 			pos += total;
-		while (pos >= total)
-			pos -= total;
+		if (pos >= total)
+			pos = 0;
 
 		float acc = 0;
 		for (int i = 0; i < 4; i++)
@@ -661,8 +707,7 @@ class SZ_ServerController
 				m_State.CycleDays = before + m_CyclePending;
 				// keep what the addition rounded away, so the clock does not drift
 				m_CyclePending -= m_State.CycleDays - before;
-				while (m_State.CycleDays >= total)
-					m_State.CycleDays -= total;
+				m_State.CycleDays = Math.ModFloat(m_State.CycleDays, total);
 			}
 		}
 
