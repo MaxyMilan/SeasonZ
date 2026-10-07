@@ -26,6 +26,9 @@ class SZ_PondBody
 	ref array<string> m_PM;
 	ref array<Object> m_Objects;
 	bool m_Shown;
+	int m_CreateAttempts;
+	float m_CreateRetryAt;
+	bool m_CreateFailed;
 	//! the plates show thick ice (pale, opaque) or thin ice (dark, clear)
 	bool m_Thick;
 	//! camera distance of the last measurement: the game knows the water of distant areas only roughly, so a body
@@ -160,6 +163,9 @@ class SZ_PondIce
 		{
 			if (b.m_Objects.Count() > 0)
 				Hide(b);
+			b.m_CreateAttempts = 0;
+			b.m_CreateRetryAt = 0;
+			b.m_CreateFailed = false;
 			b.m_Step = 0;
 			b.m_PX.Clear();
 			b.m_PZ.Clear();
@@ -316,7 +322,7 @@ class SZ_PondIce
 		// Keep physical state current even while the body is hidden or unmeasured.
 		if (thick != b.m_Thick)
 		{
-			if (b.m_Objects.Count() > 0)
+			if (b.m_Objects.Count() > 0 || b.m_CreateAttempts > 0)
 				Hide(b);
 			b.m_Thick = thick;
 		}
@@ -325,14 +331,14 @@ class SZ_PondIce
 			frozen = thick;
 		if (!frozen)
 		{
-			if (b.m_Objects.Count() > 0)
+			if (b.m_Objects.Count() > 0 || b.m_CreateAttempts > 0)
 				Hide(b);
 			return true;
 		}
 		float dist = Dist(b);
 		if (dist > m_KeepRadius)
 		{
-			if (b.m_Objects.Count() > 0)
+			if (b.m_Objects.Count() > 0 || b.m_CreateAttempts > 0)
 				Hide(b);
 			return true;
 		}
@@ -486,6 +492,8 @@ class SZ_PondIce
 
 	protected bool Show(SZ_PondBody b)
 	{
+		if (b.m_CreateFailed || m_Clock < b.m_CreateRetryAt)
+			return true; // yield this body; shown remains false
 		while (b.m_Objects.Count() < b.m_PX.Count() && m_Cost < BUDGET)
 		{
 			int i = b.m_Objects.Count();
@@ -493,10 +501,19 @@ class SZ_PondIce
 			if (b.m_Thick)
 				model = SZ_Const.DATA + "ice\\sz_ice" + b.m_PM[i];
 			Object o = g_Game.CreateStaticObjectUsingP3D(model, Vector(b.m_PX[i], b.m_Y + LIFT, b.m_PZ[i]), "0 0 0", 1.0, true);
-			b.m_Objects.Insert(o);
-			if (o)
-				m_Objects++;
 			m_Cost += 0.2;
+			if (!o)
+			{
+				b.m_CreateAttempts++;
+				b.m_CreateRetryAt = m_Clock + b.m_CreateAttempts * 5.0;
+				b.m_CreateFailed = b.m_CreateAttempts >= 3;
+				if (b.m_CreateAttempts == 1 || b.m_CreateFailed)
+					Print(string.Format("[SeasonZ] ice creation failed model=%1 attempts=%2; repair assets and remeasure", model, b.m_CreateAttempts));
+				return true;
+			}
+			b.m_Objects.Insert(o);
+			m_Objects++;
+			b.m_CreateAttempts = 0;
 		}
 		if (b.m_Objects.Count() < b.m_PX.Count())
 			return false;
@@ -516,6 +533,9 @@ class SZ_PondIce
 		}
 		b.m_Objects.Clear();
 		b.m_Shown = false;
+		b.m_CreateAttempts = 0;
+		b.m_CreateRetryAt = 0;
+		b.m_CreateFailed = false;
 		m_Cost += 0.05;
 	}
 

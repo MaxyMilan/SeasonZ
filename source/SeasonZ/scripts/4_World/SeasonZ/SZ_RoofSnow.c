@@ -67,6 +67,10 @@ class SZ_RoofBuilding
 	float m_Ground;
 	float m_Dist;
 	int m_Stage;
+	int m_RetryStage = -1;
+	int m_CreateAttempts;
+	float m_CreateRetryAt;
+	bool m_CreateFailed;
 	float m_Offset;
 	ref array<ref SZ_RoofTri> m_Tris;
 	ref array<Object> m_Objects;
@@ -403,6 +407,7 @@ class SZ_RoofSnow
 	protected float m_Cell;
 	protected float m_Cost;
 	protected int m_Objects;
+	protected bool m_DeferredCreates;
 	protected int m_Rays;
 	protected vector m_Camera;
 	protected float m_S0;
@@ -687,6 +692,7 @@ class SZ_RoofSnow
 	//! movable entities use a fine grid with at least four samples across their narrow side
 	protected void BeginScan(SZ_RoofBuilding b, bool fine)
 	{
+		b.m_RetryStage = -1;
 		// a stage being placed belongs to the old triangles
 		TrashPending(b);
 		b.m_Job = null;
@@ -3771,6 +3777,37 @@ class SZ_RoofSnow
 		return lift + SZ_State.s_DebugRoofOffset;
 	}
 
+	protected bool CreationReady(SZ_RoofBuilding b, int stage)
+	{
+		if (b.m_RetryStage != stage)
+		{
+			b.m_RetryStage = stage;
+			b.m_CreateAttempts = 0;
+			b.m_CreateRetryAt = 0;
+			b.m_CreateFailed = false;
+		}
+		if (b.m_CreateFailed)
+			return false;
+		if (s_Clock < b.m_CreateRetryAt)
+		{
+			m_DeferredCreates = true;
+			return false;
+		}
+		return true;
+	}
+
+	protected void CreationFailed(SZ_RoofBuilding b)
+	{
+		b.m_CreateAttempts++;
+		b.m_CreateRetryAt = s_Clock + b.m_CreateAttempts * 5.0;
+		b.m_CreateFailed = b.m_CreateAttempts >= 3;
+		if (!b.m_CreateFailed)
+			m_DeferredCreates = true;
+		m_Cost += 0.2;
+		if (b.m_CreateAttempts == 1 || b.m_CreateFailed)
+			Print(string.Format("[SeasonZ] snow creation failed stage=%1 attempts=%2 failed=%3 object=%4; change stage or reset roofs after asset repair", b.m_RetryStage, b.m_CreateAttempts, b.m_CreateFailed, b.m_Obj));
+	}
+
 	//! a structure with baked snow: one object for all of it, replaced when the snow changes and raised a little as the
 	//! camera moves away. False when something stands over it here: it is sampled like the other structures then
 	protected bool UpdateBaked(SZ_RoofBuilding b, bool anySnow)
@@ -3791,17 +3828,27 @@ class SZ_RoofSnow
 			b.m_Fine = true;
 		}
 		int want = BakedVariant(b);
+		bool ready = CreationReady(b, want);
 		float lift = BakedLift(b);
 		if (want != b.m_Stage)
 		{
-			Trash(b);
-			b.m_Stage = want;
+			Object o;
 			if (want > 0)
 			{
-				Object o = MakeBaked(b, want, lift);
-				if (o)
-					b.m_Objects.Insert(o);
+				if (!ready)
+					return true;
+				o = MakeBaked(b, want, lift);
+				if (!o)
+				{
+					CreationFailed(b);
+					return true;
+				}
 			}
+			Trash(b);
+			if (o)
+				b.m_Objects.Insert(o);
+			b.m_Stage = want;
+			b.m_CreateAttempts = 0;
 		}
 		else if (want > 0 && b.m_Objects.Count() > 0 && b.m_Objects[0] && Math.AbsFloat(lift - b.m_Lift) >= BAKED_LIFT_STEP)
 		{
@@ -3888,6 +3935,18 @@ class SZ_RoofSnow
 
 	protected void DeleteObjects(SZ_RoofBuilding b)
 	{
+		if (b.m_Pending)
+		{
+			foreach (Object pending : b.m_Pending)
+			{
+				if (pending)
+				{
+					g_Game.ObjectDelete(pending);
+					m_Objects--;
+				}
+			}
+			b.m_Pending = null;
+		}
 		foreach (Object o : b.m_Objects)
 		{
 			if (o)
@@ -3988,20 +4047,7 @@ class SZ_RoofSnow
 
 	protected void ApplyStageNow(SZ_RoofBuilding b, int stage)
 	{
-		DeleteObjects(b);
-		b.m_Stage = stage;
-		if (stage <= 0)
-			return;
-		float offset = OffsetFor(b);
-		b.m_Offset = offset;
-		b.m_Slab = SlabFor(b);
-		float slab = Math.Max(offset, b.m_Slab + SZ_State.s_DebugRoofOffset);
-		foreach (SZ_RoofTri t : b.m_Tris)
-		{
-			Object o = MakePiece(t, stage, slab);
-			if (o)
-				b.m_Objects.Insert(o);
-		}
+		StartPlace(b, stage);
 	}
 
 	//! height of the snow above the surface the rays found
@@ -4087,6 +4133,8 @@ class SZ_RoofSnow
 	//! False when the frame's budget ran out before they were
 	protected bool StartPlace(SZ_RoofBuilding b, int stage)
 	{
+		if (!CreationReady(b, stage))
+			return true;
 		TrashPending(b);
 		if (stage <= 0)
 		{
@@ -4105,6 +4153,10 @@ class SZ_RoofSnow
 	//! places pieces until the budget runs out; when all are placed they replace the current ones (true)
 	protected bool ContinuePlace(SZ_RoofBuilding b)
 	{
+		// true also yields a cooling-down/failed job so other owners can progress.
+		// m_Pending and m_Stage, not this scheduler return, record completion.
+		if (!CreationReady(b, b.m_PendStage))
+			return true;
 		float slab = Math.Max(b.m_PendOffset, b.m_PendSlab + SZ_State.s_DebugRoofOffset);
 		int n = b.m_Tris.Count();
 		while (b.m_PendCursor < n)
@@ -4112,10 +4164,22 @@ class SZ_RoofSnow
 			if ((b.m_PendCursor & 7) == 0 && OverBudget(b.m_Dist < URGENT_DIST))
 				return false;
 			SZ_RoofTri t = b.m_Tris[b.m_PendCursor];
-			b.m_PendCursor++;
+			if (b.m_PendStage <= t.m_Drop)
+			{
+				b.m_PendCursor++;
+				continue; // intentional slope/stage omission, not a creation error
+			}
 			Object o = MakePiece(t, b.m_PendStage, slab);
-			if (o)
-				b.m_Pending.Insert(o);
+			if (!o)
+			{
+				CreationFailed(b);
+				if (b.m_CreateFailed)
+					TrashPending(b); // discard partial replacement, retain the last completed roof
+				return true;
+			}
+			b.m_Pending.Insert(o);
+			b.m_PendCursor++;
+			b.m_CreateAttempts = 0;
 		}
 		Trash(b);
 		b.m_Objects = b.m_Pending;
@@ -4295,6 +4359,7 @@ class SZ_RoofSnow
 		bool anySnow = Math.Max(s0, Math.Max(s1, s2)) >= 0.5;
 
 		m_Cost = 0;
+		m_DeferredCreates = false;
 		// old pieces first (spread over frames), then the work of this frame within the time budget
 		int tk = TickCount(0);
 		EmptyTrash();
@@ -4391,6 +4456,8 @@ class SZ_RoofSnow
 						continue;
 					}
 				}
+				if (b.m_Pending && b.m_PendStage != StageFor(b))
+					TrashPending(b);
 				if (b.m_Pending)
 				{
 					// a new stage is being placed: go on with it
@@ -4459,6 +4526,7 @@ class SZ_RoofSnow
 					break;
 				}
 				int want = StageFor(b);
+				CreationReady(b, want);
 				if (want != b.m_Stage || (want > 0 && Math.AbsFloat(SlabFor(b) - b.m_Slab) >= SLAB_STEP))
 				{
 					tk = TickCount(0);
@@ -4477,7 +4545,7 @@ class SZ_RoofSnow
 			if (tile.m_UpdateCursor >= tile.m_Buildings.Count())
 				tile.m_UpdateCursor = 0;
 		}
-		if (m_Cost >= 20.0 || m_Trash.Count() > 0 || m_RingActive)
+		if (m_Cost >= 20.0 || m_Trash.Count() > 0 || m_RingActive || m_DeferredCreates)
 			busy = true;
 		SZ_State.s_StatRoofBusy = busy;
 	}
@@ -4533,8 +4601,9 @@ class SZ_RoofSnow
 			bool moved = vector.Distance(pos, b.m_LastPos) > 0.03 || vector.Dot(dir, b.m_LastDir) < 0.9995 || ent.GetHierarchyParent() != null;
 			if (moved)
 			{
-				if (b.m_Objects.Count() > 0)
-					DeleteObjects(b);
+				DeleteObjects(b);
+				b.m_Job = null;
+				b.m_RetryStage = -1;
 				b.m_Tris.Clear();
 				b.m_State = 0;
 				b.m_Stage = 0;
@@ -4568,6 +4637,14 @@ class SZ_RoofSnow
 			if (b.m_State != 2)
 				continue;
 			int want = StageFor(b);
+			CreationReady(b, want);
+			if (b.m_Pending && b.m_PendStage != want)
+				TrashPending(b);
+			if (b.m_Pending)
+			{
+				ContinuePlace(b);
+				continue;
+			}
 			if (want != b.m_Stage || (want > 0 && Math.AbsFloat(SlabFor(b) - b.m_Slab) >= SLAB_STEP))
 				ApplyStage(b, want);
 		}
