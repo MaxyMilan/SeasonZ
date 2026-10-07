@@ -1,5 +1,21 @@
 # SeasonZ changelog
 
+## 0.5.2
+
+- 1,377 approved snow caps plus intentional skips, including the indoor patient monitor; refined buildings,
+  military structures, industrial sites, rocks, ruins and wrecks retain the generated baked index.
+- Bounded carpet creation and retirement plus the reviewed static fixes preserve pending roof/tree work,
+  authoritative server state, chronological print queues, pond updates and clean mission teardown.
+- Bounded grass cutter maintenance is included as an opt-in experiment and defaults to OFF. Carpet LOD radii
+  and outer-detail defaults are unchanged; chunk/batching experiments are not included.
+- Validated persistent state and recoverable saves; verified one-time legacy profile ownership; civil leap-date
+  handling; bounded, persistent climate catch-up; pond carrying history synchronized across joins and stale
+  pond coverage rebuilt before swimmer rescue.
+- Retry failed snow models, resume roof rescans and retire lost owners; movable snow reacts to roll and scale;
+  hard frost kills living paused crops; snow fills footprints and tracks by exposure while preserving age order;
+  supported snowy ice accepts footsteps and clears them on thaw.
+- Every visual LOD of footprints and tyre tracks is verified to carry lodnoshadow=1; the generator preserves it.
+
 ## 0.5.1 (snow caps, second pass)
 
 Every cap was made again with a stricter generator, checked by geometric measurements on all 1,285 models and
