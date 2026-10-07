@@ -2,6 +2,7 @@
 modded class MissionGameplay
 {
 	protected ref array<int> m_APBins;
+	protected ref array<float> m_APSamples;
 	protected int m_APFrames;
 	protected float m_APTotal;
 	protected float m_APMax;
@@ -18,6 +19,7 @@ modded class MissionGameplay
 		int bin = Math.Clamp(Math.Ceil(ms), 0, 1000);
 		m_APBins[bin] = m_APBins[bin] + 1;
 		m_APFrames++;
+		m_APSamples.Insert(ms);
 		m_APTotal += ms;
 		m_APMax = Math.Max(m_APMax, ms);
 		if (ms > 33.333)
@@ -43,13 +45,30 @@ modded class MissionGameplay
 
 	override protected bool DST_Extra2(string cmd)
 	{
+		if (cmd == "carpetjobs")
+		{
+			if (m_SZ_Client && m_SZ_Client.GetCarpet())
+				Print("[DSTest] carpetjobs " + m_SZ_Client.GetCarpet().DebugSchedule());
+			return true;
+		}
 		if (cmd.IndexOf("frameperf") == 0)
 		{
+			if (m_APSamples && m_APSamples.Count() > 0)
+			{
+				FileHandle trace = OpenFile("$profile:smooth_frames.csv", FileMode.WRITE);
+				if (trace)
+				{
+					foreach (float sample : m_APSamples)
+						FPrintln(trace, sample.ToString());
+					CloseFile(trace);
+				}
+			}
 			if (m_APBins && m_APFrames > 0)
 				Print(string.Format("[DSTest] frameperf frames=%1 mean_ms=%2 p95_ms_le=%3 p99_ms_le=%4 max_ms=%5 over33=%6 over50=%7 over100=%8", m_APFrames, m_APTotal / m_APFrames, APPercentile(0.95), APPercentile(0.99), m_APMax, m_AP33, m_AP50, m_AP100));
 			if (!m_APBins)
 				m_APBins = new array<int>;
 			m_APBins.Clear();
+			m_APSamples = new array<float>;
 			for (int b = 0; b <= 1000; b++)
 				m_APBins.Insert(0);
 			m_APFrames = 0;
