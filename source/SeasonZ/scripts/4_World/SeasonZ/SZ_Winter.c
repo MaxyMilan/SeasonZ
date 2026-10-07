@@ -163,7 +163,7 @@ modded class PlantBase
 		if (m_TimeTicker && SZ_Winter.Active())
 		{
 			GardenBase garden = GetGarden();
-			if (m_PlantState == EPlantState.GROWING || m_PlantState == EPlantState.MATURE)
+			if (m_PlantState == EPlantState.GROWING || m_PlantState == EPlantState.PAUSED || m_PlantState == EPlantState.MATURE)
 			{
 				if (SZ_Winter.Freezes(garden, GetPosition()))
 				{
