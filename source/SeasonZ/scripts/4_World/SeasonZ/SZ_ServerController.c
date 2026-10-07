@@ -704,6 +704,15 @@ class SZ_ServerController
 			m_Ice.UpdateServer(timeslice);
 	}
 
+	void Shutdown()
+	{
+		SaveState();
+		if (m_Ice)
+			m_Ice.Clear();
+		m_Ice = null;
+		SZ_State.s_Valid = false;
+	}
+
 	SZ_PondIce GetIce()
 	{
 		return m_Ice;
