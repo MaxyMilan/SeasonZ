@@ -37,7 +37,7 @@ class SZ_BakedIndex
 		m.Insert("dz\\structures\\furniture\\beds\\stretcher_green.p3d", "stretcher_green");
 		m.Insert("dz\\structures\\furniture\\beds\\stretcher_red.p3d", "stretcher_red");
 		m.Insert("dz\\structures\\furniture\\hospital_transport_bed\\hospital_transport_bed.p3d", "hospital_transport_bed");
-		m.Insert("dz\\structures\\furniture\\medical\\patient_monitor\\patient_monitor.p3d", "patient_monitor");
+		m.Insert("dz\\structures\\furniture\\medical\\patient_monitor\\patient_monitor.p3d", "-");
 		m.Insert("dz\\structures\\furniture\\various\\sawhorse_dz.p3d", "sawhorse_dz");
 		m.Insert("dz\\structures\\furniture\\various\\wheel_cart_dz.p3d", "wheel_cart_dz");
 		m.Insert("dz\\structures\\furniture\\various\\workbench.p3d", "workbench");

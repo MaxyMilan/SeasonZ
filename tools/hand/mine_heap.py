@@ -1,15 +1,15 @@
-"""mine_heap: a big conical spoil heap (loose earth and rock) by a mine.
+"""mine_heap: a large irregular spoil heap of loose earth and rock beside a mine.
 
-(Opus, 6 Oct, b1) the cap left dark bare patches on the steep flanks and a row of teeth along the foot. A heap of
-earth holds snow like rock and the ground: the rough treatment (the layer thins out before the slope limit, cracks
-bridged), the foot included (no bare ring between the cap and the white ground), a coarse lattice (the heap is
-big: 11.8 GB on the fine one)."""
+(Astra Faraday, 7 Oct 2026, b1) the volumetric cap split into radial sheets with long open cuts and shards.
+Continuous surface blankets follow the measured exposed heap instead. The accumulation threshold reaches the
+supplied terrain height, leaving no bare foot ring; short lips and gentle local smoothing retain the actual
+rough heap silhouette without bridging unrelated levels or burying down steep faces.
+"""
 import snow_hand as H
 
 
 def build(m, v):
-    m.rough = True
-    if not getattr(m, '_sz_low', False):
-        m.ground -= 0.22
-        m._sz_low = True
-    return H.consts(m, v, A7_CREVICE=0.15, A7_GRIDMAX=0.05, A7_GYMIN=0.025)
+    if not getattr(m, '_sz_faraday_heap', False):
+        m.ground -= 0.25
+        m._sz_faraday_heap = True
+    return H.auto(m, v, over=0.015, smooth=0.06, fill=0.01, bury=False)

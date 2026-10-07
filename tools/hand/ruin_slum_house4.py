@@ -1,9 +1,9 @@
 """ruin_slum_house4: a collapsed slum shack: leaning boards, sheet panels, a tyre and junk (Expansion mapping).
 
-(Opus, 6 Oct, e1; Astra Boyle/McClintock/Feynman) four routes left stiff sheets, pointed flaps or tall sheets on the
-broken panels: the volumetric cap, the wreck route (35 degrees), the rough heap route and the blanket. Selective
-instead: only the big, nearly flat panels hold snow (0.15 m2 or more of top within about 35 degrees); every other
-board, rod and junk piece lets the snow through. Snow to 30 degrees (full depth to 18), a short lip, ledges bare."""
+(Astra Socrates, 7 Oct 2026, e1) the reviewer could not resolve the bare rear panels' slope. Geometry confirms
+parts 3 and 22 each have about 2.7 m2 facing within 37 degrees, and substantial further area within 45 degrees;
+the old 30-degree cutoff removed legitimate snow. Keep the selective large-panel filter, then blanket exposed
+cells within about 44 degrees. Small rods and steep junk let snow through; short lips do not bury down their sides."""
 import snow_hand as H
 
 
@@ -11,7 +11,5 @@ def build(m, v):
     n = int(m.part_t.max()) + 1
     big = [p for p in range(n) if H.part_top_area(m, p, ny_min=0.8) >= 0.15]
     H.through(m, [p for p in range(n) if p not in big])
-    m._sz_parts = tuple(big)
-    m._sz_rails = ([], [])
-    H.ledges(m, 0.08, 0.4)
-    return H.consts(m, v, A7_OVL=0.15, A7_LIPDROP=0.03, A5_STEEP_SMOOTH=30.0, A5_FULL_SMOOTH=18.0)
+    tops = m.tops(v, parts=big, ny_min=0.72) & (m.NYF >= 0.7)
+    return m.cover(v, tops, over=0.02, smooth=0.04, bury=False)

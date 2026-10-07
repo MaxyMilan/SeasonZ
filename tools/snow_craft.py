@@ -68,6 +68,7 @@ SKIP = {
     'mil_reinforcedtank1_grass': 'only tufts of grass standing on the bunker (which has its own cap): snow on blades would be shards',
     'mil_reinforcedtank2_grass_top': 'only tufts of grass standing on the bunker (which has its own cap): snow on blades would be shards',
     'mil_blastcover2_grass': 'only tufts of grass standing on the blast cover (which has its own cap): snow on blades would be shards',
+    'patient_monitor': 'a medical monitor that stands in hospital rooms: no snow reaches it',
 }
 
 def smoothstep(x):

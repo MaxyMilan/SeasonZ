@@ -1,8 +1,10 @@
-"""castle_wall2_corner2_nolc: a piece of the castle's curtain wall (rough stone faces, a crown with merlons or a walkway).
+"""castle_wall2_corner2_nolc: a rough castle curtain wall with a crown, raised blocks and an inset walkway.
 
-(Opus, 6 Oct, b1) castle_wall1_20_nolc: the blocks standing out of the stone face caught snow on their tops and
-the vertical face was spotted with white patches at every depth, like camouflage. The family holds snow on its
-crown only (within 50 cm of the highest top within a metre in plan), with a short lip."""
+(Astra Euclid, 7 Oct 2026, b1) the crown-only filter removed broad exposed shelves below the parapet, while
+volumetric snow joined broken block tops into pointed drips. Keep the crown and independently wide, nearly level
+surfaces (at least 0.4 m2 and 18 cm wide). Each eligible surface gets its own short supported blanket; small stone
+ledges on the vertical face remain filtered. Actual depth growth is preserved from v1 to v7.
+"""
 import numpy as np
 import snow_hand as H
 
@@ -21,7 +23,16 @@ def _crown(m, drop=0.5, reach=1.0):
             out = np.maximum(out, H.sh(L, k * dj, k * di, -np.inf))
             out = np.maximum(out, H.sh(L, -k * dj, -k * di, -np.inf))
         L = out
-    keep = Z >= L - drop
+    base = m.tops(4, ny_min=0.8) & (m.NYF >= 0.8)
+    dx = np.abs(m.Z[:, 1:] - m.Z[:, :-1])
+    dz = np.abs(m.Z[1:, :] - m.Z[:-1, :])
+    lab, n = H.label(base, base[:, 1:] & base[:, :-1] & (dx < 0.08),
+                     base[1:, :] & base[:-1, :] & (dz < 0.08))
+    counts = np.bincount(lab[base], minlength=n)
+    wide = H.erode(base, max(1, int(round(0.09 / m.g))))
+    ids = [k for k in np.unique(lab[wide]) if k >= 0 and counts[k] * m.g * m.g >= 0.4]
+    major = np.isin(lab, ids) & base
+    keep = (Z >= L - drop) | major
     orig = m.tops
     m.tops = lambda *a, **kw: orig(*a, **kw) & keep
     m._sz_crown = True
@@ -29,4 +40,5 @@ def _crown(m, drop=0.5, reach=1.0):
 
 def build(m, v):
     _crown(m)
-    return H.consts(m, v, fn=lambda m_, v_: H.big_tops(m_, v_, 0.01), A7_OVL=0.3, A7_LIPDROP=0.05)
+    tops = m.tops(v, ny_min=0.7) & (m.NYF >= 0.65)
+    return m.cover(v, tops, over=0.015, shoulder=0.25, fill=0.01, smooth=0.04, bury=False)
