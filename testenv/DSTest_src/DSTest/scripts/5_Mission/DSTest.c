@@ -1880,9 +1880,25 @@ modded class MissionServer
 						m_SZ_Server.SetPondIce(iceA, iceB, iceC);
 				}
 			}
+			else if (key == "iceprobe" && m_SZ_Server && m_SZ_Server.GetIce())
+			{
+				m_SZ_Server.GetIce().DebugPoint("7003.85 4 2700.1");
+				Print("[DSTest] iceprobe " + m_SZ_Server.GetIce().DebugDumpBody("7003.85 4 2700.1", "$profile:dst_body_server.txt"));
+			}
+			else if (key == "iceremeasure" && m_SZ_Server && m_SZ_Server.GetIce())
+				m_SZ_Server.GetIce().DebugRemeasure();
+			else if (key == "climatesave" && m_SZ_Server)
+				m_SZ_Server.SaveState();
+			else if (key == "climateprobe" && m_SZ_Server)
+				m_SZ_Server.DST_ClimateLog();
+			else if (key == "climatedelay" && m_SZ_Server)
+				m_SZ_Server.DST_ClimateDelay(value);
+			else if (key == "climatespeed" && m_SZ_Server)
+				m_SZ_Server.DST_ClimateSpeed(value);
 			else if (key == "featstate" && value == 1 && m_SZ_Server)
 			{
 				m_SZ_Server.LogStatus("feature QA server");
+				m_SZ_Server.DST_ClimateLog();
 				m_SZ_Server.SendState(null);
 				DST_FeatureState.Log("server");
 			}
