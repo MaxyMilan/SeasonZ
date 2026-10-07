@@ -24,6 +24,9 @@ class SZ_ServerController
 	protected float m_PondTemp[3];
 	//! season date of the previous snow step
 	protected float m_LastDoy = -1;
+	protected bool m_ClimateCatchup;
+	protected int m_ClimateSteps;
+	static const int CLIMATE_STEPS_PER_FRAME = 64;
 
 	void SZ_ServerController()
 	{
@@ -70,11 +73,44 @@ class SZ_ServerController
 		LoadState();
 		m_RealTime = m_Config.IsRealTime();
 
-		if (!m_RealTime && !m_State.Initialized)
+		bool freshMultiplier = !m_RealTime && !m_State.Initialized;
+		if (freshMultiplier)
 		{
 			m_State.CycleDays = DoyToCycle(m_Config.StartDayOfYear - 1);
 			m_State.Initialized = true;
 		}
+
+		float total = CycleTotal();
+		if (m_State.Version >= 5)
+		{
+			for (int wetLevel = 0; wetLevel < 3; wetLevel++)
+				m_Wet[wetLevel] = m_State.SnowWetDays[wetLevel];
+		}
+		if (m_State.Version >= 5 && !m_RealTime && !freshMultiplier)
+		{
+			// Reparameterize the clocks/backlog together when season weights change.
+			float scale = total / m_State.ClimateCycleTotal;
+			m_State.CycleDays = Math.ModFloat(m_State.CycleDays, m_State.ClimateCycleTotal) * scale;
+			if (m_State.CycleDays < 0)
+				m_State.CycleDays += total;
+			m_State.ClimateCycle = Math.ModFloat(m_State.ClimateCycle * scale, total);
+			m_State.ClimatePendingCycle *= scale;
+			m_CyclePending = m_State.ClockRemainder * scale;
+			if (scale != 1.0)
+			{
+				m_State.CycleDays = Math.ModFloat(m_State.CycleDays + m_CyclePending, total);
+				m_CyclePending = 0;
+			}
+		}
+		else
+		{
+			m_State.ClimateCycle = Math.ModFloat(m_State.CycleDays, total);
+			if (m_State.ClimateCycle < 0)
+				m_State.ClimateCycle += total;
+			m_State.ClimatePendingCycle = 0;
+		}
+		m_State.ClimateCycleTotal = total;
+		m_ClimateCatchup = false; // resume on the first ordinary tick, after world/weather initialization
 
 		SZ_State.s_Snow0 = m_State.SnowSeaLevelCm;
 		SZ_State.s_Snow1 = m_State.Snow250mCm;
@@ -214,7 +250,11 @@ class SZ_ServerController
 		m_State.PondCarry = SZ_State.s_PondCarry;
 		m_State.PondWorld = SZ_State.s_PondWorld;
 		m_State.PondLayout = SZ_PondProtocol.LAYOUT;
-		m_State.Version = 4;
+		m_State.Version = 5;
+		m_State.ClockRemainder = m_CyclePending;
+		m_State.SnowWetDays = new array<float>;
+		for (int wetLevel = 0; wetLevel < 3; wetLevel++)
+			m_State.SnowWetDays.Insert(m_Wet[wetLevel]);
 		m_State.IceSeaLevelCm = SZ_State.s_Ice0;
 		m_State.Ice250mCm = SZ_State.s_Ice1;
 		m_State.Ice500mCm = SZ_State.s_Ice2;
@@ -568,7 +608,7 @@ class SZ_ServerController
 		float alt = LevelAltitude(level);
 		float hours = days * 24.0;
 		float doy = SZ_State.s_DayOfYear;
-		float now = wd.GetBaseEnvTemperatureAtPosition(Vector(0, alt, 0));
+		float now = wd.SZ_TemperatureAtDay(doy, alt);
 		float tmin;
 		float tmax;
 		wd.SZ_DailyRange(doy, alt, tmin, tmax);
@@ -631,8 +671,23 @@ class SZ_ServerController
 		SetDepth(level, depth);
 	}
 
+	protected void StepClimate(float days, WorldData wd)
+	{
+		UpdateAnomaly(days);
+		Weather weather = g_Game.GetWeather();
+		float snowfall = weather.GetSnowfall().GetActual();
+		float rain = weather.GetRain().GetActual();
+		float rate = SZ_Climate.Monthly(SZ_Climate.PRECIP_RATE, SZ_State.s_DayOfYear);
+		for (int level = 0; level < 3; level++)
+			StepLevel(level, days, snowfall, rain, rate, wd);
+		for (int pond = 0; pond < 3; pond++)
+			StepPond(pond, days, wd);
+		RefreshPondCarry(); // retain freeze/thaw history across every substep
+	}
+
 	protected void UpdateSnow()
 	{
+		m_ClimateSteps = 0;
 		if (!g_Game.GetMission())
 			return;
 		WorldData wd = g_Game.GetMission().GetWorldData();
@@ -640,8 +695,47 @@ class SZ_ServerController
 			return;
 
 		float doy = SZ_State.s_DayOfYear;
+		if (!m_RealTime && SZ_State.s_DebugDoy < 0)
+		{
+			float total = CycleTotal();
+			for (int step = 0; step < CLIMATE_STEPS_PER_FRAME && m_State.ClimatePendingCycle >= 0.001; step++)
+			{
+				float cycle = m_State.ClimateCycle;
+				float acc = 0;
+				int segment = 3;
+				float remaining = 0;
+				for (int si = 0; si < 4; si++)
+				{
+					float end = acc + SegDays(si) * SegWeight(si);
+					if (cycle < end || si == 3)
+					{
+						segment = si;
+						remaining = end - cycle;
+						break;
+					}
+					acc = end;
+				}
+				float weight = SegWeight(segment);
+				float advance = Math.Min(m_State.ClimatePendingCycle, Math.Min(0.25 * weight, remaining));
+				float next = cycle + advance;
+				advance = next - cycle; // retain the fractional rounding remainder
+				if (advance <= 0)
+					break;
+				SZ_State.s_DayOfYear = CycleToDoy(cycle + advance * 0.5);
+				StepClimate(advance / weight, wd);
+				m_ClimateSteps++;
+				m_State.ClimateCycle = Math.ModFloat(next, total);
+				m_State.ClimatePendingCycle = Math.Max(0, m_State.ClimatePendingCycle - advance);
+			}
+			m_ClimateCatchup = m_State.ClimatePendingCycle >= 0.001;
+			SZ_State.s_DayOfYear = doy;
+			m_LastDoy = doy;
+			wd.SZ_RefreshTemperature();
+			return;
+		}
+		m_ClimateCatchup = false;
 		float days = 0;
-		if (m_LastDoy >= 0)
+		if (m_LastDoy >= 0 && SZ_State.s_DebugDoy < 0)
 		{
 			days = SZ_Calendar.Wrap(doy - m_LastDoy);
 			// a jump of the date (an admin change of the clock) is not elapsed time
@@ -652,16 +746,8 @@ class SZ_ServerController
 		if (days <= 0)
 			return;
 
-		UpdateAnomaly(days);
+		StepClimate(days, wd);
 		wd.SZ_RefreshTemperature();
-		Weather weather = g_Game.GetWeather();
-		float snowfall = weather.GetSnowfall().GetActual();
-		float rain = weather.GetRain().GetActual();
-		float rate = SZ_Climate.Monthly(SZ_Climate.PRECIP_RATE, doy);
-		for (int level = 0; level < 3; level++)
-			StepLevel(level, days, snowfall, rain, rate, wd);
-		for (int pond = 0; pond < 3; pond++)
-			StepPond(pond, days, wd);
 	}
 
 	//! converts ongoing precipitation when the temperature crosses freezing
@@ -802,7 +888,10 @@ class SZ_ServerController
 		if (!m_RealTime)
 		{
 			float total = CycleTotal();
-			m_CyclePending += timeslice / 86400.0 * m_Config.SeasonSpeedMultiplier * total / 365.0;
+			float elapsedCycle = timeslice / 86400.0 * m_Config.SeasonSpeedMultiplier * total / 365.0;
+			m_CyclePending += elapsedCycle;
+			if (SZ_State.s_DebugDoy < 0)
+				m_State.ClimatePendingCycle += elapsedCycle;
 			if (m_CyclePending >= 0.001)
 			{
 				float before = m_State.CycleDays;
@@ -810,6 +899,13 @@ class SZ_ServerController
 				// keep what the addition rounded away, so the clock does not drift
 				m_CyclePending -= m_State.CycleDays - before;
 				m_State.CycleDays = Math.ModFloat(m_State.CycleDays, total);
+			}
+			if (SZ_State.s_DebugDoy >= 0)
+			{
+				// Explicit administrative dates are not elapsed climate time, even for small jumps.
+				m_State.ClimateCycle = m_State.CycleDays;
+				m_State.ClimatePendingCycle = 0;
+				m_ClimateCatchup = false;
 			}
 		}
 
@@ -826,6 +922,9 @@ class SZ_ServerController
 			if (g_Game.GetMission() && g_Game.GetMission().GetWorldData())
 				g_Game.GetMission().GetWorldData().SZ_EnforceHaze();
 		}
+
+		else if (m_ClimateCatchup)
+			UpdateSnow(); // bounded catch-up every frame, not once every five seconds
 
 		m_SyncTimer += timeslice;
 		if (m_SyncTimer >= 10.0)
@@ -866,6 +965,24 @@ class SZ_ServerController
 			m_Ice.Clear();
 		m_Ice = null;
 		SZ_State.ResetSession();
+	}
+
+	//! Local harness only; no client RPC or production caller exposes these controls.
+	void DST_ClimateDelay(float seconds)
+	{
+		Update(Math.Clamp(seconds, 0, 86400));
+		DST_ClimateLog();
+	}
+
+	void DST_ClimateSpeed(float speed)
+	{
+		m_Config.SeasonSpeedMultiplier = Math.Clamp(speed, 0, 100000);
+		DST_ClimateLog();
+	}
+
+	void DST_ClimateLog()
+	{
+		Print(string.Format("[DSTest] climate clock=%1 cursor=%2 pending=%3 total=%4 remainder=%5 speed=%6 steps=%7", m_State.CycleDays, m_State.ClimateCycle, m_State.ClimatePendingCycle, m_State.ClimateCycleTotal, m_CyclePending, m_Config.SeasonSpeedMultiplier, m_ClimateSteps));
 	}
 
 	SZ_PondIce GetIce()

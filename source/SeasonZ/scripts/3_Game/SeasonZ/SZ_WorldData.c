@@ -48,6 +48,16 @@ modded class WorldData
 		return GetBaseEnvTemperatureAtPosition(Vector(0, 150, 0));
 	}
 
+	//! Evaluate a catch-up substep without changing the rendered world date.
+	float SZ_TemperatureAtDay(float doy, float altitude)
+	{
+		int month;
+		int day;
+		SZ_Calendar.ToMonthDay(doy, month, day);
+		float base = CalcBaseEnvironmentTemperature(month + day / 32.0, g_Game.GetDayTime());
+		return base - Math.Max(0, altitude * m_TemperaturePerHeightReductionModifier);
+	}
+
 	//! lowest and highest temperature of a season day at a height, including the current anomaly
 	void SZ_DailyRange(float doy, float altitude, out float tmin, out float tmax)
 	{

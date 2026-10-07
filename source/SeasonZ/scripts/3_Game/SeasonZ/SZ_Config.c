@@ -81,6 +81,12 @@ class SZ_PersistentState
 	int PondLayout = 0;
 	string PondWorld;
 	ref array<int> PondCarry;
+	//! Version 5: simulation cursor and unconsumed weighted time, including catch-up across restarts.
+	float ClimateCycle;
+	float ClimatePendingCycle;
+	float ClimateCycleTotal;
+	float ClockRemainder;
+	ref array<float> SnowWetDays;
 
 	//! Positive comparisons reject NaN as well as infinities and unreasonable edited save data.
 	static bool InRange(float value, float low, float high)
@@ -90,7 +96,7 @@ class SZ_PersistentState
 
 	bool ValidForLoad()
 	{
-		if (Version < 1 || Version > 4 || SnowModel < 0 || SnowModel > 2 || IceModel < 0 || IceModel > 1)
+		if (Version < 1 || Version > 5 || SnowModel < 0 || SnowModel > 2 || IceModel < 0 || IceModel > 1)
 			return false;
 		if (!InRange(CycleDays, -1000000, 1000000) || !InRange(TempAnomaly, -100, 100))
 			return false;
@@ -102,13 +108,25 @@ class SZ_PersistentState
 			return false;
 		if (!InRange(PondTempSeaLevel, 0, 100) || !InRange(PondTemp250m, 0, 100) || !InRange(PondTemp500m, 0, 100))
 			return false;
-		if (Version == 4)
+		if (Version >= 4)
 		{
 			if (!SZ_PondProtocol.Valid(PondLayout, PondWorld, PondCarry))
 				return false;
 		}
 		else if (PondLayout != 0 || PondWorld != "" || (PondCarry && PondCarry.Count() > 0))
 			return false;
+		if (Version >= 5)
+		{
+			if (!InRange(ClimateCycleTotal, 18.25, 7300) || !InRange(ClimateCycle, 0, ClimateCycleTotal) || !InRange(ClimatePendingCycle, 0, 1000000) || !InRange(ClockRemainder, -0.001, 0.001))
+				return false;
+			if (!SnowWetDays || SnowWetDays.Count() != 3)
+				return false;
+			foreach (float wet : SnowWetDays)
+			{
+				if (!InRange(wet, 0, 1))
+					return false;
+			}
+		}
 		if (SnowModel == 2)
 		{
 			if ((SnowSeaLevelCm > 0) != (SnowWaterSeaLevelMm > 0) || (Snow250mCm > 0) != (SnowWater250mMm > 0) || (Snow500mCm > 0) != (SnowWater500mMm > 0))
