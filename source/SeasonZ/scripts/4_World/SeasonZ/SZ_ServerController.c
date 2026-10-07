@@ -6,6 +6,7 @@ class SZ_ServerController
 	//! walkable ice on frozen ponds around the players
 	protected ref SZ_PondIce m_Ice;
 	protected bool m_RealTime;
+	protected bool m_StateWritable = true;
 	protected float m_TickTimer;
 	protected float m_SyncTimer;
 	protected float m_SaveTimer;
@@ -133,11 +134,17 @@ class SZ_ServerController
 		if (JsonFileLoader<SZ_PersistentState>.LoadFile(SZ_Const.STATE_FILE, st, error) && st)
 			m_State = st;
 		else
-			Print("[SeasonZ] state.json could not be read: " + error);
+		{
+			// Preserve the unreadable file for recovery; fallback state is session-only.
+			m_StateWritable = false;
+			Print("[SeasonZ] state.json could not be read; saving disabled this session: " + error);
+		}
 	}
 
 	void SaveState()
 	{
+		if (!m_StateWritable)
+			return;
 		m_State.SnowSeaLevelCm = SZ_State.s_Snow0;
 		m_State.Snow250mCm = SZ_State.s_Snow1;
 		m_State.Snow500mCm = SZ_State.s_Snow2;
