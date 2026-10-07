@@ -43,6 +43,9 @@ modded class DayZGame
 	{
 		if (rpc_type == SZ_Const.RPC_STATE && !target)
 		{
+			// This message publishes server state; clients cannot set it on the server.
+			if (IsServer())
+				return;
 			Param8<float, float, float, float, float, float, float, float> data = new Param8<float, float, float, float, float, float, float, float>(0, 0, 0, 0, 0, 0, 0, 0);
 			if (ctx.Read(data))
 			{
