@@ -250,43 +250,47 @@ class SZ_TyreTracks
 		SZ_Print seg = s_Segments[i];
 		if (seg && seg.m_Obj)
 			g_Game.ObjectDelete(seg.m_Obj);
-		s_Segments.Remove(i);
+		s_Segments.RemoveOrdered(i);
 	}
 
 	//! fills tracks during snowfall (oldest first) and removes them where the snow is gone
 	protected static void Fill(float timeslice, float s0, float s1, float s2)
 	{
 		if (!s_Segments || s_Segments.Count() == 0)
+		{
+			s_FillTimer = 0;
 			return;
+		}
 		s_FillTimer += timeslice;
 		if (s_FillTimer < 1.0)
 			return;
+		float fillSeconds = s_FillTimer;
 		s_FillTimer = 0;
 
 		float snowfall = g_Game.GetWeather().GetSnowfall().GetActual();
+		float fillStep = 0;
 		if (snowfall > 0.05)
-		{
-			// ruts take longer to fill than footprints
-			float maxAge = 120.0 + 900.0 * (1.0 - Math.Clamp(snowfall, 0, 1));
-			while (s_Segments.Count() > 0 && s_Clock - s_Segments[0].m_Time > maxAge)
-				RemoveAt(0);
-		}
+			fillStep = fillSeconds / (120.0 + 900.0 * (1.0 - Math.Clamp(snowfall, 0, 1)));
+
 		for (int i = s_Segments.Count() - 1; i >= 0; i--)
 		{
 			SZ_Print seg = s_Segments[i];
 			if (!seg.m_Obj)
 			{
-				s_Segments.Remove(i);
+				s_Segments.RemoveOrdered(i);
 				continue;
 			}
+			// A mark born within this fill interval did not see the earlier part of it.
+			seg.m_Fill += fillStep * Math.Clamp((s_Clock - seg.m_Time) / fillSeconds, 0, 1);
 			vector sp = seg.m_Obj.GetPosition();
-			if (SZ_State.SnowAt(sp[1], s0, s1, s2) < 0.8)
+			if (seg.m_Fill >= 1.0 || SZ_State.SnowAt(sp[1], s0, s1, s2) < 0.8)
 				RemoveAt(i);
 		}
 	}
 
 	static void Clear()
 	{
+		s_FillTimer = 0;
 		if (!s_Segments)
 			return;
 		while (s_Segments.Count() > 0)

@@ -29,7 +29,8 @@ modded class MissionServer
 	override void OnMissionFinish()
 	{
 		if (m_SZ_Server)
-			m_SZ_Server.SaveState();
+			m_SZ_Server.Shutdown();
+		m_SZ_Server = null;
 		super.OnMissionFinish();
 	}
 }
@@ -56,6 +57,10 @@ modded class MissionGameplay
 	{
 		if (m_SZ_Client)
 			m_SZ_Client.Shutdown();
+		m_SZ_Client = null;
+		// A later connection must wait for its own server's state.
+		if (!g_Game.IsServer())
+			SZ_State.ResetSession();
 		super.OnMissionFinish();
 	}
 }

@@ -31,6 +31,8 @@ class SZ_TreeTile
 	ref array<float> m_PathAlt;
 	bool m_PathsHidden;
 	bool m_Scanned;
+	//! next tree to visit when a dense tile spans several frames
+	int m_UpdateCursor;
 	//! some of the tile's objects were unloaded by the game (fog, view distance): scanned again from m_RescanAt on,
 	//! less often while they stay away
 	bool m_Partial;
@@ -582,6 +584,12 @@ class SZ_TreeSwap
 				tile.m_Paths.Insert(o);
 				tile.m_PathScale.Insert(o.GetScale());
 				tile.m_PathAlt.Insert(p[1]);
+				// SetPathsHidden is a no-op while the tile already has this state.
+				if (tile.m_PathsHidden)
+				{
+					o.SetScale(0.001);
+					o.Update();
+				}
 				continue;
 			}
 
@@ -842,6 +850,7 @@ class SZ_TreeSwap
 			m_Known--;
 		}
 		tile.m_Items.Clear();
+		tile.m_UpdateCursor = 0;
 		SetPathsHidden(tile, false);
 		tile.m_Paths.Clear();
 		tile.m_PathScale.Clear();
@@ -973,22 +982,34 @@ class SZ_TreeSwap
 			while (count > m_NearCount && m_SpiralD[count - 1] > SZ_State.s_DebugTreeRadius)
 				count--;
 		}
+		int fullTickLimit = m_TickLimit;
+		// Leave part of the frame for the far ring while travelling.
+		if (fullTickLimit > 0)
+			m_TickLimit = Math.Max(1, Math.Round(fullTickLimit * 0.6));
 		int visited = 0;
 		while (m_Cost < NEAR_BUDGET && visited < m_NearCount)
 		{
+			// One tile per ring still progresses after an indivisible restore/query overran.
+			if (visited > 0 && OverTime())
+				break;
 			if (m_NearCursor >= m_NearCount)
 				m_NearCursor = 0;
-			VisitTile(m_NearCursor, 1000000.0, false);
+			// Keep this tile as the next one if its changes could not finish.
+			if (!VisitTile(m_NearCursor, NEAR_BUDGET + 1.0, false))
+				break;
 			m_NearCursor++;
 			visited++;
 		}
 		tick = StatTree(3, tick);
 
+		m_TickLimit = fullTickLimit;
 		int farCount = count - m_NearCount;
 		float farStop = m_Cost + FAR_BUDGET;
 		visited = 0;
 		while (farCount > 0 && m_Cost < farStop && visited < farCount)
 		{
+			if (visited > 0 && OverTime())
+				break;
 			if (m_FarCursor >= farCount)
 				m_FarCursor = 0;
 			// a dense far tile is swapped over several frames instead of all at once
@@ -1027,6 +1048,10 @@ class SZ_TreeSwap
 			m_ProbeAt = m_Clock + LIMIT_PROBE_SECONDS;
 		}
 		float reach = m_LimitR;
+		// A/B radius must also retire existing replacements. Previously it only
+		// stopped far visits, so reducing radius left the expensive old objects alive.
+		if (SZ_State.s_DebugTreeRadius >= 0)
+			reach = Math.Min(reach, SZ_State.s_DebugTreeRadius);
 		if (m_Fog > 0.01)
 			reach = Math.Min(reach, FOG_REACH / m_Fog);
 		m_Reach = Math.Clamp(reach, NEAR_RADIUS + TILE, RADIUS);
@@ -1106,6 +1131,14 @@ class SZ_TreeSwap
 		return m_Reach;
 	}
 
+	void PerfInventory(FileHandle file)
+	{
+		map<string, int> counts = new map<string, int>;
+		for (int i = 0; i < s_ReplToOrig.Count(); i++)
+			SZ_PerfInventory.Add(counts, s_ReplToOrig.GetKey(i));
+		SZ_PerfInventory.Write(file, "trees", counts);
+	}
+
 	//! the frame's time for swapping trees is used up
 	protected bool OverTime()
 	{
@@ -1141,12 +1174,24 @@ class SZ_TreeSwap
 		else if (tile.m_Partial && m_Clock >= tile.m_RescanAt)
 			ScanTile(tile, tx, tz, true);
 
-		m_Cost += 0.03 + tile.m_Items.Count() * 0.012;
+		m_Cost += 0.03;
 		UpdatePaths(tile);
 		bool complete = true;
 		bool lost = false;
-		foreach (SZ_TreeItem it : tile.m_Items)
+		int itemVisits = 0;
+		while (tile.m_UpdateCursor < tile.m_Items.Count())
 		{
+			// Advance even past a failed replacement; retry it on the next full pass.
+			// Charge only the trees visited, and allow one visit if a query used the budget.
+			if (itemVisits > 0 && (m_Cost > limit || OverTime()))
+			{
+				complete = false;
+				break;
+			}
+			SZ_TreeItem it = tile.m_Items[tile.m_UpdateCursor];
+			tile.m_UpdateCursor++;
+			itemVisits++;
+			m_Cost += 0.012;
 			if (!it.m_Orig)
 			{
 				lost = true;
@@ -1157,15 +1202,17 @@ class SZ_TreeSwap
 				want = SHOW_ORIGINAL;
 			if (want == it.m_Shown)
 				continue;
-			if (m_Cost > limit)
-			{
-				complete = false;
-				break;
-			}
 			Apply(it, want);
 		}
+		if (tile.m_UpdateCursor >= tile.m_Items.Count())
+			tile.m_UpdateCursor = 0;
 		if (lost)
+		{
 			PruneLost(tile);
+			// Pruning swaps array slots; revisit the tile so moved entries are not skipped.
+			tile.m_UpdateCursor = 0;
+			complete = false;
+		}
 		return complete;
 	}
 

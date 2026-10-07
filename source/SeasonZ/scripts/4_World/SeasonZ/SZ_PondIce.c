@@ -2,6 +2,7 @@
 //! its open water
 class SZ_PondBody
 {
+	int m_Id;
 	float m_X0;
 	float m_Z0;
 	float m_X1;
@@ -25,11 +26,15 @@ class SZ_PondBody
 	ref array<string> m_PM;
 	ref array<Object> m_Objects;
 	bool m_Shown;
+	int m_CreateAttempts;
+	float m_CreateRetryAt;
+	bool m_CreateFailed;
 	//! the plates show thick ice (pale, opaque) or thin ice (dark, clear)
 	bool m_Thick;
 	//! camera distance of the last measurement: the game knows the water of distant areas only roughly, so a body
 	//! is measured again from closer by
 	float m_MeasuredFrom;
+	float m_RepairAfter;
 
 	void SZ_PondBody(float x0, float z0, float x1, float z1, float y)
 	{
@@ -81,6 +86,7 @@ class SZ_PondIce
 	protected vector m_LastCamera;
 	protected bool m_Server;
 	protected ref array<vector> m_Players;
+	protected ref array<Man> m_ServerPlayers;
 	protected float m_Radius = RADIUS;
 	protected float m_KeepRadius = KEEP_RADIUS;
 	protected float m_RescueClock;
@@ -101,7 +107,9 @@ class SZ_PondIce
 				float x1 = data[i + 2];
 				float z1 = data[i + 3];
 				float y = data[i + 4];
-				m_Bodies.Insert(new SZ_PondBody(x0, z0, x1, z1, y));
+				SZ_PondBody body = new SZ_PondBody(x0, z0, x1, z1, y);
+			body.m_Id = i / 5;
+			m_Bodies.Insert(body);
 			}
 		}
 		Print(string.Format("[SeasonZ] pond ice: %1 water bodies on %2", m_Bodies.Count(), world));
@@ -114,6 +122,7 @@ class SZ_PondIce
 		m_Radius = SERVER_RADIUS;
 		m_KeepRadius = SERVER_KEEP_RADIUS;
 		m_Players = new array<vector>;
+		m_ServerPlayers = new array<Man>;
 		Init();
 	}
 
@@ -148,6 +157,25 @@ class SZ_PondIce
 		return SZ_State.SnowAt(altitude, SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2);
 	}
 
+	//! Local QA: compare native coverage with the authoritative carrying decision.
+	void DebugPoint(vector pos)
+	{
+		foreach (SZ_PondBody b : m_Bodies)
+		{
+			if (DistTo(b, pos) > 0)
+				continue;
+			int covering = 0;
+			for (int i = 0; i < b.m_Objects.Count(); i++)
+			{
+				float half = b.m_PS[i] * 0.5;
+				if (b.m_Objects[i] && Math.AbsFloat(pos[0] - b.m_PX[i]) < half && Math.AbsFloat(pos[2] - b.m_PZ[i]) < half)
+					covering++;
+			}
+			Print(string.Format("[SeasonZ] iceprobe id=%1 y=%2 step=%3 from=%4 thick=%5 shown=%6 plates=%7 objects=%8 covering=%9", b.m_Id, b.m_Y, b.m_Step, b.m_MeasuredFrom, b.m_Thick, b.m_Shown, b.m_PX.Count(), b.m_Objects.Count(), covering));
+			Print(string.Format("[SeasonZ] iceprobe class=%1", Classify(b, pos[0], pos[2])));
+		}
+	}
+
 	//! test harness: forget every measurement, so the bodies are measured again
 	void DebugRemeasure()
 	{
@@ -155,6 +183,9 @@ class SZ_PondIce
 		{
 			if (b.m_Objects.Count() > 0)
 				Hide(b);
+			b.m_CreateAttempts = 0;
+			b.m_CreateRetryAt = 0;
+			b.m_CreateFailed = false;
 			b.m_Step = 0;
 			b.m_PX.Clear();
 			b.m_PZ.Clear();
@@ -232,22 +263,28 @@ class SZ_PondIce
 		if (!m_Bodies || m_Bodies.Count() == 0)
 			return;
 		m_Players.Clear();
-		array<Man> players = new array<Man>;
-		g_Game.GetPlayers(players);
+		m_ServerPlayers.Clear();
+		g_Game.GetPlayers(m_ServerPlayers);
 		m_RescueClock += timeslice;
 		bool rescue = m_RescueClock >= 1.0;
 		if (rescue)
 			m_RescueClock = 0;
-		foreach (Man man : players)
+		foreach (Man man : m_ServerPlayers)
 		{
 			if (!man)
 				continue;
 			m_Players.Insert(man.GetPosition());
-			if (rescue)
-				RescueUnderIce(man);
 		}
 		m_Clock += timeslice;
 		Work();
+		if (rescue)
+		{
+			foreach (Man swimmer : m_ServerPlayers)
+			{
+				if (swimmer)
+					RescueUnderIce(swimmer);
+			}
+		}
 	}
 
 	//! server: a player in the water under ice that carries people (logged out while swimming, or swimming while the
@@ -260,14 +297,42 @@ class SZ_PondIce
 		float water;
 		if (!SZ_Util.PondWater(pos[0], pos[2], water))
 			return;
+		if (!SZ_PondState.At(pos[0], pos[2], water))
+			return; // a lingering roadway or a bridge must not rescue through thawed ice
 		if (pos[1] > water - 0.05)
 			return;
 		// the roadway of a plate above the player (without one the ice is thin or open here: nothing to climb onto)
 		float road = g_Game.SurfaceRoadY3D(pos[0], water + 1.0, pos[2], RoadSurfaceDetection.UNDER);
 		if (road < water + LIFT * 0.5 || road > water + 0.5)
+		{
+			RepairCoverage(pos, water);
 			return;
+		}
 		man.SetPosition(Vector(pos[0], road + 0.05, pos[2]));
 		Print(string.Format("[SeasonZ] pond ice: a player under the ice at %1 climbed out onto it", pos));
+	}
+
+	//! Water geometry can finish streaming after a server measurement. Do not cache its missing cells forever.
+	//! Retain the old plates until the normal bounded measurement finishes; never teleport without a native road.
+	protected void RepairCoverage(vector pos, float water)
+	{
+		foreach (SZ_PondBody b : m_Bodies)
+		{
+			if (DistTo(b, pos) > 0 || Math.AbsFloat(water - b.m_Y) >= 0.06 || !b.m_Thick || !b.m_Shown || b.m_Step != 2 || b.m_CreateFailed || m_Clock < b.m_RepairAfter)
+				continue;
+			bool covered = false;
+			for (int i = 0; i < b.m_Objects.Count(); i++)
+			{
+				float half = b.m_PS[i] * 0.5;
+				if (b.m_Objects[i] && Math.AbsFloat(pos[0] - b.m_PX[i]) < half && Math.AbsFloat(pos[2] - b.m_PZ[i]) < half)
+					covered = true;
+			}
+			if (covered)
+				continue;
+			b.m_RepairAfter = m_Clock + 5.0;
+			b.m_Step = 0;
+			Print(string.Format("[SeasonZ] pond ice: rechecking stale server coverage body=%1 at %2", b.m_Id, pos));
+		}
 	}
 
 	void Update(float timeslice, vector camera)
@@ -304,32 +369,39 @@ class SZ_PondIce
 	//! false while the body still needs work this frame
 	protected bool Process(SZ_PondBody b)
 	{
-		float dist = Dist(b);
 		float ice = IceAt(b.m_Y);
 		// thick ice carries snow and people and looks pale; thin ice (freezing up, rotting in spring) is dark like
 		// clear ice and the server has no plates for it
-		bool thick = ice >= SZ_Const.ICE_SNOW_ON || (b.m_Thick && ice >= SZ_Const.ICE_SNOW_OFF);
+		bool thick = SZ_PondState.Carries(b.m_Id);
+		// Keep physical state current even while the body is hidden or unmeasured.
+		if (thick != b.m_Thick)
+		{
+			if (b.m_Objects.Count() > 0 || b.m_CreateAttempts > 0)
+				Hide(b);
+			b.m_Thick = thick;
+		}
 		bool frozen = ice >= SZ_Const.ICE_VISIBLE;
 		if (m_Server)
 			frozen = thick;
-		if (!frozen || dist > m_KeepRadius)
+		if (!frozen)
 		{
-			if (b.m_Objects.Count() > 0)
+			if (b.m_Objects.Count() > 0 || b.m_CreateAttempts > 0)
+				Hide(b);
+			return true;
+		}
+		float dist = Dist(b);
+		if (dist > m_KeepRadius)
+		{
+			if (b.m_Objects.Count() > 0 || b.m_CreateAttempts > 0)
 				Hide(b);
 			return true;
 		}
 		if (dist > m_Radius && !b.m_Shown && b.m_Objects.Count() == 0)
 			return true;
-		if (!m_Server && b.m_Step == 2 && b.m_MeasuredFrom > REMEASURE_FROM && dist < b.m_MeasuredFrom * 0.5 && m_Clock >= m_SettleUntil)
+		if (b.m_Step == 2 && b.m_MeasuredFrom > REMEASURE_FROM && dist < b.m_MeasuredFrom * 0.5 && m_Clock >= m_SettleUntil)
 			b.m_Step = 0;
 		if (b.m_Step < 2)
 			return Measure(b);
-		if (thick != b.m_Thick)
-		{
-			if (b.m_Objects.Count() > 0)
-				Hide(b);
-			b.m_Thick = thick;
-		}
 		if (!b.m_Shown)
 			return Show(b);
 		return true;
@@ -474,6 +546,8 @@ class SZ_PondIce
 
 	protected bool Show(SZ_PondBody b)
 	{
+		if (b.m_CreateFailed || m_Clock < b.m_CreateRetryAt)
+			return true; // yield this body; shown remains false
 		while (b.m_Objects.Count() < b.m_PX.Count() && m_Cost < BUDGET)
 		{
 			int i = b.m_Objects.Count();
@@ -481,10 +555,19 @@ class SZ_PondIce
 			if (b.m_Thick)
 				model = SZ_Const.DATA + "ice\\sz_ice" + b.m_PM[i];
 			Object o = g_Game.CreateStaticObjectUsingP3D(model, Vector(b.m_PX[i], b.m_Y + LIFT, b.m_PZ[i]), "0 0 0", 1.0, true);
-			b.m_Objects.Insert(o);
-			if (o)
-				m_Objects++;
 			m_Cost += 0.2;
+			if (!o)
+			{
+				b.m_CreateAttempts++;
+				b.m_CreateRetryAt = m_Clock + b.m_CreateAttempts * 5.0;
+				b.m_CreateFailed = b.m_CreateAttempts >= 3;
+				if (b.m_CreateAttempts == 1 || b.m_CreateFailed)
+					Print(string.Format("[SeasonZ] ice creation failed model=%1 attempts=%2; repair assets and remeasure", model, b.m_CreateAttempts));
+				return true;
+			}
+			b.m_Objects.Insert(o);
+			m_Objects++;
+			b.m_CreateAttempts = 0;
 		}
 		if (b.m_Objects.Count() < b.m_PX.Count())
 			return false;
@@ -504,6 +587,9 @@ class SZ_PondIce
 		}
 		b.m_Objects.Clear();
 		b.m_Shown = false;
+		b.m_CreateAttempts = 0;
+		b.m_CreateRetryAt = 0;
+		b.m_CreateFailed = false;
 		m_Cost += 0.05;
 	}
 

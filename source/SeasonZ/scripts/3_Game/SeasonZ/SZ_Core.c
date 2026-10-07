@@ -2,7 +2,7 @@
 
 class SZ_Const
 {
-	static const int RPC_STATE = 83610417;
+	static const int RPC_STATE = 83610418;
 	static const string PROFILE_DIR = "$profile:SeasonZ";
 	static const string CONFIG_FILE = "$profile:SeasonZ/config.json";
 	static const string STATE_FILE = "$profile:SeasonZ/state.json";
@@ -47,10 +47,15 @@ class SZ_Calendar
 
 	static float Wrap(float doy)
 	{
-		while (doy < 0)
+		// Bounded normalization; NaN/infinity must not reach a loop or an array index.
+		if (!(doy >= -1000000 && doy <= 1000000))
+			return 0;
+		doy = Math.ModFloat(doy, 365.0);
+		if (doy < 0)
 			doy += 365.0;
-		while (doy >= 365.0)
-			doy -= 365.0;
+		// A tiny negative remainder can round up to 365 when added in float32.
+		if (doy >= 365.0)
+			doy = 0;
 		return doy;
 	}
 
@@ -132,6 +137,20 @@ class SZ_State
 	static float s_Ice0 = 0;
 	static float s_Ice1 = 0;
 	static float s_Ice2 = 0;
+	//! RPC v2: stable SZ_PondData index, server-owned hysteresis; no client-local reconstruction.
+	static ref array<int> s_PondCarry;
+	static string s_PondWorld;
+	static int s_PondRevision;
+	static bool s_HasPondCarry;
+	static void ResetSession()
+	{
+		s_Valid = false;
+		s_PondCarry = null;
+		s_PondWorld = "";
+		s_PondRevision = 0;
+		s_HasPondCarry = false;
+	}
+
 	static bool s_LightingDirty = false;
 	// client statistics, for the log and the local test harness
 	static int s_StatCarpet = 0;
@@ -154,6 +173,12 @@ class SZ_State
 	static float s_DebugExtraOffset = 0;
 	// local test harness only: hides the snow cover
 	static bool s_DebugNoCarpet = false;
+	//! Performance prototype: exact building-edge detail radius (negative keeps production 70 m).
+	static float s_DebugCarpetDetailNear = -1;
+	//! Local A/B only: preserve 70 m exact detail, coarsen only the outer level-0 fringe.
+	static bool s_DebugCarpetOuterCoarse;
+	//! Prototype: no cover traversal after the last snow object has melted.
+	static bool s_DebugCarpetIdle = true;
 	// local test harness only: the wall rule from before the cut along the walls (A/B comparisons)
 	static bool s_DebugOldWalls = false;
 	// local test harness only: extra height of the roof snow (metres)

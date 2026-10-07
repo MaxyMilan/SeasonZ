@@ -45,6 +45,28 @@ class SZ_SnowCell
 	}
 }
 
+//! A resumable quadtree node (layout uses integer coordinates; geometry uses metres).
+class SZ_CarpetNode
+{
+	int level;
+	int x;
+	int z;
+	float px;
+	float pz;
+	float size;
+	bool diag;
+	int depth;
+}
+
+//! Cached exact geometry. No native objects are held by this cache.
+class SZ_CarpetGeometry
+{
+	int generation;
+	int signature;
+	int detail;
+	ref array<ref SZ_SnowTri> triangles;
+}
+
 //! Client: builds a snow cover out of static triangles that follow the terrain grid.
 //! Five levels of detail: the exact terrain grid near the camera (level 0), then cells of 2, 4, 16 and 32 terrain
 //! cells further out, up to the largest object view distance of the game options. A coarse cell floats just high
@@ -200,8 +222,72 @@ class SZ_SnowCarpet
 	//! objects known to have (true) or not to have a roof a metre or more above the ground, as the inside test needs
 	protected ref map<Object, bool> m_Roofed;
 
+
+	//! Budgets are checked between quadtree nodes / native object operations.
+	//! A native call cannot be preempted. Hard operation caps also work before tick calibration.
+	static const float BUILD_MS = 3.0;
+	static const float LAYOUT_MS = 1.0;
+	static const int BUILD_OPS = 96;
+	static const int BUILD_CELLS = 8;
+	protected int m_WorkTick;
+	protected int m_WorkTicks;
+	protected int m_WorkOps;
+	protected int m_WorkCells;
+	protected bool m_LayoutBusy;
+	protected int m_LayoutPhase;
+	protected int m_LayoutSpiral;
+	protected int m_LayoutBucket;
+	protected int m_LayoutEntry;
+	protected int m_TrimLevel;
+	protected int m_TrimIndex;
+	protected vector m_LayoutDirection;
+	protected ref array<ref SZ_CarpetNode> m_LayoutStack;
+	protected ref array<ref array<ref SZ_CarpetNode>> m_Priority;
+	protected ref array<ref SZ_CarpetNode> m_ExactStack;
+	protected ref SZ_SnowCell m_Job;
+	protected ref SZ_SnowCell m_JobOld;
+	protected int m_JobPhase;
+	protected int m_JobCursor;
+	protected int m_JobStage;
+	protected int m_JobSignature;
+	protected bool m_AsyncExact;
+	protected ref map<int, ref SZ_CarpetGeometry> m_FineGeometry;
+	protected ref map<int, ref SZ_CarpetGeometry> m_FarGeometry;
+	protected float m_RetireCompleteAt = -1;
+	protected int m_GeometryHits;
+
+	string DebugSchedule()
+	{
+		return string.Format("layoutBusy=%1 job=%2 nodes=%3 retired=%4 fineCache=%5 farCache=%6 cacheHits=%7", m_LayoutBusy, m_Job != null, m_ExactStack.Count(), m_Retired.Count(), m_FineGeometry.Count(), m_FarGeometry.Count(), m_GeometryHits);
+	}
+
+	//! Evict a small amount of terrain analysis instead of flushing the entire cache.
+	protected void TrimAnalysisCaches()
+	{
+		for (int level = 1; level < LEVELS; level++)
+		{
+			for (int i = 0; i < 8 && m_Rise[level].Count() > 30000; i++)
+				m_Rise[level].Remove(m_Rise[level].GetKey(0));
+			for (int j = 0; j < 8 && m_Lift[level].Count() > 30000; j++)
+				m_Lift[level].Remove(m_Lift[level].GetKey(0));
+		}
+		for (int k = 0; k < 16 && m_Road0.Count() > 60000; k++)
+		{
+			int key = m_Road0.GetKey(0);
+			m_Road0.Remove(key);
+			m_Diag0.Remove(key);
+		}
+	}
+
 	void SZ_SnowCarpet()
 	{
+		m_LayoutStack = new array<ref SZ_CarpetNode>;
+		m_ExactStack = new array<ref SZ_CarpetNode>;
+		m_Priority = new array<ref array<ref SZ_CarpetNode>>;
+		for (int bucket = 0; bucket < 32; bucket++)
+			m_Priority.Insert(new array<ref SZ_CarpetNode>);
+		m_FineGeometry = new map<int, ref SZ_CarpetGeometry>;
+		m_FarGeometry = new map<int, ref SZ_CarpetGeometry>;
 		m_F = new array<int>;
 		m_Rad = new array<float>;
 		m_Off = new array<float>;
@@ -280,6 +366,26 @@ class SZ_SnowCarpet
 	int GetObjectCount()
 	{
 		return m_Objects;
+	}
+
+	void PerfInventory(FileHandle file)
+	{
+		map<string, int> counts = new map<string, int>;
+		for (int level = 0; level < m_Cells.Count(); level++)
+		{
+			for (int i = 0; i < m_Cells[level].Count(); i++)
+			{
+				SZ_SnowCell cell = m_Cells[level].GetElement(i);
+				foreach (Object obj : cell.m_Objects)
+					SZ_PerfInventory.Add(counts, obj);
+			}
+		}
+		foreach (SZ_SnowCell retired : m_Retired)
+		{
+			foreach (Object oldObj : retired.m_Objects)
+				SZ_PerfInventory.Add(counts, oldObj);
+		}
+		SZ_PerfInventory.Write(file, "carpet", counts);
 	}
 
 	int GetSkirtCount()
@@ -420,72 +526,156 @@ class SZ_SnowCarpet
 		}
 	}
 
-	//! rebuilds the ordered work list of active cells (near to far) and drops cells that left the area
+	//! Layout construction, priority bucketing and retirement all yield.
 	protected void RebuildWorkList()
 	{
 		m_ListCamera = m_Camera;
+		m_LayoutDirection = g_Game.GetCurrentCameraDirection();
 		m_Layout++;
+		m_LayoutBusy = true;
+		m_LayoutPhase = 0;
+		m_LayoutSpiral = 0;
+		m_LayoutBucket = 0;
+		m_LayoutEntry = 0;
+		m_TrimLevel = 0;
+		m_TrimIndex = 0;
 		m_NearEnd = 0;
 		m_NearScan = 0;
-		m_WLevel.Clear();
-		m_WX.Clear();
-		m_WZ.Clear();
-		int level;
-		for (level = 0; level < LEVELS; level++)
+		m_WLevel.Clear(); m_WX.Clear(); m_WZ.Clear();
+		m_LayoutStack.Clear();
+		for (int level = 0; level < LEVELS; level++)
+		{
 			m_Keep[level].Clear();
+			m_Sig[level].Clear();
+		}
+	}
 
+	protected void PushLayout(int level, int x, int z)
+	{
+		SZ_CarpetNode n = new SZ_CarpetNode;
+		n.level = level; n.x = x; n.z = z;
+		m_LayoutStack.Insert(n);
+	}
+
+	protected void QueueLayoutItem(SZ_CarpetNode n)
+	{
+		float size = Size(n.level);
+		float dx = (n.x + 0.5) * size - m_ListCamera[0];
+		float dz = (n.z + 0.5) * size - m_ListCamera[2];
+		float distance = Math.Sqrt(dx * dx + dz * dz);
+		float facing = 0;
+		if (distance > 0.1)
+			facing = (dx * m_LayoutDirection[0] + dz * m_LayoutDirection[2]) / distance;
+		// All close cells win; within each distance band, favour the view direction.
+		int priority = Math.Clamp(Math.Floor(distance * (1.0 - 0.25 * facing) / 35.0), 0, 31);
+		m_Priority[priority].Insert(n);
+	}
+
+	protected void ContinueLayout()
+	{
+		int tick0 = TickCount(0);
+		int limit = MsTicks(LAYOUT_MS);
+		int steps = 0;
 		int top = LEVELS - 1;
 		float ct = Size(top);
-		int baseX = Math.Floor(m_Camera[0] / ct);
-		int baseZ = Math.Floor(m_Camera[2] / ct);
-		for (int i = 0; i < m_SpiralX.Count(); i++)
+		while (m_LayoutBusy && steps < 256)
 		{
-			if (i == NEAR_BLOCKS)
-				m_NearEnd = m_WLevel.Count();
-			int kx = baseX + m_SpiralX[i];
-			int kz = baseZ + m_SpiralZ[i];
-			if (kx < 0 || kz < 0)
-				continue;
-			if (DistXZ((kx + 0.5) * ct, (kz + 0.5) * ct) > m_Rad[top])
-				continue;
-			ListCell(top, kx, kz);
-		}
-
-		for (level = 0; level < LEVELS; level++)
-			DropMissing(m_Cells[level], m_Keep[level]);
-
-		// cells along the border of a coarser level take their edge heights from that level
-		for (level = 0; level < LEVELS; level++)
-			m_Sig[level].Clear();
-		for (int w = 0; w < m_WLevel.Count(); w++)
-		{
-			int lv = m_WLevel[w];
-			if (lv >= top)
-				continue;
-			int sig = BorderSignature(lv, m_WX[w], m_WZ[w]);
-			if (sig != 0)
-				m_Sig[lv].Set(m_WX[w] * 65536 + m_WZ[w], sig);
-		}
-
-		// the terrain analysis caches only grow while travelling; they are cheap to rebuild
-		for (level = 1; level < LEVELS; level++)
-		{
-			if (m_Rise[level].Count() > 30000)
+			if (steps > 0 && limit > 0 && TickCount(tick0) >= limit)
+				break;
+			steps++;
+			if (m_LayoutPhase == 0)
 			{
-				m_Rise[level].Clear();
-				m_Lift[level].Clear();
+				if (m_LayoutStack.Count() == 0)
+				{
+					if (m_LayoutSpiral >= m_SpiralX.Count())
+					{
+						m_LayoutPhase = 1;
+						continue;
+					}
+					int kx = Math.Floor(m_ListCamera[0] / ct) + m_SpiralX[m_LayoutSpiral];
+					int kz = Math.Floor(m_ListCamera[2] / ct) + m_SpiralZ[m_LayoutSpiral];
+					m_LayoutSpiral++;
+					float dx = (kx + 0.5) * ct - m_ListCamera[0];
+					float dz = (kz + 0.5) * ct - m_ListCamera[2];
+					if (kx >= 0 && kz >= 0 && Math.Sqrt(dx * dx + dz * dz) <= m_Rad[top])
+						PushLayout(top, kx, kz);
+					continue;
+				}
+				int last = m_LayoutStack.Count() - 1;
+				SZ_CarpetNode n = m_LayoutStack[last];
+				m_LayoutStack.Remove(last);
+				if (n.level == 0)
+				{
+					QueueLayoutItem(n);
+					continue;
+				}
+				float size = Size(n.level);
+				float ndx = (n.x + 0.5) * size - m_ListCamera[0];
+				float ndz = (n.z + 0.5) * size - m_ListCamera[2];
+				float d = Math.Sqrt(ndx * ndx + ndz * ndz);
+				bool coarse = d > m_Rad[n.level - 1];
+				if (coarse)
+					QueueLayoutItem(n);
+				if (!coarse || (n.level == 1 && d <= m_Rad[0] + PREBUILD))
+				{
+					int ratio = Ratio(n.level - 1);
+					for (int a = ratio - 1; a >= 0; a--)
+						for (int b = ratio - 1; b >= 0; b--)
+							PushLayout(n.level - 1, n.x * ratio + a, n.z * ratio + b);
+				}
+			}
+			else if (m_LayoutPhase == 1)
+			{
+				if (m_LayoutBucket >= m_Priority.Count())
+				{
+					m_LayoutPhase = 2;
+					continue;
+				}
+				array<ref SZ_CarpetNode> bucket = m_Priority[m_LayoutBucket];
+				if (m_LayoutEntry >= bucket.Count())
+				{
+					bucket.Clear();
+					m_LayoutBucket++;
+					m_LayoutEntry = 0;
+					if (m_LayoutBucket == 3)
+						m_NearEnd = m_WLevel.Count();
+					continue;
+				}
+				SZ_CarpetNode item = bucket[m_LayoutEntry++];
+				AddItem(item.level, item.x, item.z);
+				if (item.level < top)
+				{
+					int sig = BorderSignature(item.level, item.x, item.z);
+					if (sig != 0)
+						m_Sig[item.level].Set(item.x * 65536 + item.z, sig);
+				}
+			}
+			else
+			{
+				if (m_TrimLevel >= LEVELS)
+				{
+					m_LayoutBusy = false;
+					if (m_Scan >= m_WLevel.Count()) m_Scan = 0;
+					continue;
+				}
+				map<int, ref SZ_SnowCell> cells = m_Cells[m_TrimLevel];
+				if (m_TrimIndex >= cells.Count())
+				{
+					m_TrimLevel++; m_TrimIndex = 0;
+					continue;
+				}
+				int key = cells.GetKey(m_TrimIndex);
+				if (m_Keep[m_TrimLevel].Contains(key))
+					m_TrimIndex++;
+				else
+				{
+					SZ_SnowCell retired = cells.Get(key);
+					retired.m_RetiredAt = m_Clock;
+					m_Retired.Insert(retired);
+					cells.Remove(key);
+				}
 			}
 		}
-		if (m_Road0.Count() > 60000)
-		{
-			m_Road0.Clear();
-			m_Diag0.Clear();
-		}
-		if (m_NearEnd == 0)
-			m_NearEnd = m_WLevel.Count();
-		// the main cursor keeps its place: restarting at the camera on every change would starve the far rings
-		if (m_Scan >= m_WLevel.Count())
-			m_Scan = 0;
 	}
 
 	protected void DropMissing(map<int, ref SZ_SnowCell> cells, map<int, bool> keep)
@@ -517,32 +707,25 @@ class SZ_SnowCarpet
 		float water;
 		if (!SZ_Util.PondWater(x, z, water))
 			return false;
-		if (m_PondMode == 0)
-			return true;
-		return !PondCovered(water);
+		return !PondCovered(x, z, water);
 	}
 
-	//! true when the ponds around this water height carry snow (the band of the nearest tracked height)
-	protected bool PondCovered(float altitude)
+	//! Same supported body and authoritative state as collision and water actions.
+	protected bool PondCovered(float x, float z, float water)
 	{
-		int bit = 2;
-		if (altitude < 125.0)
-			bit = 1;
-		else if (altitude >= 375.0)
-			bit = 4;
-		return (m_PondMode & bit) != 0;
+		return SZ_PondState.At(x, z, water);
 	}
 
 	//! height the snow cover lies on: the terrain, or the ice of a frozen pond that carries snow
 	float GY(float x, float z)
 	{
 		float ground = g_Game.SurfaceY(x, z);
-		if (m_PondMode == 0)
+		if (!SZ_State.s_HasPondCarry)
 			return ground;
 		float water;
 		if (!SZ_Util.PondWater(x, z, water))
 			return ground;
-		if (!PondCovered(water))
+		if (!PondCovered(x, z, water))
 			return ground;
 		float top = water + ICE_TOP;
 		if (top > ground)
@@ -550,24 +733,10 @@ class SZ_SnowCarpet
 		return ground;
 	}
 
-	//! per tracked height: does its ice carry snow (with a margin, so the state does not flicker at the threshold)
+	//! This is now a generation, not three altitude bits: rebuild whenever ANY pond changes.
 	protected int WantedPondMode()
 	{
-		int mode = 0;
-		if (LevelCarriesSnow(SZ_State.s_Ice0, 1))
-			mode = mode | 1;
-		if (LevelCarriesSnow(SZ_State.s_Ice1, 2))
-			mode = mode | 2;
-		if (LevelCarriesSnow(SZ_State.s_Ice2, 4))
-			mode = mode | 4;
-		return mode;
-	}
-
-	protected bool LevelCarriesSnow(float ice, int bit)
-	{
-		if ((m_PondMode & bit) != 0)
-			return ice >= SZ_Const.ICE_SNOW_OFF;
-		return ice >= SZ_Const.ICE_SNOW_ON;
+		return SZ_State.s_PondRevision;
 	}
 
 	int GetPondMode()
@@ -1692,10 +1861,21 @@ class SZ_SnowCarpet
 			if (s_DebugBuild)
 				Print(string.Format("[DSTest] build split x0=%1 z0=%2 s=%3 addA=%4 addB=%5", x0, z0, s, addA, addB));
 			float hs = s * 0.5;
+			if (m_AsyncExact)
+			{
+				// Reverse push preserves the original triangle order.
+				PushExact(x0 + hs, z0 + hs, hs, diag, depth + 1);
+				PushExact(x0, z0 + hs, hs, diag, depth + 1);
+				PushExact(x0 + hs, z0, hs, diag, depth + 1);
+				PushExact(x0, z0, hs, diag, depth + 1);
+			}
+			else
+			{
 			BuildExact(cell, x0, z0, hs, diag, depth + 1);
 			BuildExact(cell, x0 + hs, z0, hs, diag, depth + 1);
 			BuildExact(cell, x0, z0 + hs, hs, diag, depth + 1);
 			BuildExact(cell, x0 + hs, z0 + hs, hs, diag, depth + 1);
+			}
 			return;
 		}
 
@@ -2216,10 +2396,15 @@ class SZ_SnowCarpet
 	//! (-1 for a new cell)
 	protected int DetailFor(float dist, int current)
 	{
-		if (!SZ_State.s_CarpetFarDetail || dist < DETAIL_NEAR)
+		float nearRadius = DETAIL_NEAR;
+		if (SZ_State.s_DebugCarpetDetailNear >= 0)
+			nearRadius = Math.Clamp(SZ_State.s_DebugCarpetDetailNear, 10.0, DETAIL_NEAR);
+		if (!SZ_State.s_CarpetFarDetail || dist < nearRadius)
 			return EXACT_DEPTH;
-		if (current == EXACT_DEPTH && dist < DETAIL_NEAR + DETAIL_HYST)
+		if (current == EXACT_DEPTH && dist < nearRadius + DETAIL_HYST)
 			return EXACT_DEPTH;
+		if (SZ_State.s_DebugCarpetOuterCoarse && (dist > 125.0 || (current == EXACT_DEPTH - 2 && dist > 110.0)))
+			return EXACT_DEPTH - 2;
 		return EXACT_DEPTH - 1;
 	}
 
@@ -2549,55 +2734,38 @@ class SZ_SnowCarpet
 	{
 		if (all)
 		{
-			// a complete pass over the layout: every retired cell may go now, spread over the next frames
-			foreach (SZ_SnowCell expired : m_Retired)
-			{
-				if (expired)
-					expired.m_RetiredAt = m_Clock - RETIRE_SECONDS - 1.0;
-			}
+			m_RetireCompleteAt = m_Clock;
 			return;
 		}
-		int dropTicks = MsTicks(DROP_MS);
-		int drop0 = TickCount(0);
-		int dropped = 0;
-		int checks = 0;
-		int n = m_Retired.Count();
-		if (m_RetiredCursor >= n)
-			m_RetiredCursor = 0;
-		for (int step = 0; step < n && checks < 400; step++)
+		int start = TickCount(0);
+		int budget = MsTicks(DROP_MS);
+		int ops = 0;
+		while (m_Retired.Count() > 0 && ops < 64)
 		{
-			// deleting objects is slow in a busy scene: a few hundred per frame at most, fewer when they are slow
-			if (dropped >= 400 || (dropTicks > 0 && dropped > 0 && TickCount(drop0) > dropTicks))
-				break;
-			int i = m_RetiredCursor;
-			if (i >= m_Retired.Count())
+			if (ops > 0 && budget > 0 && TickCount(start) >= budget) break;
+			ops++;
+			if (m_RetiredCursor >= m_Retired.Count()) m_RetiredCursor = 0;
+			SZ_SnowCell c = m_Retired[m_RetiredCursor];
+			bool drop = !c;
+			if (c)
+				drop = c.m_RetiredAt <= m_RetireCompleteAt || m_Clock - c.m_RetiredAt > RETIRE_SECONDS || m_Retired.Count() > RETIRE_MAX;
+			// During layout construction Coarse() already refers to the new layout;
+			// keep old coverage until its new cell list is complete.
+			if (!drop && !m_LayoutBusy) drop = Covered(c);
+			if (!drop)
 			{
-				i = 0;
-				m_RetiredCursor = 0;
-			}
-			if (m_Retired.Count() == 0)
-				break;
-			SZ_SnowCell c = m_Retired[i];
-			checks++;
-			if (!c || m_Clock - c.m_RetiredAt > RETIRE_SECONDS || Covered(c))
-			{
-				if (c)
-				{
-					dropped += c.m_Objects.Count();
-					DeleteObjects(c);
-				}
-				m_Retired.RemoveOrdered(i);
+				m_RetiredCursor++;
 				continue;
 			}
-			m_RetiredCursor = i + 1;
-		}
-		// travelling fast keeps the layout from completing: then the oldest go, with four times the time
-		while (m_Retired.Count() > RETIRE_MAX && (dropTicks <= 0 || TickCount(drop0) < dropTicks * 4))
-		{
-			SZ_SnowCell old = m_Retired[0];
-			if (old)
-				DeleteObjects(old);
-			m_Retired.RemoveOrdered(0);
+			if (c && c.m_Objects.Count() > 0)
+			{
+				int last = c.m_Objects.Count() - 1;
+				Object o = c.m_Objects[last];
+				if (o) { g_Game.ObjectDelete(o); m_Objects--; }
+				c.m_Objects.Remove(last);
+				continue;
+			}
+			m_Retired.Remove(m_RetiredCursor);
 		}
 	}
 
@@ -2636,6 +2804,9 @@ class SZ_SnowCarpet
 			m_Epoch++;
 		}
 		bool anySnow = Math.Max(s0, Math.Max(s1, s2)) >= 0.5;
+		// Keep existing cells/caches. When snow returns, normal anchor and pond
+		// invalidation runs before rebuilding; melting and retired cleanup finish
+		// before this guard is allowed. No visible objects exist on this path.
 
 		int pondMode = WantedPondMode();
 		if (pondMode != m_PondMode)
@@ -2643,6 +2814,13 @@ class SZ_SnowCarpet
 			// frozen ponds started or stopped carrying snow: every cell is rebuilt in place, nearest first
 			m_PondMode = pondMode;
 			m_BuildGen++;
+			if (m_Job && m_Job != m_JobOld)
+				DeleteObjects(m_Job);
+			m_Job = null;
+			m_JobOld = null;
+			m_ExactStack.Clear();
+			m_FineGeometry.Clear();
+			m_FarGeometry.Clear();
 			for (int lv = 1; lv < LEVELS; lv++)
 			{
 				m_Rise[lv].Clear();
@@ -2651,7 +2829,7 @@ class SZ_SnowCarpet
 			m_Road0.Clear();
 			m_Diag0.Clear();
 			m_NearScan = 0;
-			Print(string.Format("[SeasonZ] snow cover: frozen ponds carrying snow (bits 0m/250m/500m) = %1", m_PondMode));
+			Print(string.Format("[SeasonZ] snow cover: frozen ponds carrying snow (authority generation) = %1", m_PondMode));
 		}
 
 		// test harness: another road rule rebuilds every cell in place
@@ -2675,6 +2853,9 @@ class SZ_SnowCarpet
 			Print(string.Format("[SeasonZ] snow cover: road rule probe=%1 wide=%2", m_RoadProbe, m_RoadWide));
 		}
 
+		if (SZ_State.s_DebugCarpetIdle && !anySnow && m_Objects == 0 && m_Retired.Count() == 0)
+			return;
+
 		// the layout follows the camera in steps of four terrain cells
 		float step = m_Cell * 4.0;
 		int anchorX = Math.Floor(camera[0] / step);
@@ -2686,48 +2867,47 @@ class SZ_SnowCarpet
 				SZ_State.s_StatCoverMax.Insert(0);
 		}
 		int tick = TickCount(0);
-		if (anchorX != m_AnchorX || anchorZ != m_AnchorZ)
+		// A geometry job finishes against its frozen layout; coalesce camera movement.
+		if (!m_LayoutBusy && !m_Job && (anchorX != m_AnchorX || anchorZ != m_AnchorZ))
 		{
-			m_AnchorX = anchorX;
-			m_AnchorZ = anchorZ;
+			m_AnchorX = anchorX; m_AnchorZ = anchorZ;
 			RebuildWorkList();
 		}
+		if (m_LayoutBusy) ContinueLayout();
 		tick = StatCover(0, tick);
-
 		m_Cost = 0;
-		// on foot the normal budget keeps up easily; a fast car gets up to three times as much work per frame
-		float boost = Math.Clamp(1.0 + m_Speed / 15.0, 1.0, 3.0);
-		int count = m_WLevel.Count();
-		// first the blocks around the camera, which change with every layout
-		while (m_NearScan < m_NearEnd && m_NearScan < count && m_Cost < 3.5 * boost)
+		m_WorkTick = TickCount(0);
+		m_WorkTicks = MsTicks(BUILD_MS);
+		m_WorkOps = 0;
+		m_WorkCells = 0;
+		if (!m_LayoutBusy)
 		{
-			int itemTick = TickCount(0);
-			ProcessItem(m_NearScan, anySnow);
-			StatCover(4, itemTick);
-			m_NearScan++;
-		}
-		tick = StatCover(1, tick);
-		// then the main cursor, which keeps cycling through the whole layout
-		int visited = 0;
-		while (m_Cost < 6.0 * boost && visited < count)
-		{
-			if (m_Scan >= count)
+			int count = m_WLevel.Count();
+			if (m_Job) ContinueCell();
+			// Reserve half the budget for the cycling cursor so distant rings cannot starve.
+			while (!m_Job && m_NearScan < m_NearEnd && m_NearScan < count && WorkAvailable() && m_WorkOps < BUILD_OPS / 2 && (m_WorkTicks <= 0 || TickCount(m_WorkTick) < m_WorkTicks / 2))
 			{
-				m_Scan = 0;
-				// a full pass over one layout: every cell of it exists now, the earlier layouts can go
-				if (m_PassLayout == m_Layout && m_Retired.Count() > 0)
-					DropRetired(true);
-				m_PassLayout = m_Layout;
+				ProcessItem(m_NearScan++, anySnow);
+				if (m_Job) ContinueCell();
 			}
-			int mainTick = TickCount(0);
-			ProcessItem(m_Scan, anySnow);
-			StatCover(4, mainTick);
-			m_Scan++;
-			visited++;
+			tick = StatCover(1, tick);
+			int visited = 0;
+			while (!m_Job && visited < count && WorkAvailable())
+			{
+				if (m_Scan >= count)
+				{
+					m_Scan = 0;
+					if (m_PassLayout == m_Layout && m_Retired.Count() > 0) DropRetired(true);
+					m_PassLayout = m_Layout;
+				}
+				ProcessItem(m_Scan++, anySnow);
+				visited++;
+				if (m_Job) ContinueCell();
+			}
 		}
 		tick = StatCover(2, tick);
-		if (m_Retired.Count() > 0)
-			DropRetired(false);
+		if (m_Retired.Count() > 0) DropRetired(false);
+		TrimAnalysisCaches();
 		StatCover(3, tick);
 	}
 
@@ -2750,96 +2930,234 @@ class SZ_SnowCarpet
 		return now;
 	}
 
-	//! creates, stages or re-places one cell of the work list
+	protected bool WorkAvailable()
+	{
+		return m_WorkOps < BUILD_OPS && m_WorkCells < BUILD_CELLS && (m_WorkTicks <= 0 || TickCount(m_WorkTick) < m_WorkTicks);
+	}
+
+	protected void PushExact(float x, float z, float size, bool diag, int depth)
+	{
+		SZ_CarpetNode n = new SZ_CarpetNode;
+		n.px = x; n.pz = z; n.size = size; n.diag = diag; n.depth = depth;
+		m_ExactStack.Insert(n);
+	}
+
+	protected void BeginCell(int level, int x, int z, int sig, SZ_SnowCell old, bool geometry)
+	{
+		m_WorkCells++;
+		m_Job = new SZ_SnowCell;
+		m_JobOld = old;
+		m_Job.m_Level = level; m_Job.m_X = x; m_Job.m_Z = z;
+		m_Job.m_Sig = sig; m_Job.m_BuildGen = m_BuildGen;
+		m_Job.m_Detail = DetailFor(DistXZ((x + 0.5) * Size(level), (z + 0.5) * Size(level)), -1);
+		m_JobPhase = 0;
+		m_JobCursor = 0;
+		m_ExactStack.Clear();
+		if (!geometry && old)
+		{
+			// A depth/stage transition reuses already analysed triangles.
+			m_Job.m_Tris = old.m_Tris;
+			m_Job.m_Avg = old.m_Avg;
+			m_Job.m_Detail = old.m_Detail;
+			m_JobPhase = 2;
+			m_JobStage = DesiredStage(m_Job, DistXZ((x + 0.5) * Size(level), (z + 0.5) * Size(level)));
+		}
+	}
+
+	protected void CacheGeometry(SZ_SnowCell cell)
+	{
+		if (cell.m_Level != 0 || cell.m_Sig != 0) return;
+		map<int, ref SZ_CarpetGeometry> cache = m_FarGeometry;
+		if (cell.m_Detail == EXACT_DEPTH) cache = m_FineGeometry;
+		int key = cell.m_X * 65536 + cell.m_Z;
+		if (!cache.Contains(key) && cache.Count() >= 2048)
+			cache.Remove(cache.GetKey(0));
+		SZ_CarpetGeometry geometry = new SZ_CarpetGeometry;
+		geometry.generation = cell.m_BuildGen;
+		geometry.signature = cell.m_Sig;
+		geometry.detail = cell.m_Detail;
+		geometry.triangles = cell.m_Tris;
+		cache.Set(key, geometry);
+	}
+
+	//! One quadtree square, triangle placement or transform per operation.
+	protected void ContinueCell()
+	{
+		while (m_Job && WorkAvailable())
+		{
+			m_WorkOps++;
+			int itemTick = TickCount(0);
+			int level = m_Job.m_Level;
+			float size = Size(level);
+			float x0 = m_Job.m_X * size;
+			float z0 = m_Job.m_Z * size;
+			int key = m_Job.m_X * 65536 + m_Job.m_Z;
+			float dist = DistXZ(x0 + size * 0.5, z0 + size * 0.5);
+			if (m_JobPhase == 0)
+			{
+				float avgA = GY(x0 + size * 0.5, z0 + size * 0.5);
+				float avgB = GY(x0, z0);
+				m_Job.m_Avg = (avgA + avgB) * 0.5;
+				if (level == 0)
+				{
+					map<int, ref SZ_CarpetGeometry> cache = m_FarGeometry;
+					if (m_Job.m_Detail == EXACT_DEPTH) cache = m_FineGeometry;
+					SZ_CarpetGeometry geometry = cache.Get(key);
+					if (geometry && geometry.generation == m_BuildGen && geometry.signature == m_Job.m_Sig && geometry.detail == m_Job.m_Detail)
+					{
+						m_GeometryHits++;
+						m_Job.m_Tris = geometry.triangles;
+						m_JobPhase = 2;
+						m_JobStage = DesiredStage(m_Job, dist);
+					}
+					else
+					{
+						CollectFootprints(x0, z0, size);
+						PushExact(x0, z0, size, CellDiag0(m_Job.m_X, m_Job.m_Z), 0);
+						m_JobPhase = 1;
+					}
+				}
+				else
+				{
+					BuildCoarse(m_Job, level, m_Job.m_X, m_Job.m_Z, size);
+					foreach (SZ_SnowTri coarseTri : m_Job.m_Tris) SetVariant(coarseTri, level);
+					m_JobPhase = 2;
+					m_JobStage = DesiredStage(m_Job, dist);
+				}
+			}
+			else if (m_JobPhase == 1)
+			{
+				if (m_ExactStack.Count() == 0)
+				{
+					CacheGeometry(m_Job);
+					m_JobPhase = 2;
+					m_JobStage = DesiredStage(m_Job, dist);
+					continue;
+				}
+				int last = m_ExactStack.Count() - 1;
+				SZ_CarpetNode node = m_ExactStack[last];
+				m_ExactStack.Remove(last);
+				int firstTri = m_Job.m_Tris.Count();
+				m_ExactDepth = m_Job.m_Detail;
+				m_AsyncExact = true;
+				BuildExact(m_Job, node.px, node.pz, node.size, node.diag, node.depth);
+				m_AsyncExact = false;
+				for (int ti = firstTri; ti < m_Job.m_Tris.Count(); ti++) SetVariant(m_Job.m_Tris[ti], level);
+				StatCover(5, itemTick);
+			}
+			else if (m_JobPhase == 2)
+			{
+				if (m_JobStage <= 0 || m_JobCursor >= m_Job.m_Tris.Count())
+				{
+					m_Job.m_Stage = m_JobStage;
+					m_Job.m_Epoch = m_Epoch;
+					m_Cells[level].Set(key, m_Job);
+					// Publish a complete cell before queuing its predecessor for deletion.
+					if (m_JobOld)
+					{
+						m_JobOld.m_RetiredAt = -1000000;
+						m_Retired.Insert(m_JobOld);
+					}
+					m_Job = null; m_JobOld = null;
+					continue;
+				}
+				SZ_SnowTri t = m_Job.m_Tris[m_JobCursor++];
+				string shape = ShapeName(t.m_Shape);
+				if (t.m_Free) shape = "c";
+				string model = SZ_Const.DATA + "snow\\szk_" + shape + t.m_Variant + "_s" + m_JobStage.ToString() + ".p3d";
+				Object o = g_Game.CreateStaticObjectUsingP3D(model, Vector(t.m_CX, t.m_YC, t.m_CZ), "0 0 0", 1.0, true);
+				m_Job.m_Objects.Insert(o);
+				if (o) { SetTriTransform(o, t); m_Objects++; }
+				StatCover(6, itemTick);
+			}
+			else if (m_JobPhase == 3)
+			{
+				if (m_JobCursor >= m_Job.m_Tris.Count())
+				{
+					m_Job.m_Sig = m_JobSignature;
+					m_Job.m_Epoch = m_Epoch;
+					m_Job = null; m_JobOld = null;
+					continue;
+				}
+				SZ_SnowTri rt = m_Job.m_Tris[m_JobCursor];
+				float h00; float h10; float h11; float h01;
+				if (level == 0)
+				{
+					float sx = rt.m_CX - rt.m_Size * 0.5;
+					float sz = rt.m_CZ - rt.m_Size * 0.5;
+					h00 = H0(sx, sz); h10 = H0(sx + rt.m_Size, sz);
+					h11 = H0(sx + rt.m_Size, sz + rt.m_Size); h01 = H0(sx, sz + rt.m_Size);
+				}
+				else
+				{
+					h00 = HL(level, m_Job.m_X, m_Job.m_Z); h10 = HL(level, m_Job.m_X + 1, m_Job.m_Z);
+					h11 = HL(level, m_Job.m_X + 1, m_Job.m_Z + 1); h01 = HL(level, m_Job.m_X, m_Job.m_Z + 1);
+				}
+				SetPlane(rt, h00, h10, h11, h01);
+				if (m_JobCursor < m_Job.m_Objects.Count() && m_Job.m_Objects[m_JobCursor])
+					SetTriTransform(m_Job.m_Objects[m_JobCursor], rt);
+				m_JobCursor++;
+			}
+			StatCover(4, itemTick);
+		}
+	}
+
 	protected void ProcessItem(int index, bool anySnow)
 	{
+		m_WorkOps++;
 		int level = m_WLevel[index];
-		int x = m_WX[index];
-		int z = m_WZ[index];
-		map<int, ref SZ_SnowCell> cells = m_Cells[level];
-		float size = Size(level);
+		int x = m_WX[index]; int z = m_WZ[index];
 		int key = x * 65536 + z;
+		float size = Size(level);
 		float dist = DistXZ((x + 0.5) * size, (z + 0.5) * size);
 		int sig = 0;
-		if (level < LEVELS - 1)
-			sig = m_Sig[level].Get(key);
-		SZ_SnowCell cell = cells.Get(key);
-		if (cell && cell.m_BuildGen != m_BuildGen)
+		if (level < LEVELS - 1) sig = m_Sig[level].Get(key);
+		SZ_SnowCell cell = m_Cells[level].Get(key);
+		if (!cell || cell.m_BuildGen != m_BuildGen || (level == 0 && cell.m_Detail != DetailFor(dist, cell.m_Detail)))
 		{
-			// the pond ice changed the ground under this cell: the new triangles go up first, then the old ones go
-			SZ_SnowCell fresh = CreateCell(level, x, z);
-			fresh.m_Sig = sig;
-			if (anySnow)
-			{
-				int freshStage = DesiredStage(fresh, dist);
-				if (freshStage > 0)
-					ApplyStage(fresh, freshStage, dist);
-			}
-			DeleteObjects(cell);
-			cells.Set(key, fresh);
+			if (!anySnow && !cell) return;
+			BeginCell(level, x, z, sig, cell, true);
 			return;
 		}
-		if (cell && cell.m_Sig != sig)
-			Restitch(cell, sig); // the border moved: same triangles, new edge heights
-		if (cell && level == 0 && cell.m_Detail != DetailFor(dist, cell.m_Detail))
+		if (cell.m_Sig != sig || (cell.m_Stage > 0 && NeedsReplace(cell)))
 		{
-			// came nearer (or went further out): built again with the split of its distance, the new triangles first
-			SZ_SnowCell redone = CreateCell(level, x, z);
-			redone.m_Sig = sig;
-			if (anySnow)
-			{
-				int redoneStage = DesiredStage(redone, dist);
-				if (redoneStage > 0)
-					ApplyStage(redone, redoneStage, dist);
-			}
-			DeleteObjects(cell);
-			cells.Set(key, redone);
+			// Same objects, updated planes. Invalidate cached aliases before modifying.
+			m_FineGeometry.Remove(key); m_FarGeometry.Remove(key);
+			m_WorkCells++;
+			m_Job = cell; m_JobOld = cell;
+			m_JobPhase = 3; m_JobCursor = 0; m_JobSignature = sig;
 			return;
 		}
-		if (!cell)
-		{
-			m_Cost += 0.005;
-			if (!anySnow)
-				return;
-			int createTick = TickCount(0);
-			for (int ci = 0; ci < 7; ci++)
-				m_Calls[ci] = 0;
-			cell = CreateCell(level, x, z);
-			if (TickCount(createTick) > SZ_State.s_StatCoverMax[5])
-			{
-				SZ_State.s_StatCoverWorst = string.Format("level %1 at %2 %3 tris %4 calls", level, x * size, z * size, cell.m_Tris.Count());
-				for (int cj = 0; cj < 7; cj++)
-					SZ_State.s_StatCoverWorst = SZ_State.s_StatCoverWorst + " " + m_Calls[cj].ToString();
-			}
-			StatCover(5, createTick);
-			cell.m_Sig = sig;
-			if (sig != 0)
-				m_SkirtCount++;
-			cells.Set(key, cell);
-		}
-
-		int want = DesiredStage(cell, dist);
-		if (want != cell.m_Stage)
-		{
-			int stageTick = TickCount(0);
-			ApplyStage(cell, want, dist);
-			StatCover(6, stageTick);
-		}
-		else if (cell.m_Stage > 0 && NeedsReplace(cell))
-			Retransform(cell);
-		else
-			m_Cost += 0.02;
+		if (DesiredStage(cell, dist) != cell.m_Stage)
+			BeginCell(level, x, z, sig, cell, false);
 	}
 
 	void Clear()
 	{
+		if (m_Job && m_Job != m_JobOld) DeleteObjects(m_Job);
+		m_Job = null; m_JobOld = null;
+		m_ExactStack.Clear();
+		m_LayoutStack.Clear();
+		foreach (array<ref SZ_CarpetNode> bucket : m_Priority) bucket.Clear();
+		m_LayoutBusy = false;
+		m_FineGeometry.Clear(); m_FarGeometry.Clear();
 		if (m_Cells)
 		{
 			for (int level = 0; level < m_Cells.Count(); level++)
 				ClearMap(m_Cells[level]);
 		}
 		if (m_Retired)
-			DropRetired(true);
+		{
+			// Shutdown and carpet-off have no later Update to drain this queue.
+			foreach (SZ_SnowCell retired : m_Retired)
+			{
+				if (retired)
+					DeleteObjects(retired);
+			}
+			m_Retired.Clear();
+		}
+		m_RetiredCursor = 0;
+		m_SkirtCount = 0;
 		m_Objects = 0;
 	}
 

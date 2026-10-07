@@ -32,9 +32,21 @@ class SZ_SnowGround
 	//! true when something standing at this position is on snow covered ground
 	static bool IsOnSnow(vector pos, string surface)
 	{
-		if (!SZ_State.s_Valid || !IsGroundSurface(surface))
+		if (!SZ_State.s_Valid)
+			return false;
+		bool snowyIce = surface == "sakhal_ice_lake" && SZ_Winter.FrozenPondAt(pos);
+		if (!IsGroundSurface(surface) && !snowyIce)
 			return false;
 		float ground = g_Game.SurfaceY(pos[0], pos[2]);
+		if (snowyIce)
+		{
+			float water;
+			if (!SZ_Util.PondWater(pos[0], pos[2], water))
+				return false;
+			ground = water;
+			if (pos[1] < water - 0.03)
+				return false;
+		}
 		if (pos[1] - ground > 0.4)
 			return false;
 		if (SZ_State.SnowAt(ground, SZ_State.s_Snow0, SZ_State.s_Snow1, SZ_State.s_Snow2) < 1.0)

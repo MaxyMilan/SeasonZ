@@ -101,8 +101,7 @@ class SZ_Winter
 		float water;
 		if (!SZ_Util.PondWater(pos[0], pos[2], water))
 			return false;
-		float ice = SZ_State.SnowAt(water, SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2);
-		return ice >= SZ_Const.ICE_SNOW_ON;
+		return SZ_PondState.At(pos[0], pos[2], water);
 	}
 
 	//! a character standing on ice that carries people (not in the water under it)
@@ -113,8 +112,7 @@ class SZ_Winter
 			return false;
 		if (pos[1] < water - 0.03)
 			return false;
-		float ice = SZ_State.SnowAt(water, SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2);
-		return ice >= SZ_Const.ICE_SNOW_OFF;
+		return SZ_PondState.At(pos[0], pos[2], water);
 	}
 
 	//! wild food found in the cold: little of it left, nine in ten rotten (rose hips: dried)
@@ -165,7 +163,7 @@ modded class PlantBase
 		if (m_TimeTicker && SZ_Winter.Active())
 		{
 			GardenBase garden = GetGarden();
-			if (m_PlantState == EPlantState.GROWING || m_PlantState == EPlantState.MATURE)
+			if (m_PlantState == EPlantState.GROWING || m_PlantState == EPlantState.PAUSED || m_PlantState == EPlantState.MATURE)
 			{
 				if (SZ_Winter.Freezes(garden, GetPosition()))
 				{

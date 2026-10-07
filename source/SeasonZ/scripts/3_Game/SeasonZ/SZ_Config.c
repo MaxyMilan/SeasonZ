@@ -77,5 +77,62 @@ class SZ_PersistentState
 	float PondTemp500m = 0;
 	//! 1 once the pond values above exist (a state of an earlier version starts them from the Kyiv climate)
 	int IceModel = 0;
+	//! Version 4 persists carrying history; layout 1 pins the ordered Chernarus pond dataset.
+	int PondLayout = 0;
+	string PondWorld;
+	ref array<int> PondCarry;
+	//! Version 5: simulation cursor and unconsumed weighted time, including catch-up across restarts.
+	float ClimateCycle;
+	float ClimatePendingCycle;
+	float ClimateCycleTotal;
+	float ClockRemainder;
+	ref array<float> SnowWetDays;
+
+	//! Positive comparisons reject NaN as well as infinities and unreasonable edited save data.
+	static bool InRange(float value, float low, float high)
+	{
+		return value >= low && value <= high;
+	}
+
+	bool ValidForLoad()
+	{
+		if (Version < 1 || Version > 5 || SnowModel < 0 || SnowModel > 2 || IceModel < 0 || IceModel > 1)
+			return false;
+		if (!InRange(CycleDays, -1000000, 1000000) || !InRange(TempAnomaly, -100, 100))
+			return false;
+		if (!InRange(SnowSeaLevelCm, 0, 1000) || !InRange(Snow250mCm, 0, 1000) || !InRange(Snow500mCm, 0, 1000))
+			return false;
+		if (!InRange(SnowWaterSeaLevelMm, 0, 10000) || !InRange(SnowWater250mMm, 0, 10000) || !InRange(SnowWater500mMm, 0, 10000))
+			return false;
+		if (!InRange(IceSeaLevelCm, 0, 10000) || !InRange(Ice250mCm, 0, 10000) || !InRange(Ice500mCm, 0, 10000))
+			return false;
+		if (!InRange(PondTempSeaLevel, 0, 100) || !InRange(PondTemp250m, 0, 100) || !InRange(PondTemp500m, 0, 100))
+			return false;
+		if (Version >= 4)
+		{
+			if (!SZ_PondProtocol.Valid(PondLayout, PondWorld, PondCarry))
+				return false;
+		}
+		else if (PondLayout != 0 || PondWorld != "" || (PondCarry && PondCarry.Count() > 0))
+			return false;
+		if (Version >= 5)
+		{
+			if (!InRange(ClimateCycleTotal, 18.25, 7300) || !InRange(ClimateCycle, 0, ClimateCycleTotal) || !InRange(ClimatePendingCycle, 0, 1000000) || !InRange(ClockRemainder, -0.001, 0.001))
+				return false;
+			if (!SnowWetDays || SnowWetDays.Count() != 3)
+				return false;
+			foreach (float wet : SnowWetDays)
+			{
+				if (!InRange(wet, 0, 1))
+					return false;
+			}
+		}
+		if (SnowModel == 2)
+		{
+			if ((SnowSeaLevelCm > 0) != (SnowWaterSeaLevelMm > 0) || (Snow250mCm > 0) != (SnowWater250mMm > 0) || (Snow500mCm > 0) != (SnowWater500mMm > 0))
+				return false;
+		}
+		return true;
+	}
 }
 
