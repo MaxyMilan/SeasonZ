@@ -140,7 +140,7 @@ class SZ_Footprints
 		SZ_Print p = s_Prints[i];
 		if (p && p.m_Obj)
 			g_Game.ObjectDelete(p.m_Obj);
-		s_Prints.Remove(i);
+		s_Prints.RemoveOrdered(i);
 	}
 
 	//! fills prints during snowfall (oldest first) and removes them where the snow is gone
@@ -169,7 +169,7 @@ class SZ_Footprints
 			SZ_Print p = s_Prints[i];
 			if (!p.m_Obj)
 			{
-				s_Prints.Remove(i);
+				s_Prints.RemoveOrdered(i);
 				continue;
 			}
 			vector pp = p.m_Obj.GetPosition();

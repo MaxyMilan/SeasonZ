@@ -250,7 +250,7 @@ class SZ_TyreTracks
 		SZ_Print seg = s_Segments[i];
 		if (seg && seg.m_Obj)
 			g_Game.ObjectDelete(seg.m_Obj);
-		s_Segments.Remove(i);
+		s_Segments.RemoveOrdered(i);
 	}
 
 	//! fills tracks during snowfall (oldest first) and removes them where the snow is gone
@@ -276,7 +276,7 @@ class SZ_TyreTracks
 			SZ_Print seg = s_Segments[i];
 			if (!seg.m_Obj)
 			{
-				s_Segments.Remove(i);
+				s_Segments.RemoveOrdered(i);
 				continue;
 			}
 			vector sp = seg.m_Obj.GetPosition();
