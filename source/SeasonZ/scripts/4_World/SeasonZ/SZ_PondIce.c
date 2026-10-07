@@ -34,6 +34,7 @@ class SZ_PondBody
 	//! camera distance of the last measurement: the game knows the water of distant areas only roughly, so a body
 	//! is measured again from closer by
 	float m_MeasuredFrom;
+	float m_RepairAfter;
 
 	void SZ_PondBody(float x0, float z0, float x1, float z1, float y)
 	{
@@ -156,6 +157,25 @@ class SZ_PondIce
 		return SZ_State.SnowAt(altitude, SZ_State.s_Ice0, SZ_State.s_Ice1, SZ_State.s_Ice2);
 	}
 
+	//! Local QA: compare native coverage with the authoritative carrying decision.
+	void DebugPoint(vector pos)
+	{
+		foreach (SZ_PondBody b : m_Bodies)
+		{
+			if (DistTo(b, pos) > 0)
+				continue;
+			int covering = 0;
+			for (int i = 0; i < b.m_Objects.Count(); i++)
+			{
+				float half = b.m_PS[i] * 0.5;
+				if (b.m_Objects[i] && Math.AbsFloat(pos[0] - b.m_PX[i]) < half && Math.AbsFloat(pos[2] - b.m_PZ[i]) < half)
+					covering++;
+			}
+			Print(string.Format("[SeasonZ] iceprobe id=%1 y=%2 step=%3 from=%4 thick=%5 shown=%6 plates=%7 objects=%8 covering=%9", b.m_Id, b.m_Y, b.m_Step, b.m_MeasuredFrom, b.m_Thick, b.m_Shown, b.m_PX.Count(), b.m_Objects.Count(), covering));
+			Print(string.Format("[SeasonZ] iceprobe class=%1", Classify(b, pos[0], pos[2])));
+		}
+	}
+
 	//! test harness: forget every measurement, so the bodies are measured again
 	void DebugRemeasure()
 	{
@@ -254,11 +274,17 @@ class SZ_PondIce
 			if (!man)
 				continue;
 			m_Players.Insert(man.GetPosition());
-			if (rescue)
-				RescueUnderIce(man);
 		}
 		m_Clock += timeslice;
 		Work();
+		if (rescue)
+		{
+			foreach (Man swimmer : m_ServerPlayers)
+			{
+				if (swimmer)
+					RescueUnderIce(swimmer);
+			}
+		}
 	}
 
 	//! server: a player in the water under ice that carries people (logged out while swimming, or swimming while the
@@ -271,14 +297,42 @@ class SZ_PondIce
 		float water;
 		if (!SZ_Util.PondWater(pos[0], pos[2], water))
 			return;
+		if (!SZ_PondState.At(pos[0], pos[2], water))
+			return; // a lingering roadway or a bridge must not rescue through thawed ice
 		if (pos[1] > water - 0.05)
 			return;
 		// the roadway of a plate above the player (without one the ice is thin or open here: nothing to climb onto)
 		float road = g_Game.SurfaceRoadY3D(pos[0], water + 1.0, pos[2], RoadSurfaceDetection.UNDER);
 		if (road < water + LIFT * 0.5 || road > water + 0.5)
+		{
+			RepairCoverage(pos, water);
 			return;
+		}
 		man.SetPosition(Vector(pos[0], road + 0.05, pos[2]));
 		Print(string.Format("[SeasonZ] pond ice: a player under the ice at %1 climbed out onto it", pos));
+	}
+
+	//! Water geometry can finish streaming after a server measurement. Do not cache its missing cells forever.
+	//! Retain the old plates until the normal bounded measurement finishes; never teleport without a native road.
+	protected void RepairCoverage(vector pos, float water)
+	{
+		foreach (SZ_PondBody b : m_Bodies)
+		{
+			if (DistTo(b, pos) > 0 || Math.AbsFloat(water - b.m_Y) >= 0.06 || !b.m_Thick || !b.m_Shown || b.m_Step != 2 || b.m_CreateFailed || m_Clock < b.m_RepairAfter)
+				continue;
+			bool covered = false;
+			for (int i = 0; i < b.m_Objects.Count(); i++)
+			{
+				float half = b.m_PS[i] * 0.5;
+				if (b.m_Objects[i] && Math.AbsFloat(pos[0] - b.m_PX[i]) < half && Math.AbsFloat(pos[2] - b.m_PZ[i]) < half)
+					covered = true;
+			}
+			if (covered)
+				continue;
+			b.m_RepairAfter = m_Clock + 5.0;
+			b.m_Step = 0;
+			Print(string.Format("[SeasonZ] pond ice: rechecking stale server coverage body=%1 at %2", b.m_Id, pos));
+		}
 	}
 
 	void Update(float timeslice, vector camera)
@@ -344,7 +398,7 @@ class SZ_PondIce
 		}
 		if (dist > m_Radius && !b.m_Shown && b.m_Objects.Count() == 0)
 			return true;
-		if (!m_Server && b.m_Step == 2 && b.m_MeasuredFrom > REMEASURE_FROM && dist < b.m_MeasuredFrom * 0.5 && m_Clock >= m_SettleUntil)
+		if (b.m_Step == 2 && b.m_MeasuredFrom > REMEASURE_FROM && dist < b.m_MeasuredFrom * 0.5 && m_Clock >= m_SettleUntil)
 			b.m_Step = 0;
 		if (b.m_Step < 2)
 			return Measure(b);
