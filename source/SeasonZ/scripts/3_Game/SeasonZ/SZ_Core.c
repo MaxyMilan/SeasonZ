@@ -156,6 +156,8 @@ class SZ_State
 	static bool s_DebugNoCarpet = false;
 	//! Performance prototype: exact building-edge detail radius (negative keeps production 70 m).
 	static float s_DebugCarpetDetailNear = -1;
+	//! Local A/B only: preserve 70 m exact detail, coarsen only the outer level-0 fringe.
+	static bool s_DebugCarpetOuterCoarse;
 	//! Prototype: no cover traversal after the last snow object has melted.
 	static bool s_DebugCarpetIdle = true;
 	// local test harness only: the wall rule from before the cut along the walls (A/B comparisons)

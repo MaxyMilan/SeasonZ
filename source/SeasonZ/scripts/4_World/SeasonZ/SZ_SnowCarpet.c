@@ -63,6 +63,7 @@ class SZ_CarpetGeometry
 {
 	int generation;
 	int signature;
+	int detail;
 	ref array<ref SZ_SnowTri> triangles;
 }
 
@@ -2423,6 +2424,8 @@ class SZ_SnowCarpet
 			return EXACT_DEPTH;
 		if (current == EXACT_DEPTH && dist < nearRadius + DETAIL_HYST)
 			return EXACT_DEPTH;
+		if (SZ_State.s_DebugCarpetOuterCoarse && (dist > 125.0 || (current == EXACT_DEPTH - 2 && dist > 110.0)))
+			return EXACT_DEPTH - 2;
 		return EXACT_DEPTH - 1;
 	}
 
@@ -2986,6 +2989,7 @@ class SZ_SnowCarpet
 		SZ_CarpetGeometry geometry = new SZ_CarpetGeometry;
 		geometry.generation = cell.m_BuildGen;
 		geometry.signature = cell.m_Sig;
+		geometry.detail = cell.m_Detail;
 		geometry.triangles = cell.m_Tris;
 		cache.Set(key, geometry);
 	}
@@ -3013,7 +3017,7 @@ class SZ_SnowCarpet
 					map<int, ref SZ_CarpetGeometry> cache = m_FarGeometry;
 					if (m_Job.m_Detail == EXACT_DEPTH) cache = m_FineGeometry;
 					SZ_CarpetGeometry geometry = cache.Get(key);
-					if (geometry && geometry.generation == m_BuildGen && geometry.signature == m_Job.m_Sig)
+					if (geometry && geometry.generation == m_BuildGen && geometry.signature == m_Job.m_Sig && geometry.detail == m_Job.m_Detail)
 					{
 						m_GeometryHits++;
 						m_Job.m_Tris = geometry.triangles;

@@ -45,6 +45,12 @@ modded class MissionGameplay
 
 	override protected bool DST_Extra2(string cmd)
 	{
+		if (cmd.IndexOf("carpetouter ") == 0)
+		{
+			SZ_State.s_DebugCarpetOuterCoarse = cmd == "carpetouter 1";
+			Print("[DSTest] carpetouter " + SZ_State.s_DebugCarpetOuterCoarse.ToString());
+			return true;
+		}
 		if (cmd == "carpetjobs")
 		{
 			if (m_SZ_Client && m_SZ_Client.GetCarpet())
