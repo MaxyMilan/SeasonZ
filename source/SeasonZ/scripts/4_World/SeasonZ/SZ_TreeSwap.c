@@ -33,6 +33,12 @@ class SZ_TreeTile
 	bool m_Scanned;
 	//! next tree to visit when a dense tile spans several frames
 	int m_UpdateCursor;
+	//! A changed season/ring during a partial visit needs another turn from item zero, without starving its tail.
+	int m_StateRevision;
+	bool m_UpdateAgain;
+	bool m_UpdateFar;
+	bool m_Retry;
+	float m_WorkAt;
 	//! some of the tile's objects were unloaded by the game (fog, view distance): scanned again from m_RescanAt on,
 	//! less often while they stay away
 	bool m_Partial;
@@ -40,6 +46,7 @@ class SZ_TreeTile
 	float m_Backoff;
 	//! most trees the tile ever held
 	int m_Expect;
+	int m_ExpectPaths;
 
 	void SZ_TreeTile()
 	{
@@ -80,6 +87,13 @@ class SZ_TreeSwap
 	//! tiles restored per frame once the reach shrank (the fog came in)
 	//! tiles checked per frame for leaving the range (a full round over the ~5000 known tiles takes two seconds)
 	static const int SWEEP_TILES = 50;
+	//! Small camera jitter does not change either tile ring. Tile crossings always wake immediately.
+	static const float WAKE_MOVE = 4.0;
+	//! Poll nearby actions every quarter second and eight other resident tiles per pulse for engine streaming.
+	static const float IDLE_SECONDS = 0.25;
+	static const int IDLE_TILES = 8;
+	//! Partial tiles keep their own deadlines; inspecting the queue must not walk every tile in one frame.
+	static const int PENDING_CHECKS = 16;
 	//! snow depth (cm) from which footpaths disappear under the snow: the snow cover is closed from here on
 	static const float PATH_COVER_CM = 5.0;
 	static const int SHOW_ORIGINAL = 0;
@@ -185,6 +199,18 @@ class SZ_TreeSwap
 	protected bool m_TrimPending;
 	protected int m_TrimLeft;
 	protected int m_SweepCursor;
+	//! Dirty rings run to completion once; cursors keep their place across ordinary state changes.
+	protected int m_NearLeft;
+	protected int m_FarLeft;
+	protected int m_VisitCount;
+	protected int m_StateRevision;
+	protected int m_SweepLeft;
+	protected vector m_WorkCamera;
+	protected float m_DebugRadius;
+	protected float m_BackgroundAt;
+	protected int m_BackgroundCursor;
+	protected ref map<int, ref SZ_TreeTile> m_Pending;
+	protected int m_PendingCursor;
 
 	void SZ_TreeSwap()
 	{
@@ -196,6 +222,7 @@ class SZ_TreeSwap
 		m_Approx = new map<string, bool>;
 		m_Tiles = new map<int, ref SZ_TreeTile>;
 		m_Restore = new map<int, ref SZ_TreeTile>;
+		m_Pending = new map<int, ref SZ_TreeTile>;
 		m_Centres = new map<string, vector>;
 		m_Bottoms = new map<string, float>;
 		m_SpiralX = new array<int>;
@@ -632,9 +659,11 @@ class SZ_TreeSwap
 		}
 
 		int count = tile.m_Items.Count();
-		if (count >= tile.m_Expect)
+		int paths = tile.m_Paths.Count();
+		tile.m_Expect = Math.Max(tile.m_Expect, count);
+		tile.m_ExpectPaths = Math.Max(tile.m_ExpectPaths, paths);
+		if (count >= tile.m_Expect && paths >= tile.m_ExpectPaths)
 		{
-			tile.m_Expect = count;
 			tile.m_Partial = false;
 			tile.m_Backoff = RESCAN_SECONDS;
 		}
@@ -928,7 +957,7 @@ class SZ_TreeSwap
 			return;
 		if (SZ_State.s_DebugNoTrees)
 		{
-			if (m_Tiles.Count() > 0)
+			if (m_Tiles.Count() > 0 || m_Restore.Count() > 0)
 				Clear();
 			return;
 		}
@@ -941,6 +970,7 @@ class SZ_TreeSwap
 		if (tps > 0)
 			m_TickLimit = TREE_MS * tps / 1000.0;
 		m_Clock += timeslice;
+		bool stateChanged = SeasonDate(doy) != SeasonDate(m_Doy) || SnowChanged(s0, s1, s2);
 		m_Camera = camera;
 		m_Doy = doy;
 		m_S0 = s0;
@@ -953,41 +983,57 @@ class SZ_TreeSwap
 				SZ_State.s_StatTreeMax.Insert(0);
 		}
 		int tick = TickCount(0);
+		float oldReach = m_Reach;
 		UpdateReach();
 		tick = StatTree(0, tick);
 
 		int ax = Math.Floor(camera[0] / TILE);
 		int az = Math.Floor(camera[2] / TILE);
-		if (ax != m_AnchorX || az != m_AnchorZ)
+		bool anchorChanged = ax != m_AnchorX || az != m_AnchorZ;
+		if (anchorChanged)
 		{
 			m_AnchorX = ax;
 			m_AnchorZ = az;
 			OnNewAnchor();
 		}
+		float dx = camera[0] - m_WorkCamera[0];
+		float dy = camera[1] - m_WorkCamera[1];
+		float dz = camera[2] - m_WorkCamera[2];
+		bool moved = dx * dx + dy * dy + dz * dz >= WAKE_MOVE * WAKE_MOVE;
+		int count = m_VisitCount;
+		if (count == 0 || oldReach != m_Reach || m_DebugRadius != SZ_State.s_DebugTreeRadius)
+			count = ReachTileCount();
+		bool rangeChanged = count != m_VisitCount;
+		m_VisitCount = count;
+		m_DebugRadius = SZ_State.s_DebugTreeRadius;
+		if (anchorChanged || moved || rangeChanged || stateChanged)
+		{
+			m_NearLeft = m_NearCount;
+			m_FarLeft = count - m_NearCount;
+			m_StateRevision++;
+		}
+		if (anchorChanged || moved)
+			m_WorkCamera = camera;
+		// Removing a map entry can move an already checked tile into the cursor's slot after wraparound.
+		// Allow a second round, including insertions below, so old out-of-range tiles cannot be stranded.
+		if (anchorChanged || moved || oldReach != m_Reach)
+			m_SweepLeft = 2 * m_Tiles.Count() + 1;
 		tick = StatTree(1, tick);
-		SweepTiles();
+		if (m_SweepLeft > 0 || m_TrimPending)
+			SweepTiles();
 		RestoreQueued();
 		tick = StatTree(2, tick);
 
+		// Most settled frames end here: no tile/item walk, ring sizing or object query is needed.
+		if (m_NearLeft <= 0 && m_FarLeft <= 0 && m_Pending.Count() == 0 && m_Clock < m_BackgroundAt)
+			return;
 		m_Cost = 0;
-		int count = m_SpiralX.Count();
-		// a tile's trees reach up to a tile further than its centre (in clear air the full RADIUS)
-		float reachTile = m_Reach - TILE;
-		if (m_Reach >= RADIUS)
-			reachTile = RADIUS;
-		while (count > m_NearCount && m_SpiralD[count - 1] > reachTile)
-			count--;
-		if (SZ_State.s_DebugTreeRadius >= 0)
-		{
-			while (count > m_NearCount && m_SpiralD[count - 1] > SZ_State.s_DebugTreeRadius)
-				count--;
-		}
 		int fullTickLimit = m_TickLimit;
 		// Leave part of the frame for the far ring while travelling.
 		if (fullTickLimit > 0)
 			m_TickLimit = Math.Max(1, Math.Round(fullTickLimit * 0.6));
 		int visited = 0;
-		while (m_Cost < NEAR_BUDGET && visited < m_NearCount)
+		while (m_NearLeft > 0 && m_Cost < NEAR_BUDGET && visited < m_NearCount)
 		{
 			// One tile per ring still progresses after an indivisible restore/query overran.
 			if (visited > 0 && OverTime())
@@ -998,6 +1044,7 @@ class SZ_TreeSwap
 			if (!VisitTile(m_NearCursor, NEAR_BUDGET + 1.0, false))
 				break;
 			m_NearCursor++;
+			m_NearLeft--;
 			visited++;
 		}
 		tick = StatTree(3, tick);
@@ -1006,7 +1053,7 @@ class SZ_TreeSwap
 		int farCount = count - m_NearCount;
 		float farStop = m_Cost + FAR_BUDGET;
 		visited = 0;
-		while (farCount > 0 && m_Cost < farStop && visited < farCount)
+		while (m_FarLeft > 0 && farCount > 0 && m_Cost < farStop && visited < farCount)
 		{
 			if (visited > 0 && OverTime())
 				break;
@@ -1016,9 +1063,133 @@ class SZ_TreeSwap
 			if (!VisitTile(m_NearCount + m_FarCursor, farStop + 1.0, true))
 				break;
 			m_FarCursor++;
+			m_FarLeft--;
 			visited++;
 		}
+		if (m_NearLeft <= 0 && m_FarLeft <= 0)
+		{
+			QueueBackground();
+			UpdatePending();
+		}
 		StatTree(4, tick);
+	}
+
+	//! The date advances even in steady weather. Outside these transition windows every hash has the same
+	//! foliage result, so another full forest walk cannot change anything. Inside them keep the exact date.
+	protected float SeasonDate(float doy)
+	{
+		if (doy < 112.0 || doy >= 306.0)
+			return 0;
+		if (doy >= 130.0 && doy < 250.0)
+			return 130.0;
+		if (doy >= 272.0 && doy < 288.0)
+			return 272.0;
+		return doy;
+	}
+
+	//! SnowAt interpolates between these levels. If all are below every tree threshold, or above both tree
+	//! and path thresholds, changing depth cannot change a variant. Mixed levels retain their exact values;
+	//! clamping each level separately would move the snow line between them.
+	protected bool SnowChanged(float s0, float s1, float s2)
+	{
+		if (s0 == m_S0 && s1 == m_S1 && s2 == m_S2)
+			return false;
+		if (s0 < 1.0 && s1 < 1.0 && s2 < 1.0 && m_S0 < 1.0 && m_S1 < 1.0 && m_S2 < 1.0)
+			return false;
+		if (s0 >= PATH_COVER_CM && s1 >= PATH_COVER_CM && s2 >= PATH_COVER_CM && m_S0 >= PATH_COVER_CM && m_S1 >= PATH_COVER_CM && m_S2 >= PATH_COVER_CM)
+			return false;
+		return true;
+	}
+
+	//! Same sorted spiral cutoff as before, but only when reach changes and without walking thousands of offsets.
+	protected int ReachTileCount()
+	{
+		float reachTile = m_Reach - TILE;
+		if (m_Reach >= RADIUS)
+			reachTile = RADIUS;
+		if (SZ_State.s_DebugTreeRadius >= 0)
+			reachTile = Math.Min(reachTile, SZ_State.s_DebugTreeRadius);
+		int low = m_NearCount;
+		int high = m_SpiralD.Count();
+		while (low < high)
+		{
+			int mid = (low + high) / 2;
+			if (m_SpiralD[mid] <= reachTile)
+				low = mid + 1;
+			else
+				high = mid;
+		}
+		return low;
+	}
+
+	//! Engine unloads and damage have no notification here. Poll nine local tiles for actions and a small
+	//! rotating share of the resident map for streaming, only after the dirty rings have finished.
+	protected void QueueBackground()
+	{
+		if (m_Clock < m_BackgroundAt)
+			return;
+		m_BackgroundAt = m_Clock + IDLE_SECONDS;
+		int key;
+		SZ_TreeTile tile;
+		for (int cell = 0; cell < 9; cell++)
+		{
+			int localX = cell % 3;
+			int localZ = cell / 3;
+			key = TileKey(m_AnchorX + localX - 1, m_AnchorZ + localZ - 1);
+			tile = m_Tiles.Get(key);
+			if (tile)
+			{
+				tile.m_WorkAt = m_Clock;
+				m_Pending.Set(key, tile);
+			}
+		}
+		for (int checks = 0; checks < IDLE_TILES && m_Tiles.Count() > 0; checks++)
+		{
+			if (m_BackgroundCursor >= m_Tiles.Count())
+				m_BackgroundCursor = 0;
+			key = m_Tiles.GetKey(m_BackgroundCursor);
+			tile = m_Tiles.GetElement(m_BackgroundCursor);
+			m_BackgroundCursor++;
+			tile.m_WorkAt = m_Clock;
+			m_Pending.Set(key, tile);
+		}
+	}
+
+	//! Unfinished tiles resume next frame; missing objects retry on the existing 8..60 second backoff. A waiting
+	//! partial tile must not wake a full forest pass, nor keep one dense tile from giving the others a turn.
+	protected void UpdatePending()
+	{
+		int done = 0;
+		for (int checks = 0; checks < PENDING_CHECKS && m_Pending.Count() > 0; checks++)
+		{
+			if (m_Cost >= NEAR_BUDGET + FAR_BUDGET || (done > 0 && OverTime()))
+				break;
+			if (m_PendingCursor >= m_Pending.Count())
+				m_PendingCursor = 0;
+			int key = m_Pending.GetKey(m_PendingCursor);
+			SZ_TreeTile tile = m_Pending.GetElement(m_PendingCursor);
+			if (!tile || m_Tiles.Get(key) != tile)
+			{
+				m_Pending.Remove(key);
+				continue;
+			}
+			if (m_Clock < tile.m_WorkAt)
+			{
+				m_PendingCursor++;
+				continue;
+			}
+			int tx = Math.Floor(key / 65536.0);
+			int tz = key - tx * 65536;
+			int dx = tx - m_AnchorX;
+			int dz = tz - m_AnchorZ;
+			// Match the quarter-metre spiral distances; retained tiles outside the visit ring wait for re-entry.
+			float distance = Math.Round(Math.Sqrt(dx * dx + dz * dz) * TILE * 4.0) * 0.25;
+			m_Pending.Remove(key);
+			if (distance > m_SpiralD[m_VisitCount - 1])
+				continue;
+			VisitKnownTile(tile, tx, tz, NEAR_BUDGET + FAR_BUDGET, distance > NEAR_RADIUS);
+			done++;
+		}
 	}
 
 	//! test harness statistics: the ticks since tick0 for one step (keeps the longest); returns the tick now
@@ -1067,7 +1238,7 @@ class SZ_TreeSwap
 	}
 
 	//! tiles that left the range (the camera moved on, or the fog came in and the reach shrank) go to the restore
-	//! queue: a share of the known tiles is checked every frame, so no frame walks through all of them
+	//! queue: a dirty round checks a share each frame, then sleeps until movement or reach can change the result
 	protected void SweepTiles()
 	{
 		float keep = Math.Min(KEEP_RADIUS, m_Reach + 2.0 * TILE);
@@ -1076,9 +1247,9 @@ class SZ_TreeSwap
 			keep = m_Reach + TILE;
 			// the fog came in: one full round with the shorter range
 			if (m_TrimLeft <= 0)
-				m_TrimLeft = m_Tiles.Count() + 1;
+				m_TrimLeft = 2 * m_Tiles.Count() + 1;
 		}
-		for (int checks = 0; checks < SWEEP_TILES && m_Tiles.Count() > 0; checks++)
+		for (int checks = 0; checks < SWEEP_TILES && m_Tiles.Count() > 0 && (m_SweepLeft > 0 || m_TrimPending); checks++)
 		{
 			if (m_SweepCursor >= m_Tiles.Count())
 				m_SweepCursor = 0;
@@ -1090,9 +1261,12 @@ class SZ_TreeSwap
 				// the map fills the gap: the same place is checked again with the next tile in it
 				m_Restore.Set(key, m_Tiles.Get(key));
 				m_Tiles.Remove(key);
+				m_Pending.Remove(key);
 			}
 			else
 				m_SweepCursor++;
+			if (m_SweepLeft > 0)
+				m_SweepLeft--;
 			if (m_TrimPending)
 			{
 				m_TrimLeft--;
@@ -1102,6 +1276,7 @@ class SZ_TreeSwap
 		}
 		if (m_Tiles.Count() == 0)
 		{
+			m_SweepLeft = 0;
 			m_TrimPending = false;
 			m_TrimLeft = 0;
 		}
@@ -1164,6 +1339,28 @@ class SZ_TreeSwap
 			else
 				tile = new SZ_TreeTile();
 			m_Tiles.Set(key, tile);
+			if (m_SweepLeft > 0)
+				m_SweepLeft += 2;
+			if (m_TrimLeft > 0)
+				m_TrimLeft += 2;
+		}
+		return VisitKnownTile(tile, tx, tz, limit, far);
+	}
+
+	protected bool VisitKnownTile(SZ_TreeTile tile, int tx, int tz, float limit, bool far)
+	{
+		int key = TileKey(tx, tz);
+		if (tile.m_StateRevision != m_StateRevision || tile.m_UpdateFar != far)
+		{
+			if (tile.m_UpdateCursor > 0)
+				tile.m_UpdateAgain = true;
+			tile.m_StateRevision = m_StateRevision;
+			tile.m_UpdateFar = far;
+		}
+		if (tile.m_UpdateCursor == 0)
+		{
+			tile.m_Retry = false;
+			tile.m_UpdateAgain = false;
 		}
 		if (!tile.m_Scanned)
 		{
@@ -1178,6 +1375,12 @@ class SZ_TreeSwap
 		UpdatePaths(tile);
 		bool complete = true;
 		bool lost = false;
+		// A path-only tile can unload too; do not wait for a missing tree to schedule its rescan.
+		foreach (Object path : tile.m_Paths)
+		{
+			if (!path)
+				lost = true;
+		}
 		int itemVisits = 0;
 		while (tile.m_UpdateCursor < tile.m_Items.Count())
 		{
@@ -1203,6 +1406,8 @@ class SZ_TreeSwap
 			if (want == it.m_Shown)
 				continue;
 			Apply(it, want);
+			if (it.m_Shown != want)
+				tile.m_Retry = true;
 		}
 		if (tile.m_UpdateCursor >= tile.m_Items.Count())
 			tile.m_UpdateCursor = 0;
@@ -1213,6 +1418,23 @@ class SZ_TreeSwap
 			tile.m_UpdateCursor = 0;
 			complete = false;
 		}
+		// Let the ring advance even if the season changed during this tile: otherwise a continuously changing
+		// snow depth could pin it here forever. The queue repeats its earlier items once the ring has settled.
+		if (!complete || tile.m_UpdateAgain || tile.m_Partial || tile.m_Retry)
+		{
+			tile.m_WorkAt = m_Clock;
+			if (complete && !tile.m_UpdateAgain)
+			{
+				tile.m_WorkAt = m_Clock + RESCAN_SECONDS;
+				if (tile.m_Partial)
+					tile.m_WorkAt = tile.m_RescanAt;
+				if (tile.m_Retry)
+					tile.m_WorkAt = Math.Min(tile.m_WorkAt, m_Clock + RESCAN_SECONDS);
+			}
+			m_Pending.Set(key, tile);
+		}
+		else
+			m_Pending.Remove(key);
 		return complete;
 	}
 
@@ -1274,6 +1496,18 @@ class SZ_TreeSwap
 		for (int r = 0; r < m_Restore.Count(); r++)
 			RestoreTile(m_Restore.GetElement(r));
 		m_Restore.Clear();
+		m_Pending.Clear();
+		m_PendingCursor = 0;
+		m_NearLeft = 0;
+		m_FarLeft = 0;
+		m_VisitCount = 0;
+		m_StateRevision = 0;
+		m_SweepLeft = 0;
+		m_SweepCursor = 0;
+		m_TrimPending = false;
+		m_TrimLeft = 0;
+		m_BackgroundAt = 0;
+		m_BackgroundCursor = 0;
 		m_NearCursor = 0;
 		m_FarCursor = 0;
 		m_Swapped = 0;

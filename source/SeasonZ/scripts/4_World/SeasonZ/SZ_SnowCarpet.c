@@ -111,6 +111,12 @@ class SZ_SnowCarpet
 	//! the walls, still cut along them): the finer cut is not seen at that distance, and it makes most of the objects
 	//! of the cover in a town
 	static const float DETAIL_NEAR = 70.0;
+	//! the finest split (0.94 m at the walls) only this close: every object of the cover costs the renderer about
+	//! the same whatever its size (measured 8 Oct: ~0.4 us per object per frame), and in a town 80% of the cover's
+	//! objects are these split cells
+	static const float DETAIL_FINE = 35.0;
+	//! beyond this the cells around buildings are split once only (3.75 m triangles, still cut along the walls)
+	static const float DETAIL_FAR = 85.0;
 	//! a cell built fine goes back to the coarser split only this much further out, so it is not rebuilt back and forth
 	static const float DETAIL_HYST = 15.0;
 	//! the smallest triangles at a wall are cut along it: each edge crossing is found by halving the edge this often
@@ -2401,14 +2407,14 @@ class SZ_SnowCarpet
 	//! (-1 for a new cell)
 	protected int DetailFor(float dist, int current)
 	{
-		float nearRadius = DETAIL_NEAR;
+		float nearRadius = DETAIL_FINE;
 		if (SZ_State.s_DebugCarpetDetailNear >= 0)
 			nearRadius = Math.Clamp(SZ_State.s_DebugCarpetDetailNear, 10.0, DETAIL_NEAR);
 		if (!SZ_State.s_CarpetFarDetail || dist < nearRadius)
 			return EXACT_DEPTH;
 		if (current == EXACT_DEPTH && dist < nearRadius + DETAIL_HYST)
 			return EXACT_DEPTH;
-		if (SZ_State.s_DebugCarpetOuterCoarse && (dist > 125.0 || (current == EXACT_DEPTH - 2 && dist > 110.0)))
+		if (SZ_State.s_DebugCarpetOuterCoarse && (dist > DETAIL_FAR || (current == EXACT_DEPTH - 2 && dist > DETAIL_FAR - DETAIL_HYST)))
 			return EXACT_DEPTH - 2;
 		return EXACT_DEPTH - 1;
 	}

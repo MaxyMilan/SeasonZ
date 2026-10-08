@@ -176,7 +176,8 @@ class SZ_State
 	//! Performance prototype: exact building-edge detail radius (negative keeps production 70 m).
 	static float s_DebugCarpetDetailNear = -1;
 	//! Local A/B only: preserve 70 m exact detail, coarsen only the outer level-0 fringe.
-	static bool s_DebugCarpetOuterCoarse;
+	//! cells around buildings beyond SZ_SnowCarpet.DETAIL_FAR are split once only (default on since 8 Oct)
+	static bool s_DebugCarpetOuterCoarse = true;
 	//! Opt-in bounded cutter maintenance; retain production behavior until wider travel QA.
 	static bool s_DebugGrassBudget = false;
 	//! Prototype: no cover traversal after the last snow object has melted.
