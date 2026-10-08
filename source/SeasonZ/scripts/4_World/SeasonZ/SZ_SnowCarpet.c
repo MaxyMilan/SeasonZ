@@ -191,6 +191,11 @@ class SZ_SnowCarpet
 	// work list items of the nearest blocks: after every layout change they are checked first
 	protected int m_NearEnd;
 	protected int m_NearScan;
+	//! the snow depths the stage signature was last taken at, and the signature (see StageSignature)
+	protected float m_SigS0 = -1;
+	protected float m_SigS1 = -1;
+	protected float m_SigS2 = -1;
+	protected int m_StageSig;
 	// layout generation, and the one the running full pass of the main cursor started in
 	protected int m_Layout;
 	protected int m_PassLayout;
@@ -2528,21 +2533,36 @@ class SZ_SnowCarpet
 			Retransform(cell);
 	}
 
+	protected int StageForDepth(float depth)
+	{
+		if (depth >= 10.0)
+			return 4;
+		if (depth >= 5.0)
+			return 3;
+		if (depth >= 2.0)
+			return 2;
+		if (depth >= 0.5)
+			return 1;
+		return 0;
+	}
+
+	//! the stage at every 1/100 of the altitude span of the snow levels: changes whenever the depth crosses a stage
+	//! threshold somewhere
+	protected int StageSignature(float s0, float s1, float s2)
+	{
+		int sig = 0;
+		float stepAlt = SZ_Const.LEVEL_ALT_2 / 100.0;
+		for (int a = 0; a <= 100; a++)
+			sig = sig * 31 + StageForDepth(SZ_State.SnowAt(a * stepAlt, s0, s1, s2));
+		return sig;
+	}
+
 	protected int DesiredStage(SZ_SnowCell cell, float dist)
 	{
 		if (cell.m_Tris.Count() == 0)
 			return 0;
 
-		float depth = SZ_State.SnowAt(cell.m_Avg, m_S0, m_S1, m_S2);
-		int stage = 0;
-		if (depth >= 10.0)
-			stage = 4;
-		else if (depth >= 5.0)
-			stage = 3;
-		else if (depth >= 2.0)
-			stage = 2;
-		else if (depth >= 0.5)
-			stage = 1;
+		int stage = StageForDepth(SZ_State.SnowAt(cell.m_Avg, m_S0, m_S1, m_S2));
 
 		float outer = m_Rad[LEVELS - 1];
 		float fadeStart = outer * 0.85;
@@ -2812,6 +2832,21 @@ class SZ_SnowCarpet
 			m_Epoch++;
 		}
 		bool anySnow = Math.Max(s0, Math.Max(s1, s2)) >= 0.5;
+		// the depth crossed a stage threshold at some altitude: start the nearest-first pass again, so the new stage
+		// spreads outward from the camera within seconds (the cycling cursor alone took more than 30 s to reach cells
+		// next to the camera, and the cells still at the old stage showed as rectangles)
+		if (Math.AbsFloat(s0 - m_SigS0) > 0.02 || Math.AbsFloat(s1 - m_SigS1) > 0.02 || Math.AbsFloat(s2 - m_SigS2) > 0.02)
+		{
+			m_SigS0 = s0;
+			m_SigS1 = s1;
+			m_SigS2 = s2;
+			int stageSig = StageSignature(s0, s1, s2);
+			if (stageSig != m_StageSig)
+			{
+				m_StageSig = stageSig;
+				m_NearScan = 0;
+			}
+		}
 		// Keep existing cells/caches. When snow returns, normal anchor and pond
 		// invalidation runs before rebuilding; melting and retired cleanup finish
 		// before this guard is allowed. No visible objects exist on this path.
