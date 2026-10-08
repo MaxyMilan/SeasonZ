@@ -136,6 +136,8 @@ class SZ_RoofBuilding
 	float m_LastScale;
 	float m_StillTime;
 	float m_RestDepth;
+	//! Movable transform checks remain live; settled snow work follows the input revision.
+	int m_UpdateRevision = -1;
 
 	void SZ_RoofBuilding()
 	{
@@ -178,6 +180,8 @@ class SZ_RoofSnow
 	static const float NO_HIT = -100000.0;
 	static const float MIN_NORMAL_Y = 0.6;
 	static const float FINE_RADIUS = 90.0;
+	//! a roof sampled at full detail goes back to the far detail only this much further out (no back and forth)
+	static const float FINE_HYST = 30.0;
 	//! small structures (blocks, boxes, benches, hay bales) carry snow this close to the camera; further out they are
 	//! a few pixels on screen
 	static const float SMALL_RADIUS = 90.0;
@@ -394,6 +398,37 @@ class SZ_RoofSnow
 	//! does not stall a frame
 	protected ref array<Object> m_Trash;
 	protected int m_Cursor;
+	//! A finite round wakes on movement or changed depth. Idle pulses visit at most two tiles/eight owners.
+	protected int m_WorkLeft;
+	protected bool m_BackgroundPass;
+	protected float m_BackgroundAt;
+	protected float m_RetryAt;
+	//! Streaming retries do not make an otherwise settled scene busy in the test harness.
+	protected float m_RescanAt;
+	protected int m_InputRevision;
+	protected float m_WorkWallRadius;
+	protected float m_WorkRoofOffset;
+	protected bool m_WorkRockThin;
+	static const float IDLE_SECONDS = 0.25;
+	static const int IDLE_TILES = 2;
+	static const int IDLE_OWNERS = 8;
+	static const float WAKE_MOVE = 2.0;
+	static const float DEPTH_STEP = 0.05;
+	static const float DEPTH_QUIET = 0.25;
+	protected vector m_WorkCamera;
+	protected vector m_RoundCamera;
+	protected bool m_FullRound;
+	protected float m_WorkS0;
+	protected float m_WorkS1;
+	protected float m_WorkS2;
+	protected float m_DepthQuiet;
+	//! Only nearby eligibility boundaries can be crossed before the movement gate. Points store x/radius/z.
+	protected ref array<vector> m_WakePoints;
+	protected ref array<bool> m_WakeInside;
+	protected ref array<bool> m_WakeStrict;
+	protected vector m_WakeCamera;
+	protected float m_WakeMargin;
+	protected bool m_WakeChecked;
 	//! the structures with baked snow around the camera, checked a few hundred per frame for a change of their
 	//! model: the main round waits on structures still sampled or placing pieces, so a new depth reached them late
 	protected ref array<SZ_RoofBuilding> m_BakedRing;
@@ -425,6 +460,9 @@ class SZ_RoofSnow
 		m_Movable = new map<EntityAI, ref SZ_RoofBuilding>;
 		m_Work = new array<int>;
 		m_Trash = new array<Object>;
+		m_WakePoints = new array<vector>;
+		m_WakeInside = new array<bool>;
+		m_WakeStrict = new array<bool>;
 		m_AnchorX = -100000;
 		m_AnchorZ = -100000;
 	}
@@ -563,6 +601,7 @@ class SZ_RoofSnow
 		}
 		PruneBakedRing();
 		m_Cursor = 0;
+		WakeWork();
 	}
 
 	//! A depth-stable ring is asleep; evicted owners must still leave its array.
@@ -3817,6 +3856,7 @@ class SZ_RoofSnow
 			return false;
 		if (s_Clock < b.m_CreateRetryAt)
 		{
+			RetryWorkAt(b.m_CreateRetryAt);
 			m_DeferredCreates = true;
 			return false;
 		}
@@ -3829,7 +3869,10 @@ class SZ_RoofSnow
 		b.m_CreateRetryAt = s_Clock + b.m_CreateAttempts * 5.0;
 		b.m_CreateFailed = b.m_CreateAttempts >= 3;
 		if (!b.m_CreateFailed)
+		{
+			RetryWorkAt(b.m_CreateRetryAt);
 			m_DeferredCreates = true;
+		}
 		m_Cost += 0.2;
 		if (b.m_CreateAttempts == 1 || b.m_CreateFailed)
 			Print(string.Format("[SeasonZ] snow creation failed stage=%1 attempts=%2 failed=%3 object=%4; change stage or reset roofs after asset repair", b.m_RetryStage, b.m_CreateAttempts, b.m_CreateFailed, b.m_Obj));
@@ -4370,19 +4413,134 @@ class SZ_RoofSnow
 		}
 	}
 
+	//! Two rounds also revisit the prefix of a tile interrupted before the input change, including tiles whose
+	//! order changed at an anchor crossing. Keep the current cursor so continuous changes cannot starve the tail.
+	protected void WakeWork()
+	{
+		m_WorkLeft = 2 * m_Work.Count();
+		m_BackgroundPass = false;
+		m_FullRound = true;
+		m_RoundCamera = m_Camera;
+		m_WakePoints.Clear();
+		m_WakeInside.Clear();
+		m_WakeStrict.Clear();
+		m_WakeChecked = false;
+	}
+
+	//! A pass can move up to WAKE_MOVE from its start, then sleep up to WAKE_MOVE from its end. A boundary
+	//! within three such distances of an owner visit can therefore matter before the next full movement wake.
+	protected void WatchBoundary(vector position, float radius, float distance, bool strict)
+	{
+		if (!m_FullRound || Math.AbsFloat(distance - radius) > 3.0 * WAKE_MOVE)
+			return;
+		m_WakePoints.Insert(Vector(position[0], radius, position[2]));
+		bool inside = distance <= radius;
+		if (strict)
+			inside = distance < radius;
+		m_WakeInside.Insert(inside);
+		m_WakeStrict.Insert(strict);
+		m_WakeChecked = false;
+	}
+
+	//! The distance to the nearest watched circle is a safe lower bound: ordinary sway needs no owner walk.
+	//! Near a boundary use cached points, not native object queries, and wake only if eligibility really changed.
+	protected bool BoundaryChanged(vector camera)
+	{
+		float mx = camera[0] - m_WakeCamera[0];
+		float mz = camera[2] - m_WakeCamera[2];
+		if (m_WakeChecked && ((mx == 0 && mz == 0) || mx * mx + mz * mz < m_WakeMargin * m_WakeMargin))
+			return false;
+		m_WakeCamera = camera;
+		m_WakeMargin = WAKE_MOVE;
+		m_WakeChecked = true;
+		for (int wi = 0; wi < m_WakePoints.Count(); wi++)
+		{
+			vector point = m_WakePoints[wi];
+			float bx = point[0] - camera[0];
+			float bz = point[2] - camera[2];
+			float distance = Math.Sqrt(bx * bx + bz * bz);
+			bool inside = distance <= point[1];
+			if (m_WakeStrict[wi])
+				inside = distance < point[1];
+			if (inside != m_WakeInside[wi])
+				return true;
+			// Leave a millimetre for rounding at an exact radius.
+			m_WakeMargin = Math.Min(m_WakeMargin, Math.Max(0, Math.AbsFloat(distance - point[1]) - 0.001));
+		}
+		return false;
+	}
+
+	protected void RetryWorkAt(float when)
+	{
+		if (m_RetryAt <= 0 || when < m_RetryAt)
+			m_RetryAt = when;
+	}
+
 	protected void UpdateRoofs(float timeslice, vector camera, float s0, float s1, float s2)
 	{
 		if (SZ_State.s_DebugRoofOff)
 		{
-			if (m_Tiles.Count() > 0 || m_Movable.Count() > 0)
+			if (m_Tiles.Count() > 0 || m_Movable.Count() > 0 || m_Trash.Count() > 0)
 				Clear();
+			SZ_State.s_StatRoofBusy = false;
 			return;
 		}
 		s_Clock += timeslice;
+		if (s0 != m_S0 || s1 != m_S1 || s2 != m_S2)
+			m_DepthQuiet = 0;
+		else
+			m_DepthQuiet += timeslice;
+		bool changed = Math.AbsFloat(s0 - m_WorkS0) >= DEPTH_STEP || Math.AbsFloat(s1 - m_WorkS1) >= DEPTH_STEP || Math.AbsFloat(s2 - m_WorkS2) >= DEPTH_STEP;
+		// Finish a sub-step once interpolation settles, including a stage boundary crossed by its last fraction.
+		if (m_DepthQuiet >= DEPTH_QUIET && (s0 != m_WorkS0 || s1 != m_WorkS1 || s2 != m_WorkS2))
+			changed = true;
+		if (changed)
+		{
+			m_WorkS0 = s0;
+			m_WorkS1 = s1;
+			m_WorkS2 = s2;
+		}
+		// ('reference' is a reserved word in Enforce Script)
+		vector wakeFrom = m_WorkCamera;
+		if (m_FullRound)
+			wakeFrom = m_RoundCamera;
+		bool moved = vector.Distance(camera, wakeFrom) >= WAKE_MOVE;
+		bool teleported = vector.Distance(camera, m_Camera) > 200.0;
+		int ax = Math.Floor(camera[0] / TILE);
+		int az = Math.Floor(camera[2] / TILE);
+		bool anchorChanged = ax != m_AnchorX || az != m_AnchorZ;
+		changed = changed || m_WorkWallRadius != SZ_State.s_DebugWallRadius || m_WorkRoofOffset != SZ_State.s_DebugRoofOffset || m_WorkRockThin != SZ_State.s_DebugRockThin;
+		bool boundaryChanged = false;
+		if (!changed && !moved && !anchorChanged && !teleported)
+			boundaryChanged = BoundaryChanged(camera);
 		m_Camera = camera;
 		m_S0 = s0;
 		m_S1 = s1;
 		m_S2 = s2;
+		m_WorkWallRadius = SZ_State.s_DebugWallRadius;
+		m_WorkRoofOffset = SZ_State.s_DebugRoofOffset;
+		m_WorkRockThin = SZ_State.s_DebugRockThin;
+		if (changed || moved || anchorChanged || teleported || boundaryChanged)
+		{
+			m_InputRevision++;
+			WakeWork();
+		}
+		if (m_RetryAt > 0 && s_Clock >= m_RetryAt)
+		{
+			m_RetryAt = 0;
+			WakeWork();
+			// Retained baked owners outside the main visit ring can have a creation retry too.
+			if (m_BakedRing && m_BakedRing.Count() > 0)
+			{
+				m_RingActive = true;
+				m_RingLeft = m_BakedRing.Count();
+			}
+		}
+		if (m_RescanAt > 0 && s_Clock >= m_RescanAt)
+		{
+			m_RescanAt = 0;
+			WakeWork();
+		}
 		bool anySnow = Math.Max(s0, Math.Max(s1, s2)) >= 0.5;
 
 		m_Cost = 0;
@@ -4395,9 +4553,7 @@ class SZ_RoofSnow
 		UpdateMovables(timeslice, camera, anySnow);
 		StatTicks(1, tk);
 
-		int ax = Math.Floor(camera[0] / TILE);
-		int az = Math.Floor(camera[2] / TILE);
-		if (ax != m_AnchorX || az != m_AnchorZ)
+		if (anchorChanged)
 		{
 			m_AnchorX = ax;
 			m_AnchorZ = az;
@@ -4405,13 +4561,28 @@ class SZ_RoofSnow
 		}
 
 		int count = m_Work.Count();
+		if (m_WorkLeft <= 0 && s_Clock >= m_BackgroundAt)
+		{
+			m_WorkLeft = Math.Min(IDLE_TILES, count);
+			m_BackgroundPass = true;
+		}
+		int visitLimit = VISITS_PER_FRAME;
+		if (m_BackgroundPass)
+		{
+			visitLimit = 0;
+			if (s_Clock >= m_BackgroundAt)
+			{
+				m_BackgroundAt = s_Clock + IDLE_SECONDS;
+				visitLimit = IDLE_OWNERS;
+			}
+		}
 		int visited = 0;
 		int looked = 0;
 		bool busy = false;
 		tk = TickCount(0);
 		UpdateBakedRing(camera, anySnow);
 		StatTicks(4, tk);
-		while (m_Cost < 20.0 && visited < count && looked < VISITS_PER_FRAME)
+		while (m_WorkLeft > 0 && m_Cost < 20.0 && visited < count && looked < visitLimit)
 		{
 			if (m_Cursor >= count)
 				m_Cursor = 0;
@@ -4430,7 +4601,10 @@ class SZ_RoofSnow
 			if (!tile)
 			{
 				if (!anySnow)
+				{
+					m_WorkLeft--;
 					continue;
+				}
 				tile = new SZ_RoofTile();
 				m_Tiles.Set(key, tile);
 			}
@@ -4446,11 +4620,11 @@ class SZ_RoofSnow
 			m_Cost += 0.01;
 			while (tile.m_UpdateCursor < tile.m_Buildings.Count())
 			{
-				if (looked >= VISITS_PER_FRAME || OverBudget(TileDist(ktx, ktz) < URGENT_DIST + TILE))
+				if (looked >= visitLimit || OverBudget(TileDist(ktx, ktz) < URGENT_DIST + TILE))
 				{
 					m_Cursor--;
 					visited = count;
-					busy = true;
+					busy = !m_BackgroundPass;
 					break;
 				}
 				SZ_RoofBuilding b = tile.m_Buildings[tile.m_UpdateCursor];
@@ -4473,6 +4647,10 @@ class SZ_RoofSnow
 				float dx = bp[0] - camera[0];
 				float dz = bp[2] - camera[2];
 				b.m_Dist = Math.Sqrt(dx * dx + dz * dz);
+				if (b.m_Small)
+					WatchBoundary(bp, SMALL_RADIUS, b.m_Dist, false);
+				if (b.m_Kind == 0 && !b.m_Fine)
+					WatchBoundary(bp, FINE_RADIUS, b.m_Dist, true);
 				if (b.m_Small && b.m_Dist > SMALL_RADIUS)
 				{
 					// small structures carry snow only near the camera
@@ -4487,6 +4665,7 @@ class SZ_RoofSnow
 						wallRadius = b.m_Reach;
 					if (SZ_State.s_DebugWallRadius > 0)
 						wallRadius = SZ_State.s_DebugWallRadius;
+					WatchBoundary(bp, wallRadius, b.m_Dist, false);
 					if (b.m_Dist > wallRadius)
 					{
 						TrashAll(b);
@@ -4498,6 +4677,8 @@ class SZ_RoofSnow
 					TrashPending(b);
 				if (b.m_Pending)
 				{
+					m_BackgroundPass = false;
+					visitLimit = VISITS_PER_FRAME;
 					// a new stage is being placed: go on with it
 					tk = TickCount(0);
 					bool placed = ContinuePlace(b);
@@ -4541,6 +4722,19 @@ class SZ_RoofSnow
 					BeginScan(b, true);
 					b.m_Stage = -1;
 				}
+				else if (b.m_State == 2 && b.m_Fine && !b.m_Small && b.m_Kind == 0 && b.m_Dist > FINE_RADIUS + FINE_HYST && anySnow)
+				{
+					// went far again: back to the cheaper far detail. Without this the fine pieces of every roof passed on
+					// the way stayed until their tile left the range (thousands of extra objects after a walk through a
+					// town); the current snow stays until the coarser one is built
+					BeginScan(b, false);
+					b.m_Stage = -1;
+				}
+				if (b.m_State == 1 || b.m_State == 3 || b.m_State == 4)
+				{
+					m_BackgroundPass = false;
+					visitLimit = VISITS_PER_FRAME;
+				}
 				bool urgent = b.m_Dist < URGENT_DIST;
 				while ((b.m_State == 1 || b.m_State == 3 || b.m_State == 4) && m_Cost < 20.0 && !OverBudget(urgent))
 				{
@@ -4572,6 +4766,7 @@ class SZ_RoofSnow
 					StatTicks(4, tk);
 					if (!started)
 					{
+						m_BackgroundPass = false;
 						tile.m_UpdateCursor--;
 						m_Cursor--;
 						visited = count;
@@ -4581,9 +4776,20 @@ class SZ_RoofSnow
 				}
 			}
 			if (tile.m_UpdateCursor >= tile.m_Buildings.Count())
+			{
 				tile.m_UpdateCursor = 0;
+				m_WorkLeft--;
+			}
+			if (tile.m_Partial && (m_RescanAt <= 0 || tile.m_RescanAt < m_RescanAt))
+				m_RescanAt = tile.m_RescanAt;
 		}
-		if (m_Cost >= 20.0 || m_Trash.Count() > 0 || m_RingActive || m_DeferredCreates)
+		if (m_FullRound && m_WorkLeft <= 0)
+		{
+			// Background visits must not move this reference or slow travel would never accumulate two metres.
+			m_WorkCamera = camera;
+			m_FullRound = false;
+		}
+		if (m_Cost >= 20.0 || m_Trash.Count() > 0 || m_RingActive || m_DeferredCreates || m_RetryAt > 0 || (m_WorkLeft > 0 && !m_BackgroundPass))
 			busy = true;
 		SZ_State.s_StatRoofBusy = busy;
 	}
@@ -4661,6 +4867,9 @@ class SZ_RoofSnow
 			b.m_StillTime += timeslice;
 			if (b.m_StillTime < MOVABLE_REST)
 				continue;
+			// Always detect motion above. The snow on a settled entity only needs work for changed inputs or a job.
+			if (b.m_State == 2 && !b.m_Pending && b.m_UpdateRevision == m_InputRevision && (b.m_CreateAttempts == 0 || b.m_CreateFailed))
+				continue;
 			b.m_Dist = vector.Distance(pos, camera);
 			if (b.m_State == 0)
 			{
@@ -4690,6 +4899,7 @@ class SZ_RoofSnow
 			}
 			if (want != b.m_Stage || (want > 0 && Math.AbsFloat(SlabFor(b) - b.m_Slab) >= SLAB_STEP))
 				ApplyStage(b, want);
+			b.m_UpdateRevision = m_InputRevision;
 		}
 	}
 
@@ -4717,6 +4927,24 @@ class SZ_RoofSnow
 		}
 		m_BakedCursor = 0;
 		m_RingActive = false;
+		m_RingLeft = 0;
+		m_RingS0 = -1;
+		m_RingS1 = -1;
+		m_RingS2 = -1;
+		m_WorkLeft = 0;
+		m_BackgroundPass = false;
+		m_FullRound = false;
+		m_WakePoints.Clear();
+		m_WakeInside.Clear();
+		m_WakeStrict.Clear();
+		m_WakeChecked = false;
+		m_DepthQuiet = 0;
+		m_BackgroundAt = 0;
+		m_RetryAt = 0;
+		m_RescanAt = 0;
+		m_InputRevision = 0;
+		m_Cursor = 0;
+		SZ_State.s_StatRoofBusy = false;
 		if (m_Movable)
 		{
 			for (int m = 0; m < m_Movable.Count(); m++)
@@ -4742,6 +4970,8 @@ class SZ_RoofSnow
 	//! test harness: places the snow of every building again (after a change of the debug offset)
 	void DebugReapply(bool rescan = false)
 	{
+		WakeWork();
+		m_InputRevision++;
 		for (int i = 0; i < m_Tiles.Count(); i++)
 		{
 			SZ_RoofTile t = m_Tiles.GetElement(i);

@@ -90,6 +90,32 @@ class SZ_PondIce
 	protected float m_Radius = RADIUS;
 	protected float m_KeepRadius = KEEP_RADIUS;
 	protected float m_RescueClock;
+	//! Client rounds stop after all bodies have settled. The server keeps its player-driven round unchanged.
+	protected int m_WorkLeft;
+	protected float m_RetryAt;
+	protected float m_BackgroundAt;
+	protected float m_Ice0;
+	protected float m_Ice1;
+	protected float m_Ice2;
+	protected int m_PondRevision;
+	protected bool m_Valid;
+	protected bool m_HasCarry;
+	static const float IDLE_SECONDS = 0.5;
+	static const int IDLE_BODIES = 4;
+	//! Camera sway must not keep the body round awake. Grid crossings and teleports still wake immediately.
+	static const float WAKE_MOVE = 5.0;
+	static const float WAKE_TILE = 40.0;
+	static const float DEPTH_STEP = 0.05;
+	static const float DEPTH_QUIET = 0.25;
+	protected vector m_WorkCamera;
+	protected vector m_RoundCamera;
+	protected bool m_FullRound;
+	protected int m_AnchorX = -100000;
+	protected int m_AnchorZ = -100000;
+	protected float m_WorkIce0;
+	protected float m_WorkIce1;
+	protected float m_WorkIce2;
+	protected float m_DepthQuiet;
 
 	void Init()
 	{
@@ -112,6 +138,7 @@ class SZ_PondIce
 			m_Bodies.Insert(body);
 			}
 		}
+		m_WorkLeft = m_Bodies.Count();
 		Print(string.Format("[SeasonZ] pond ice: %1 water bodies on %2", m_Bodies.Count(), world));
 	}
 
@@ -193,6 +220,8 @@ class SZ_PondIce
 			b.m_PM.Clear();
 		}
 		m_Plates = 0;
+		WakeClient();
+		m_RetryAt = 0;
 	}
 	//! test harness: the cell classes of the body around a point, one text row per grid row, into a file
 	string DebugDumpBody(vector pos, string path)
@@ -340,12 +369,100 @@ class SZ_PondIce
 		if (!m_Bodies || m_Bodies.Count() == 0)
 			return;
 		m_Clock += timeslice;
-		if (m_Clock > 1.0 && vector.Distance(camera, m_LastCamera) > 200.0)
+		bool teleported = vector.Distance(camera, m_LastCamera) > 200.0;
+		if (m_Clock > 1.0 && teleported)
 			m_SettleUntil = m_Clock + SETTLE;
+		// ('reference' is a reserved word in Enforce Script)
+		vector wakeFrom = m_WorkCamera;
+		if (m_FullRound)
+			wakeFrom = m_RoundCamera;
+		float dx = camera[0] - wakeFrom[0];
+		float dz = camera[2] - wakeFrom[2];
+		bool moved = dx * dx + dz * dz >= WAKE_MOVE * WAKE_MOVE;
+		int ax = Math.Floor(camera[0] / WAKE_TILE);
+		int az = Math.Floor(camera[2] / WAKE_TILE);
+		bool anchorChanged = ax != m_AnchorX || az != m_AnchorZ;
+		m_AnchorX = ax;
+		m_AnchorZ = az;
+		if (m_Ice0 != SZ_State.s_Ice0 || m_Ice1 != SZ_State.s_Ice1 || m_Ice2 != SZ_State.s_Ice2)
+			m_DepthQuiet = 0;
+		else
+			m_DepthQuiet += timeslice;
+		bool changed = Math.AbsFloat(m_WorkIce0 - SZ_State.s_Ice0) >= DEPTH_STEP || Math.AbsFloat(m_WorkIce1 - SZ_State.s_Ice1) >= DEPTH_STEP || Math.AbsFloat(m_WorkIce2 - SZ_State.s_Ice2) >= DEPTH_STEP;
+		// Flush a final sub-step after interpolation stops; do not lose a small threshold crossing forever.
+		if (m_DepthQuiet >= DEPTH_QUIET && (m_WorkIce0 != SZ_State.s_Ice0 || m_WorkIce1 != SZ_State.s_Ice1 || m_WorkIce2 != SZ_State.s_Ice2))
+			changed = true;
+		if (changed)
+		{
+			m_WorkIce0 = SZ_State.s_Ice0;
+			m_WorkIce1 = SZ_State.s_Ice1;
+			m_WorkIce2 = SZ_State.s_Ice2;
+		}
+		changed = changed || m_PondRevision != SZ_State.s_PondRevision || m_Valid != SZ_State.s_Valid || m_HasCarry != SZ_State.s_HasPondCarry;
 		m_LastCamera = camera;
 		m_Camera = camera;
-		Work();
+		m_Ice0 = SZ_State.s_Ice0;
+		m_Ice1 = SZ_State.s_Ice1;
+		m_Ice2 = SZ_State.s_Ice2;
+		m_PondRevision = SZ_State.s_PondRevision;
+		m_Valid = SZ_State.s_Valid;
+		m_HasCarry = SZ_State.s_HasPondCarry;
+		bool retry = m_RetryAt > 0 && m_Clock >= m_RetryAt;
+		if (retry)
+			m_RetryAt = 0;
+		if (moved || anchorChanged || teleported || changed || retry)
+			WakeClient();
+		if (m_WorkLeft <= 0 && m_Clock >= m_BackgroundAt)
+		{
+			m_BackgroundAt = m_Clock + IDLE_SECONDS;
+			m_WorkLeft = IDLE_BODIES;
+			if (m_WorkLeft > m_Bodies.Count())
+				m_WorkLeft = m_Bodies.Count();
+		}
+		if (m_WorkLeft > 0)
+			WorkClient();
+		if (m_FullRound && m_WorkLeft <= 0)
+		{
+			m_WorkCamera = camera;
+			m_FullRound = false;
+		}
 		SZ_State.s_StatIce = m_Objects;
+	}
+
+	//! Keep an active pass's reference fixed until it completes. Idle pulses never consume accumulated movement.
+	protected void WakeClient()
+	{
+		m_WorkLeft = m_Bodies.Count();
+		m_RoundCamera = m_Camera;
+		m_FullRound = true;
+	}
+
+	//! An unfinished measurement or placement keeps its cursor and continues next frame. A completed measurement
+	//! still needs Show; Process keeps that body active until both operations have finished.
+	protected void WorkClient()
+	{
+		m_Cost = 0;
+		int count = m_Bodies.Count();
+		int visited = 0;
+		while (m_WorkLeft > 0 && m_Cost < BUDGET && visited < count)
+		{
+			if (m_Cursor >= count)
+				m_Cursor = 0;
+			m_Cost += 0.01;
+			if (Process(m_Bodies[m_Cursor]))
+			{
+				m_Cursor++;
+				m_WorkLeft--;
+				visited++;
+			}
+		}
+	}
+
+	//! Deadlines wake the client even when neither the camera nor the weather changes.
+	protected void RetryClientAt(float when)
+	{
+		if (!m_Server && (m_RetryAt <= 0 || when < m_RetryAt))
+			m_RetryAt = when;
 	}
 
 	protected void Work()
@@ -398,10 +515,20 @@ class SZ_PondIce
 		}
 		if (dist > m_Radius && !b.m_Shown && b.m_Objects.Count() == 0)
 			return true;
-		if (b.m_Step == 2 && b.m_MeasuredFrom > REMEASURE_FROM && dist < b.m_MeasuredFrom * 0.5 && m_Clock >= m_SettleUntil)
-			b.m_Step = 0;
+		if (b.m_Step == 2 && b.m_MeasuredFrom > REMEASURE_FROM && dist < b.m_MeasuredFrom * 0.5)
+		{
+			if (m_Clock >= m_SettleUntil)
+				b.m_Step = 0;
+			else
+				RetryClientAt(m_SettleUntil);
+		}
 		if (b.m_Step < 2)
-			return Measure(b);
+		{
+			bool measured = Measure(b);
+			if (!m_Server && measured && b.m_Step == 2)
+				return false;
+			return measured;
+		}
 		if (!b.m_Shown)
 			return Show(b);
 		return true;
@@ -412,7 +539,10 @@ class SZ_PondIce
 		if (b.m_Step == 0)
 		{
 			if (m_Clock < m_SettleUntil)
+			{
+				RetryClientAt(m_SettleUntil);
 				return true;
+			}
 			b.m_GX0 = Math.Round(b.m_X0 / CELL);
 			b.m_GZ0 = Math.Round(b.m_Z0 / CELL);
 			b.m_NX = Math.Round((b.m_X1 - b.m_X0) / CELL);
@@ -546,8 +676,13 @@ class SZ_PondIce
 
 	protected bool Show(SZ_PondBody b)
 	{
-		if (b.m_CreateFailed || m_Clock < b.m_CreateRetryAt)
+		if (b.m_CreateFailed)
+			return true;
+		if (m_Clock < b.m_CreateRetryAt)
+		{
+			RetryClientAt(b.m_CreateRetryAt);
 			return true; // yield this body; shown remains false
+		}
 		while (b.m_Objects.Count() < b.m_PX.Count() && m_Cost < BUDGET)
 		{
 			int i = b.m_Objects.Count();
@@ -561,6 +696,8 @@ class SZ_PondIce
 				b.m_CreateAttempts++;
 				b.m_CreateRetryAt = m_Clock + b.m_CreateAttempts * 5.0;
 				b.m_CreateFailed = b.m_CreateAttempts >= 3;
+				if (!b.m_CreateFailed)
+					RetryClientAt(b.m_CreateRetryAt);
 				if (b.m_CreateAttempts == 1 || b.m_CreateFailed)
 					Print(string.Format("[SeasonZ] ice creation failed model=%1 attempts=%2; repair assets and remeasure", model, b.m_CreateAttempts));
 				return true;
@@ -597,6 +734,13 @@ class SZ_PondIce
 	{
 		if (!m_Bodies)
 			return;
+		m_WorkLeft = m_Bodies.Count();
+		m_RetryAt = 0;
+		m_BackgroundAt = 0;
+		m_FullRound = false;
+		m_AnchorX = -100000;
+		m_AnchorZ = -100000;
+		m_DepthQuiet = 0;
 		foreach (SZ_PondBody b : m_Bodies)
 		{
 			if (b.m_Objects.Count() > 0)
