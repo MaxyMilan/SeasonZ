@@ -3055,7 +3055,12 @@ class SZ_SnowCarpet
 			}
 			else if (m_JobPhase == 2)
 			{
-				if (m_JobStage <= 0 || m_JobCursor >= m_Job.m_Tris.Count())
+				// A stage change of the same triangles swaps them one by one: each old triangle goes in the step its
+				// replacement appears, so two stages never draw over each other. (The old cell used to wait in the
+				// retired list, up to 30 s while the layout moved, and its fuller coverage showed through the new
+				// stage as cell-sized rectangles.)
+				bool swapStage = m_JobOld && m_JobOld != m_Job && m_JobOld.m_Tris == m_Job.m_Tris;
+				if (m_JobCursor >= m_Job.m_Tris.Count() || (m_JobStage <= 0 && !swapStage))
 				{
 					m_Job.m_Stage = m_JobStage;
 					m_Job.m_Epoch = m_Epoch;
@@ -3069,7 +3074,21 @@ class SZ_SnowCarpet
 					m_Job = null; m_JobOld = null;
 					continue;
 				}
-				SZ_SnowTri t = m_Job.m_Tris[m_JobCursor++];
+				int swapIndex = m_JobCursor;
+				m_JobCursor++;
+				if (swapStage && swapIndex < m_JobOld.m_Objects.Count())
+				{
+					Object oldObject = m_JobOld.m_Objects[swapIndex];
+					if (oldObject)
+					{
+						g_Game.ObjectDelete(oldObject);
+						m_Objects--;
+					}
+					m_JobOld.m_Objects.Set(swapIndex, null);
+				}
+				if (m_JobStage <= 0)
+					continue;
+				SZ_SnowTri t = m_Job.m_Tris[swapIndex];
 				string shape = ShapeName(t.m_Shape);
 				if (t.m_Free) shape = "c";
 				string model = SZ_Const.DATA + "snow\\szk_" + shape + t.m_Variant + "_s" + m_JobStage.ToString() + ".p3d";
