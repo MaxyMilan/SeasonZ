@@ -175,10 +175,9 @@ def make_cover_map(n=1024, size=128):
         '\t//! true where a snow cover triangle of this stage (1-4) and variant shows the ground at world x, z\n'
         '\tstatic bool IsBare(float x, float z, int stage, string variant)\n\t{\n'
         '\t\tif (stage >= 4 || stage < 1)\n\t\t\treturn stage < 1;\n'
-        '\t\t// whole and half cells take their place in the 30 m period, quarter cells repeat the first 7.5 m of it\n'
+        '\t\t// whole, half and quarter cells all take their place in the 30 m period\n'
         '\t\tfloat period = 30.0;\n'
         '\t\tfloat span = 1.0;\n'
-        '\t\tif (variant.IndexOf("q") == 0)\n\t\t{\n\t\t\tperiod = 7.5;\n\t\t\tspan = 0.25;\n\t\t}\n'
         '\t\tfloat fx = x / period;\n'
         '\t\tfloat fz = z / period;\n'
         '\t\tfx = fx - Math.Floor(fx);\n'
@@ -401,7 +400,11 @@ def asciiz(s):
     return s.encode('ascii') + b'\x00'
 
 def mlod_lod(points, faces, resolution, props=(), selections=None, mass=None):
-    normals = [(0.0, 1.0, 0.0), (0.0, -1.0, 0.0)]
+    # MLOD stores normals pointing into the surface (snow_craft writes -n for the same reason): index 0 is the
+    # normal of a face that looks up, index 1 of a face that looks down. Written the other way round the game lit
+    # the ground cover, the roof pieces, prints, tracks and ice as if they faced the ground (ambient light and the
+    # forced diffuse share only), so the ground snow read grey blue next to the baked roofs.
+    normals = [(0.0, -1.0, 0.0), (0.0, 1.0, 0.0)]
     out = bytearray(b'P3DM')
     out += struct.pack('<IIIIII', 0x1C, 0x100, len(points), len(normals), len(faces), 0)
     for (x, y, z) in points:
@@ -471,9 +474,8 @@ GROUND_CELL = 7.5
 # variant, size in terrain cells, texture span of the square, texture offset in squares, skirt depth in metres.
 # The snow texture repeats every 4 terrain cells (30 m). Whole cells (00-33), half cells next to buildings
 # (h00-h77) and the double cells of the first coarse level (d00-d11) take their exact place in that period, so the
-# pattern continues across every cell. Quarter cells (q00-q33) take their place inside their terrain cell: the
-# normal and detail maps (which repeat every cell) continue, only the broad colour pattern may step where a quarter
-# cell meets its neighbour. The coarse levels (f4, f16, f32) span whole periods.
+# pattern continues across every cell. Quarter cells (q0000-q1515) also take their exact place in the period, so the
+# coverage of a partial stage runs on across them. The coarse levels (f4, f16, f32) span whole periods.
 def ground_variants():
     out = []
     for a in range(4):
@@ -482,9 +484,11 @@ def ground_variants():
     for a in range(8):
         for b in range(8):
             out.append(('h%d%d' % (a, b), 0.5, 0.125, a, b, 1.5))
-    for a in range(4):
-        for b in range(4):
-            out.append(('q%d%d' % (a, b), 0.25, 0.0625, a, b, 1.5))
+    # quarter cells take their exact place in the 30 m period as well (16 x 16 of them): when they repeated the first
+    # cell of the period, the coverage pattern of a partial snow stage broke along their edges next to buildings
+    for a in range(16):
+        for b in range(16):
+            out.append(('q%02d%02d' % (a, b), 0.25, 0.0625, a, b, 1.5))
     for a in range(2):
         for b in range(2):
             out.append(('d%d%d' % (a, b), 2.0, 0.5, a, b, 2.5))

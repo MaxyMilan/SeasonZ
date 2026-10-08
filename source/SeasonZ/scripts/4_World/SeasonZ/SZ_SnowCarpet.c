@@ -2444,6 +2444,13 @@ class SZ_SnowCarpet
 		return cell;
 	}
 
+	protected string Pad2(int v)
+	{
+		if (v < 10)
+			return "0" + v.ToString();
+		return v.ToString();
+	}
+
 	protected int Wrap(int v, int n)
 	{
 		int r = v % n;
@@ -2476,7 +2483,8 @@ class SZ_SnowCarpet
 			else
 			{
 				modelSize = MODEL_CELL * 0.25;
-				t.m_Variant = "q" + Wrap(ix, 4).ToString() + Wrap(iz, 4).ToString();
+				// the quarter's exact place in the 30 m period (16 x 16), two digits each
+				t.m_Variant = "q" + Pad2(Wrap(ix, 16)) + Pad2(Wrap(iz, 16));
 			}
 		}
 		else if (f == 2)

@@ -168,14 +168,9 @@ class SZ_CoverMap
 	{
 		if (stage >= 4 || stage < 1)
 			return stage < 1;
-		// whole and half cells take their place in the 30 m period, quarter cells repeat the first 7.5 m of it
+		// whole, half and quarter cells all take their place in the 30 m period
 		float period = 30.0;
 		float span = 1.0;
-		if (variant.IndexOf("q") == 0)
-		{
-			period = 7.5;
-			span = 0.25;
-		}
 		float fx = x / period;
 		float fz = z / period;
 		fx = fx - Math.Floor(fx);
