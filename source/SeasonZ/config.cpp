@@ -22,7 +22,7 @@ class CfgMods
 		credits = "";
 		author = "SeasonZ";
 		authorID = "0";
-		version = "0.5.2";
+		version = "0.5.3";
 		extra = 0;
 		type = "mod";
 		dependencies[] = {"Game", "World", "Mission"};

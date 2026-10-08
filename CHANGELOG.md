@@ -1,5 +1,19 @@
 # SeasonZ changelog
 
+## 0.5.3
+
+- Ground snow, roof pieces, footprints, tyre tracks and ice now receive light on the correct side.
+  Ground and roof snow match in daylight and at night.
+- Partial ground snow continues its coverage pattern around buildings. Depth changes replace the
+  cover triangle by triangle and spread out from the camera within seconds.
+- Snow caps no longer cover animated parts of 77 models, including gates, doors, containers,
+  hangars, wrecks and carousels, so snow does not float above an opened gate.
+- Ground snow uses coarser building splits beyond 35 and 85 metres. Tree, ice and roof updates run
+  when needed, and roofs return to distant detail beyond 120 metres.
+- Fixed-camera tests at 1600x900 on the test PC measured frame times falling from 23.6 to about
+  17.6 ms in Chernogorsk and from 12.2 to about 9.6 ms in the countryside. Tree, ice and roof
+  script work fell from about 1.7 to 0.05 ms per frame. Results vary with hardware and scene.
+
 ## 0.5.2
 
 - 1,377 active snow caps in seven depths, with 27 intentional skips. The hand register contains
