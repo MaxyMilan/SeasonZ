@@ -76,6 +76,7 @@ class SZ_RoofBuilding
 	ref array<Object> m_Objects;
 	//! a small structure (block, box, bench, hay bale): sampled on a grid sized to it, with its edges found at any
 	//! distance
+	bool m_Sidewalk; // raised deck: admit its exposed top without raising adjacent terrain
 	bool m_Small;
 	//! a wall: a flat top becomes one strip of snow (its edges are found like those of the small structures)
 	bool m_Wall;
@@ -707,12 +708,18 @@ class SZ_RoofSnow
 		if (shape.IndexOf("farm_strawstack") >= 0 || shape.IndexOf("haybale_packed_stack") >= 0)
 			return null;
 		// walls keep the fine grid of thin tops, whatever their bounding box
+		bool sidewalk = shape.IndexOf("\\roads\\sidewalks\\sidewalk3_") >= 0 && shape.IndexOf("_border") < 0;
 		bool wall = shape.IndexOf("\\walls\\") >= 0;
 		bool plain = !o.IsBuilding() && !o.IsRock() && SZ_State.s_DebugRoofPlain > 0 && IsPlainStructure(shape);
 		// small buildings (outhouses, coops, kennels, kiosks) and loose stones: like the small plain structures.
 		// Poles, lamps and wires stay without snow (see IsPlainStructure)
 		bool smallBody = plain || o.IsRock() || (o.IsBuilding() && IsPlainStructure(shape));
-		if (!wall && (o.IsBuilding() || o.IsRock() || plain) && size[0] >= 2.5 && size[2] >= 2.5 && size[1] >= 2.0)
+		if (sidewalk)
+		{
+			kind = 0;
+			small = true;
+		}
+		else if (!wall && (o.IsBuilding() || o.IsRock() || plain) && size[0] >= 2.5 && size[2] >= 2.5 && size[1] >= 2.0)
 		{
 			kind = 0;
 		}
@@ -740,6 +747,7 @@ class SZ_RoofSnow
 		b.m_Obj = o;
 		b.m_Kind = kind;
 		b.m_Small = small;
+		b.m_Sidewalk = sidewalk;
 		b.m_Wall = wall && kind == 1;
 		b.m_Rock = o.IsRock();
 		vector p = o.GetPosition();
@@ -916,7 +924,9 @@ class SZ_RoofSnow
 					blockTop = res.pos[1];
 			}
 		}
-		if (h != NO_HIT && (blockTop > h + 0.3 || h < groundHere + 0.25))
+		float minimumLift = 0.25;
+		if (b.m_Sidewalk) minimumLift = 0.015;
+		if (h != NO_HIT && (blockTop > h + 0.3 || h < groundHere + minimumLift))
 			return NO_HIT;
 		// a low surface under a see-through roof (greenhouse glass, polytunnel film): the roof has view geometry but
 		// little or no fire geometry, so the highest fire hit can be a bed or the floor inside
